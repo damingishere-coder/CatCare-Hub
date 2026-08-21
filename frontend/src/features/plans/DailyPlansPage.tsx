@@ -4,6 +4,7 @@ import {
   ArrowUp,
   CalendarDays,
   Check,
+  ClipboardCheck,
   Clock3,
   ExternalLink,
   LoaderCircle,
@@ -11,6 +12,7 @@ import {
   Save,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { serviceItemOptions } from "../orders/constants";
 import type { ServiceItem } from "../orders/types";
@@ -522,6 +524,17 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                       <ExternalLink size={14} />打开高德导航
                     </a>
                   ) : null}
+                  <Link
+                    className={`mt-2 inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white ${(dirty || saving || routeBusy) ? "pointer-events-none opacity-40" : ""}`}
+                    to={`/admin/tasks/${taskDetail.task.id}`}
+                    aria-disabled={dirty || saving || routeBusy}
+                    tabIndex={dirty || saving || routeBusy ? -1 : undefined}
+                    onClick={(event) => {
+                      if (dirty || saving || routeBusy) event.preventDefault();
+                    }}
+                  >
+                    <ClipboardCheck size={14} />{taskDetail.task.has_execution_history ? "查看执行记录" : "进入任务执行"}
+                  </Link>
                 </section>
 
                 <section className="rounded-lg bg-slate-50 p-3">

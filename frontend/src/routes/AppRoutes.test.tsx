@@ -3,6 +3,10 @@ import { MemoryRouter } from "react-router-dom";
 
 import { AppRoutes } from "./AppRoutes";
 
+vi.mock("../features/tasks/TaskExecutionPage", () => ({
+  TaskExecutionPage: () => <h1>单次服务执行</h1>,
+}));
+
 function renderRoute(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -35,6 +39,7 @@ describe("P0 application routes", () => {
 
   it.each([
     ["/admin/plans", "订单计划"],
+    ["/admin/tasks/7", "单次服务执行"],
     ["/admin/orders", "订单计划"],
     ["/admin/customers", "客户档案"],
     ["/admin/payments", "收款记录"],

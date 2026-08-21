@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import { DailyPlansPage } from "./DailyPlansPage";
 import type {
@@ -19,6 +20,14 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./api", () => apiMocks);
+
+function renderPage(onDirtyChange = vi.fn()) {
+  return render(
+    <MemoryRouter>
+      <DailyPlansPage onDirtyChange={onDirtyChange} />
+    </MemoryRouter>,
+  );
+}
 
 const revisionA = "a".repeat(64);
 const revisionB = "b".repeat(64);
@@ -174,15 +183,19 @@ beforeEach(() => {
 });
 
 it("shows date tasks, route workspace, and a privacy-minimized selected detail", async () => {
-  render(<DailyPlansPage onDirtyChange={vi.fn()} />);
+  renderPage();
 
   expect(await screen.findByText("P4 第一位虚构客户")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "路线地图" })).toBeInTheDocument();
   expect(screen.getByText(/只有点击生成路线后/)).toBeInTheDocument();
   expect(await screen.findByText("未配置街道底图，按真实坐标展示")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "打开高德导航" })).toHaveAttribute(
+  expect(await screen.findByRole("link", { name: "打开高德导航" })).toHaveAttribute(
     "href",
     "https://uri.amap.com/navigation?to=1",
+  );
+  expect(screen.getByRole("link", { name: "进入任务执行" })).toHaveAttribute(
+    "href",
+    "/admin/tasks/1",
   );
   expect(await screen.findByText(/虚构路 100 号/)).toBeInTheDocument();
   expect(screen.getByText("服务：虚构服务注意事项")).toBeInTheDocument();
@@ -194,7 +207,7 @@ it("shows date tasks, route workspace, and a privacy-minimized selected detail",
 
 it("moves tasks, edits time, and saves one revision-protected day schedule", async () => {
   const onDirtyChange = vi.fn();
-  render(<DailyPlansPage onDirtyChange={onDirtyChange} />);
+  renderPage(onDirtyChange);
   expect(await screen.findByText("P4 第二位虚构客户")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "上移 P4 第二位虚构客户 任务" }));
@@ -217,7 +230,7 @@ it("moves tasks, edits time, and saves one revision-protected day schedule", asy
 });
 
 it("updates only planning status with the current day revision", async () => {
-  render(<DailyPlansPage onDirtyChange={vi.fn()} />);
+  renderPage();
   await screen.findByText(/虚构路 100 号/);
 
   fireEvent.change(screen.getByRole("combobox", { name: "任务状态" }), {
@@ -244,7 +257,7 @@ it("locks schedule and status controls when execution history exists", async () 
     ...detailFor(lockedTask),
     task: lockedTask,
   });
-  render(<DailyPlansPage onDirtyChange={vi.fn()} />);
+  renderPage();
 
   expect(await screen.findByText("当天已有执行记录，时间与顺序已锁定。")).toBeInTheDocument();
   expect(screen.getByLabelText("任务 #1 计划时间")).toBeDisabled();
@@ -253,7 +266,7 @@ it("locks schedule and status controls when execution history exists", async () 
 });
 
 it("previews real route metrics and adopts the revision-protected recommendation", async () => {
-  render(<DailyPlansPage onDirtyChange={vi.fn()} />);
+  renderPage();
   await screen.findByRole("button", { name: "生成路线" });
 
   fireEvent.click(screen.getByRole("button", { name: "生成路线" }));
@@ -300,7 +313,7 @@ it("keeps manual scheduling available when the map provider is not configured", 
       reason: "not_geocoded" as const,
     })),
   });
-  render(<DailyPlansPage onDirtyChange={vi.fn()} />);
+  renderPage();
 
   expect(await screen.findByText(/请参考 .env.example/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "生成路线" })).toBeDisabled();

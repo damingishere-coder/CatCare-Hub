@@ -1,6 +1,8 @@
 alembic==1.19.1
 fastapi==0.141.1
 httpx==0.28.1
+Pillow==12.3.0
 python-dotenv==1.2.3
+python-multipart==0.0.32
 SQLAlchemy==2.0.52
 uvicorn==0.52.4

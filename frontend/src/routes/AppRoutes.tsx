@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { CustomersPage } from "../features/customers/CustomersPage";
 import { PlansPage } from "../features/plans/PlansPage";
+import { TaskExecutionPage } from "../features/tasks/TaskExecutionPage";
 import {
   DashboardPage,
   PaymentsPage,
@@ -20,6 +21,7 @@ export function AppRoutes() {
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<DashboardPage />} />
         <Route path="plans" element={<PlansPage />} />
+        <Route path="tasks/:id" element={<TaskExecutionPage />} />
         <Route path="orders" element={<Navigate to="/admin/plans?view=orders" replace />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="payments" element={<PaymentsPage />} />

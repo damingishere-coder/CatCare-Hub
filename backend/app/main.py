@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api.customers import router as customers_router
 from app.api.orders import router as orders_router
 from app.api.plans import router as plans_router
+from app.api.tasks import router as tasks_router
 
 
 class HealthResponse(TypedDict):
@@ -21,6 +22,7 @@ app = FastAPI(
 app.include_router(customers_router)
 app.include_router(orders_router)
 app.include_router(plans_router)
+app.include_router(tasks_router)
 
 
 @app.get("/api/health", response_model=HealthResponse, tags=["system"])

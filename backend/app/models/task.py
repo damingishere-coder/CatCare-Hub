@@ -74,6 +74,8 @@ class Task(TimestampMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
+    cat_status: Mapped[str | None] = mapped_column(Text)
+    exception_notes: Mapped[str | None] = mapped_column(Text)
 
     order: Mapped["Order"] = relationship(back_populates="tasks")
     customer: Mapped["Customer"] = relationship(back_populates="tasks")
