@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.api.customers import router as customers_router
 from app.api.dashboard import router as dashboard_router
+from app.api.mobile import router as mobile_router
 from app.api.orders import router as orders_router
 from app.api.payments import router as payments_router
 from app.api.plans import router as plans_router
@@ -23,6 +24,7 @@ app = FastAPI(
 
 app.include_router(customers_router)
 app.include_router(dashboard_router)
+app.include_router(mobile_router)
 app.include_router(orders_router)
 app.include_router(payments_router)
 app.include_router(plans_router)

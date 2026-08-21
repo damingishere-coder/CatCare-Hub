@@ -15,6 +15,14 @@ vi.mock("../features/payments/PaymentsPage", () => ({
   PaymentsPage: () => <h1>收款记录</h1>,
 }));
 
+vi.mock("../pages/MobilePage", () => ({
+  MobilePage: () => <h1>今天的喂猫任务</h1>,
+}));
+
+vi.mock("../features/mobile/MobileTaskPage", () => ({
+  MobileTaskPage: () => <h1>单次喂猫任务</h1>,
+}));
+
 function renderRoute(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -66,11 +74,16 @@ describe("P0 application routes", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the lightweight mobile entry", () => {
+  it("renders the lightweight mobile routes", () => {
     renderRoute("/mobile");
 
     expect(
-      screen.getByRole("heading", { name: "手机执行端" }),
+      screen.getByRole("heading", { name: "今天的喂猫任务" }),
+    ).toBeInTheDocument();
+
+    renderRoute("/mobile/tasks/7");
+    expect(
+      screen.getByRole("heading", { name: "单次喂猫任务" }),
     ).toBeInTheDocument();
   });
 
