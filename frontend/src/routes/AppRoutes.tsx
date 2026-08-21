@@ -2,10 +2,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AdminLayout } from "../layouts/AdminLayout";
 import { CustomersPage } from "../features/customers/CustomersPage";
+import { OrdersPage } from "../features/orders/OrdersPage";
 import {
   DashboardPage,
   PaymentsPage,
-  PlansPage,
   SettingsPage,
 } from "../pages/admin/AdminPages";
 import { FillPage } from "../pages/FillPage";
@@ -19,7 +19,8 @@ export function AppRoutes() {
 
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<DashboardPage />} />
-        <Route path="plans" element={<PlansPage />} />
+        <Route path="plans" element={<OrdersPage />} />
+        <Route path="orders" element={<Navigate to="/admin/plans" replace />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="payments" element={<PaymentsPage />} />
         <Route path="settings" element={<SettingsPage />} />

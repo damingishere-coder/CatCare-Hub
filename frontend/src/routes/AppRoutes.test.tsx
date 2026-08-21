@@ -35,6 +35,7 @@ describe("P0 application routes", () => {
 
   it.each([
     ["/admin/plans", "订单计划"],
+    ["/admin/orders", "订单计划"],
     ["/admin/customers", "客户档案"],
     ["/admin/payments", "收款记录"],
     ["/admin/settings", "设置"],

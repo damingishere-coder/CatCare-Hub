@@ -1,10 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  CalendarRange,
-  CircleGauge,
-  CreditCard,
-  Settings,
-} from "lucide-react";
+import { CircleGauge, CreditCard, Settings } from "lucide-react";
 
 interface PagePlaceholderProps {
   title: string;
@@ -57,17 +52,6 @@ export function DashboardPage() {
       description="这里将汇总今日订单、待执行任务、待收款、本月收入和今日提醒。"
       phase="P7 实现业务功能"
       icon={CircleGauge}
-    />
-  );
-}
-
-export function PlansPage() {
-  return (
-    <PagePlaceholder
-      title="订单计划"
-      description="这里将采用按天计划、地图路线和右侧任务详情三栏布局。"
-      phase="P3–P5 分阶段实现"
-      icon={CalendarRange}
     />
   );
 }
