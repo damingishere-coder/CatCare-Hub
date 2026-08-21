@@ -1,17 +1,22 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 
 import { AdminLayout } from "../layouts/AdminLayout";
 import { CustomersPage } from "../features/customers/CustomersPage";
+import { DashboardPage } from "../features/dashboard/DashboardPage";
 import { PlansPage } from "../features/plans/PlansPage";
 import { TaskExecutionPage } from "../features/tasks/TaskExecutionPage";
 import {
-  DashboardPage,
   PaymentsPage,
   SettingsPage,
 } from "../pages/admin/AdminPages";
 import { FillPage } from "../pages/FillPage";
 import { MobilePage } from "../pages/MobilePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
+
+function CustomersRoute() {
+  const [searchParams] = useSearchParams();
+  return <CustomersPage initialCreate={searchParams.get("action") === "create"} />;
+}
 
 export function AppRoutes() {
   return (
@@ -23,7 +28,7 @@ export function AppRoutes() {
         <Route path="plans" element={<PlansPage />} />
         <Route path="tasks/:id" element={<TaskExecutionPage />} />
         <Route path="orders" element={<Navigate to="/admin/plans?view=orders" replace />} />
-        <Route path="customers" element={<CustomersPage />} />
+        <Route path="customers" element={<CustomersRoute />} />
         <Route path="payments" element={<PaymentsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

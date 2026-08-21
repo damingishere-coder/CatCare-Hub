@@ -7,6 +7,10 @@ vi.mock("../features/tasks/TaskExecutionPage", () => ({
   TaskExecutionPage: () => <h1>单次服务执行</h1>,
 }));
 
+vi.mock("../features/dashboard/DashboardPage", () => ({
+  DashboardPage: () => <h1>工作台</h1>,
+}));
+
 function renderRoute(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>

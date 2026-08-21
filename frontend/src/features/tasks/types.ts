@@ -49,6 +49,7 @@ export interface TaskExecutionDetail {
   status: TaskStatus;
   started_at: string | null;
   completed_at: string | null;
+  photos_sent_at: string | null;
   notes: string | null;
   cat_status: string | null;
   exception_notes: string | null;

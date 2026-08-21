@@ -53,11 +53,11 @@ def load_execution_task(session: Session, task_id: int) -> Task:
 
 
 def _datetime_value(value: datetime | None) -> str | None:
-    normalized = _as_utc(value)
+    normalized = as_utc(value)
     return normalized.isoformat() if normalized else None
 
 
-def _as_utc(value: datetime | None) -> datetime | None:
+def as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
@@ -72,6 +72,7 @@ def execution_revision(task: Task) -> str:
             "status": task.status.value,
             "started_at": _datetime_value(task.started_at),
             "completed_at": _datetime_value(task.completed_at),
+            "photos_sent_at": _datetime_value(task.photos_sent_at),
             "notes": task.notes,
             "cat_status": task.cat_status,
             "exception_notes": task.exception_notes,
@@ -125,8 +126,9 @@ def task_execution_detail(task: Task) -> TaskExecutionDetail:
         service_date=task.service_date,
         planned_time=task.planned_time,
         status=task.status,
-        started_at=_as_utc(task.started_at),
-        completed_at=_as_utc(task.completed_at),
+        started_at=as_utc(task.started_at),
+        completed_at=as_utc(task.completed_at),
+        photos_sent_at=as_utc(task.photos_sent_at),
         notes=task.notes,
         cat_status=task.cat_status,
         exception_notes=task.exception_notes,
@@ -175,7 +177,7 @@ def task_execution_detail(task: Task) -> TaskExecutionDetail:
             TaskExecutionPhoto(
                 id=photo.id,
                 url=f"/api/admin/tasks/{task.id}/photos/{photo.id}",
-                created_at=_as_utc(photo.created_at),
+                created_at=as_utc(photo.created_at),
             )
             for photo in sorted(task.photos, key=lambda entry: entry.id)
         ],

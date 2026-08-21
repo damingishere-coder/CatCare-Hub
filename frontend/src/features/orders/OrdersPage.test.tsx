@@ -144,6 +144,14 @@ it("creates a seven-day two-cat order without submitting a total amount", async 
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });
 
+it("opens the create form from the dashboard quick-entry flag", async () => {
+  render(<OrdersPage initialCreate />);
+
+  await waitFor(() =>
+    expect(screen.getByRole("dialog", { name: "新建订单" })).toBeInTheDocument(),
+  );
+});
+
 it("edits an order and updates status through separate protected actions", async () => {
   render(<OrdersPage />);
   expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();

@@ -38,6 +38,7 @@ const confirmed: TaskExecutionDetail = {
   status: "confirmed",
   started_at: null,
   completed_at: null,
+  photos_sent_at: null,
   notes: null,
   cat_status: null,
   exception_notes: null,

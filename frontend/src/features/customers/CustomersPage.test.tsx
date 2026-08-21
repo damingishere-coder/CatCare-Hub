@@ -148,6 +148,13 @@ it("creates a complete customer from the admin form", async () => {
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });
 
+it("opens the create form from the dashboard quick-entry flag", async () => {
+  render(<CustomersPage initialCreate />);
+
+  expect(screen.getByRole("dialog", { name: "新增客户" })).toBeInTheDocument();
+  await screen.findByRole("heading", { name: "测试客户（虚构）", level: 2 });
+});
+
 it("searches, adds a second cat, and soft-disables a cat", async () => {
   const secondCat: CatDetail = {
     ...cat,

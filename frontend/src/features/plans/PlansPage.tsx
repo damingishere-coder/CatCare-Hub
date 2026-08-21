@@ -37,7 +37,11 @@ export function PlansPage() {
       </div>
       {scheduleDirty ? <p className="mt-3 text-right text-xs text-amber-700">当前排程尚未保存；保存或撤销后才能切换到订单管理。</p> : null}
       <div className="mt-6">
-        {view === "orders" ? <OrdersPage /> : <DailyPlansPage onDirtyChange={handleDirtyChange} />}
+        {view === "orders" ? (
+          <OrdersPage initialCreate={searchParams.get("action") === "create"} />
+        ) : (
+          <DailyPlansPage onDirtyChange={handleDirtyChange} />
+        )}
       </div>
     </section>
   );

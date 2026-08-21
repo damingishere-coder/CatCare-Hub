@@ -66,6 +66,7 @@ class TaskExecutionDetail(BaseModel):
     status: TaskStatus
     started_at: datetime | None
     completed_at: datetime | None
+    photos_sent_at: datetime | None
     notes: str | None
     cat_status: str | None
     exception_notes: str | None

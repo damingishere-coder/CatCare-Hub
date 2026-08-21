@@ -73,6 +73,7 @@ class Task(TimestampMixin, Base):
     estimated_arrival: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    photos_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
     cat_status: Mapped[str | None] = mapped_column(Text)
     exception_notes: Mapped[str | None] = mapped_column(Text)

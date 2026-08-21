@@ -89,14 +89,20 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function OrdersPage() {
+interface OrdersPageProps {
+  initialCreate?: boolean;
+}
+
+export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null);
   const [formOptions, setFormOptions] = useState<OrderFormOptions | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
+  const [formMode, setFormMode] = useState<"create" | "edit" | null>(
+    initialCreate ? "create" : null,
+  );
   const [statusSaving, setStatusSaving] = useState(false);
   const listRequestId = useRef(0);
 

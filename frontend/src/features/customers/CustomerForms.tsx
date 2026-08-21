@@ -214,7 +214,7 @@ export function CustomerFormDialog({ initial, onCancel, onSave }: CustomerFormDi
           </label>
           <label className={labelClass}>
             钥匙状态
-            <input className={inputClass} name="key_status" defaultValue={initial?.key_status ?? ""} maxLength={50} />
+            <input className={inputClass} name="key_status" defaultValue={initial?.key_status ?? ""} maxLength={50} placeholder="待取 / 已取 / 已归还 / 无需钥匙" />
           </label>
           <label className={labelClass}>
             钥匙编号

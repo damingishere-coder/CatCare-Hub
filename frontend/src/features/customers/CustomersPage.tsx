@@ -120,7 +120,11 @@ function CatCard({ cat, changingStatus, onEdit, onToggleStatus }: CatCardProps) 
   );
 }
 
-export function CustomersPage() {
+interface CustomersPageProps {
+  initialCreate?: boolean;
+}
+
+export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(null);
@@ -128,7 +132,9 @@ export function CustomersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [listLoading, setListLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [customerFormMode, setCustomerFormMode] = useState<"create" | "edit" | null>(null);
+  const [customerFormMode, setCustomerFormMode] = useState<"create" | "edit" | null>(
+    initialCreate ? "create" : null,
+  );
   const [catFormValue, setCatFormValue] = useState<CatDetail | "create" | null>(null);
   const [changingCatId, setChangingCatId] = useState<number | null>(null);
   const listRequestId = useRef(0);

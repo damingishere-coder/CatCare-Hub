@@ -350,6 +350,7 @@ export function TaskExecutionPage() {
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">执行状态</h2>
                   <p className="mt-1 text-xs text-slate-500">开始：{displayDateTime(detail.started_at)} · 结束：{displayDateTime(detail.completed_at)}</p>
+                  <p className="mt-1 text-xs text-slate-500">照片发送：{displayDateTime(detail.photos_sent_at)}</p>
                 </div>
                 {startable ? (
                   <button type="button" className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40" onClick={() => void handleStart()} disabled={controlsDisabled}>
