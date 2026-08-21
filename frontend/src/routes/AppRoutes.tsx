@@ -1,8 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AdminLayout } from "../layouts/AdminLayout";
+import { CustomersPage } from "../features/customers/CustomersPage";
 import {
-  CustomersPage,
   DashboardPage,
   PaymentsPage,
   PlansPage,

@@ -2,6 +2,8 @@ from typing import Literal, TypedDict
 
 from fastapi import FastAPI
 
+from app.api.customers import router as customers_router
+
 
 class HealthResponse(TypedDict):
     status: Literal["ok"]
@@ -13,6 +15,8 @@ app = FastAPI(
     description="猫咪喂养登记系统本地 API",
     version="0.1.0",
 )
+
+app.include_router(customers_router)
 
 
 @app.get("/api/health", response_model=HealthResponse, tags=["system"])

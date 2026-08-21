@@ -3,7 +3,6 @@ import {
   CalendarRange,
   CircleGauge,
   CreditCard,
-  PawPrint,
   Settings,
 } from "lucide-react";
 
@@ -69,17 +68,6 @@ export function PlansPage() {
       description="这里将采用按天计划、地图路线和右侧任务详情三栏布局。"
       phase="P3–P5 分阶段实现"
       icon={CalendarRange}
-    />
-  );
-}
-
-export function CustomersPage() {
-  return (
-    <PagePlaceholder
-      title="客户档案"
-      description="这里将统一管理客户资料、猫咪档案、门禁、钥匙和服务注意事项。"
-      phase="P2 实现业务功能"
-      icon={PawPrint}
     />
   );
 }
