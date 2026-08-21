@@ -98,7 +98,7 @@ it("shows an order, authoritative pricing, and seven generated tasks", async () 
   expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
   expect(screen.getByText("7 天 × 1 次/天 = 7 次")).toBeInTheDocument();
   expect(screen.getAllByText("¥245.00").length).toBeGreaterThanOrEqual(2);
-  expect(screen.getByText("共 7 个任务；具体时间与排序将在 P4 设置。")).toBeInTheDocument();
+  expect(screen.getByText("共 7 个任务；具体时间与排序请在“按天计划”中设置。")).toBeInTheDocument();
   expect(screen.getByText("2030-10-01")).toBeInTheDocument();
   expect(screen.getByText("2030-10-07")).toBeInTheDocument();
   expect(apiMocks.getOrder).toHaveBeenCalledWith(1);

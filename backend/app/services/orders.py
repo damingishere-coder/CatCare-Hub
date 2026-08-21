@@ -131,15 +131,18 @@ MUTABLE_TASK_STATUSES = {
 }
 
 
-def order_has_execution_history(order: Order) -> bool:
-    return any(
+def task_has_execution_history(task: Task) -> bool:
+    return (
         task.status in PROTECTED_TASK_STATUSES
         or task.started_at is not None
         or task.completed_at is not None
         or bool(task.photos)
         or any(item.completed for item in task.items)
-        for task in order.tasks
     )
+
+
+def order_has_execution_history(order: Order) -> bool:
+    return any(task_has_execution_history(task) for task in order.tasks)
 
 
 def require_tasks_are_rebuildable(order: Order) -> None:

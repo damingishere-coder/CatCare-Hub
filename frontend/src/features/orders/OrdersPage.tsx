@@ -209,7 +209,7 @@ export function OrdersPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="mb-1 text-xs font-semibold tracking-wider text-slate-500 uppercase">P3 · 订单与任务生成</p>
-          <h1 id="page-title" className="text-2xl font-semibold tracking-tight">订单计划</h1>
+          <h2 id="page-title" className="text-xl font-semibold tracking-tight">订单管理</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">录入服务订单，自动计算次数和费用，并生成每日任务。</p>
         </div>
         <button
@@ -285,7 +285,7 @@ export function OrdersPage() {
             <div className="flex h-full min-h-96 flex-col items-center justify-center px-6 text-center">
               <ClipboardList className="text-slate-300" size={40} />
               <p className="mt-4 text-sm font-medium text-slate-700">选择一笔订单查看详情</p>
-              <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">P4 将在这里继续扩展按天计划、地图路线和右侧任务详情。</p>
+              <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">选择订单后可查看费用、服务范围和自动生成的任务。</p>
             </div>
           ) : (
             <div className="p-5 sm:p-6">
@@ -343,7 +343,7 @@ export function OrdersPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 id="generated-tasks-title" className="text-base font-semibold text-slate-950">已生成任务</h3>
-                    <p className="mt-1 text-xs text-slate-500">共 {orderDetail.task_count} 个任务；具体时间与排序将在 P4 设置。</p>
+                    <p className="mt-1 text-xs text-slate-500">共 {orderDetail.task_count} 个任务；具体时间与排序请在“按天计划”中设置。</p>
                   </div>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><CheckCircle2 size={13} />自动生成完成</span>
                 </div>

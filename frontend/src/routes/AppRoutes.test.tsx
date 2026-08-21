@@ -45,6 +45,14 @@ describe("P0 application routes", () => {
     expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
   });
 
+  it("keeps the orders alias focused on the combined order-management view", async () => {
+    renderRoute("/admin/orders");
+
+    expect(
+      await screen.findByRole("heading", { name: "订单管理" }),
+    ).toBeInTheDocument();
+  });
+
   it("renders the lightweight mobile entry", () => {
     renderRoute("/mobile");
 
