@@ -6,6 +6,8 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.maps import MapServices
+from app.maps.factory import get_map_services
 from app.models.order import OrderCat
 from app.models.task import Task
 from app.schemas.plan import (
@@ -16,6 +18,8 @@ from app.schemas.plan import (
     PlanCustomerSummary,
     PlanDaySummary,
     PlanDaysResponse,
+    PlanRoutePreviewRequest,
+    PlanRouteWorkspace,
     PlanScheduleUpdate,
     PlanTaskDetail,
     PlanTaskItemRead,
@@ -23,6 +27,7 @@ from app.schemas.plan import (
     PlanTaskSummary,
 )
 from app.services.orders import task_has_execution_history
+from app.services.plan_routes import load_route_workspace, preview_day_route
 from app.services.plans import (
     apply_day_schedule,
     day_plan_revision,
@@ -35,6 +40,7 @@ from app.services.plans import (
 
 router = APIRouter(prefix="/api/admin/plans", tags=["admin-plans"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
+MapServicesDependency = Annotated[MapServices, Depends(get_map_services)]
 
 
 def _cat_summaries(task: Task) -> list[PlanCatSummary]:
@@ -152,6 +158,35 @@ def list_plan_days(session: DatabaseSession) -> PlanDaysResponse:
 def get_plan_task(task_id: int, session: DatabaseSession) -> PlanTaskDetail:
     task = load_plan_task(session, task_id)
     return _task_detail(task, load_day_tasks(session, task.service_date))
+
+
+@router.get("/{service_date}/route", response_model=PlanRouteWorkspace)
+def get_plan_route(
+    service_date: date,
+    session: DatabaseSession,
+    services: MapServicesDependency,
+) -> PlanRouteWorkspace:
+    return load_route_workspace(
+        session,
+        service_date=service_date,
+        services=services,
+    )
+
+
+@router.post("/{service_date}/route/preview", response_model=PlanRouteWorkspace)
+def preview_plan_route(
+    service_date: date,
+    payload: PlanRoutePreviewRequest,
+    session: DatabaseSession,
+    services: MapServicesDependency,
+) -> PlanRouteWorkspace:
+    return preview_day_route(
+        session,
+        service_date=service_date,
+        expected_revision=payload.expected_revision,
+        geocode_missing=payload.geocode_missing,
+        services=services,
+    )
 
 
 @router.patch("/tasks/{task_id}/status", response_model=PlanTaskDetail)

@@ -1,4 +1,5 @@
 from datetime import date, datetime, time
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import OrderPaymentStatus, OrderStatus, TaskItemType, TaskStatus
@@ -112,3 +113,67 @@ class PlanScheduleUpdate(PlanWriteModel):
 class PlanTaskStatusUpdate(PlanWriteModel):
     expected_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
     task_status: TaskStatus
+
+
+class PlanGeoPoint(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class PlanMapProviderRead(BaseModel):
+    name: str
+    configured: bool
+    coordinate_system: str
+    message: str | None
+
+
+class PlanRouteStart(BaseModel):
+    label: str
+    position: PlanGeoPoint
+
+
+class PlanRouteMarker(BaseModel):
+    task_id: int
+    sequence: int
+    customer_name: str
+    community: str | None
+    position: PlanGeoPoint
+    navigation_url: str | None
+
+
+class PlanRouteIssue(BaseModel):
+    task_id: int
+    customer_name: str
+    community: str | None
+    reason: Literal[
+        "missing_address",
+        "not_geocoded",
+        "geocode_failed",
+        "execution_location_missing",
+    ]
+
+
+class PlanRoutePath(BaseModel):
+    task_ids: list[int]
+    distance_meters: int = Field(ge=0)
+    duration_seconds: int = Field(ge=0)
+    polyline: list[PlanGeoPoint]
+
+
+class PlanRouteWorkspace(BaseModel):
+    service_date: date
+    revision: str
+    schedule_locked: bool
+    provider: PlanMapProviderRead
+    start: PlanRouteStart | None
+    markers: list[PlanRouteMarker]
+    unresolved_tasks: list[PlanRouteIssue]
+    current_route: PlanRoutePath | None
+    recommended_route: PlanRoutePath | None
+    recommended_task_ids: list[int]
+    can_adopt_recommendation: bool
+
+
+class PlanRoutePreviewRequest(PlanWriteModel):
+    expected_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    geocode_missing: bool = True

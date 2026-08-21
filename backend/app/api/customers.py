@@ -21,6 +21,7 @@ from app.schemas.customer import (
 
 router = APIRouter(prefix="/api/admin/customers", tags=["admin-customers"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
+GEOCODE_ADDRESS_FIELDS = {"community", "address", "building"}
 
 
 def _escape_like(value: str) -> str:
@@ -117,7 +118,14 @@ def search_customers(
 
 @router.post("", response_model=CustomerDetail, status_code=status.HTTP_201_CREATED)
 def create_customer(payload: CustomerCreate, session: DatabaseSession) -> CustomerDetail:
-    customer = Customer(**payload.model_dump())
+    values = payload.model_dump()
+    has_geocode_address = any(
+        values.get(field) for field in ("community", "address", "building")
+    )
+    customer = Customer(
+        **values,
+        geocode_status="pending" if has_geocode_address else "missing",
+    )
     session.add(customer)
     session.commit()
     return _customer_detail(_load_customer(session, customer.id))
@@ -135,8 +143,24 @@ def update_customer(
     session: DatabaseSession,
 ) -> CustomerDetail:
     customer = _load_customer(session, customer_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    address_changed = any(
+        field in GEOCODE_ADDRESS_FIELDS and getattr(customer, field) != value
+        for field, value in updates.items()
+    )
+    for field, value in updates.items():
         setattr(customer, field, value)
+    if address_changed:
+        customer.latitude = None
+        customer.longitude = None
+        customer.geocode_status = (
+            "pending"
+            if any(
+                getattr(customer, field)
+                for field in ("community", "address", "building")
+            )
+            else "missing"
+        )
     session.commit()
     return _customer_detail(_load_customer(session, customer_id))
 

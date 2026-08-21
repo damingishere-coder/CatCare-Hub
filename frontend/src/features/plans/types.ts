@@ -99,3 +99,68 @@ export interface PlanTaskStatusInput {
   expected_revision: string;
   task_status: PlanTaskStatus;
 }
+
+export interface PlanGeoPoint {
+  latitude: number;
+  longitude: number;
+}
+
+export interface PlanMapProvider {
+  name: string;
+  configured: boolean;
+  coordinate_system: string;
+  message: string | null;
+}
+
+export interface PlanRouteStart {
+  label: string;
+  position: PlanGeoPoint;
+}
+
+export interface PlanRouteMarker {
+  task_id: number;
+  sequence: number;
+  customer_name: string;
+  community: string | null;
+  position: PlanGeoPoint;
+  navigation_url: string | null;
+}
+
+export type PlanRouteIssueReason =
+  | "missing_address"
+  | "not_geocoded"
+  | "geocode_failed"
+  | "execution_location_missing";
+
+export interface PlanRouteIssue {
+  task_id: number;
+  customer_name: string;
+  community: string | null;
+  reason: PlanRouteIssueReason;
+}
+
+export interface PlanRoutePath {
+  task_ids: number[];
+  distance_meters: number;
+  duration_seconds: number;
+  polyline: PlanGeoPoint[];
+}
+
+export interface PlanRouteWorkspace {
+  service_date: string;
+  revision: string;
+  schedule_locked: boolean;
+  provider: PlanMapProvider;
+  start: PlanRouteStart | null;
+  markers: PlanRouteMarker[];
+  unresolved_tasks: PlanRouteIssue[];
+  current_route: PlanRoutePath | null;
+  recommended_route: PlanRoutePath | null;
+  recommended_task_ids: number[];
+  can_adopt_recommendation: boolean;
+}
+
+export interface PlanRoutePreviewInput {
+  expected_revision: string;
+  geocode_missing: boolean;
+}

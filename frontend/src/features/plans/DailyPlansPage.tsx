@@ -5,26 +5,30 @@ import {
   CalendarDays,
   Check,
   Clock3,
+  ExternalLink,
   LoaderCircle,
-  MapPinned,
   RotateCcw,
   Save,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { serviceItemOptions } from "../orders/constants";
 import type { ServiceItem } from "../orders/types";
 import {
   getDayPlan,
   getPlanDays,
+  getPlanRoute,
   getPlanTask,
+  previewPlanRoute,
   saveDaySchedule,
   updatePlanTaskStatus,
 } from "./api";
 import { editablePlanStatuses, planTaskStatusLabels } from "./constants";
+import { RouteWorkspace } from "./RouteWorkspace";
 import type {
   DayPlan,
   PlanDaySummary,
+  PlanRouteWorkspace as PlanRouteWorkspaceData,
   PlanTaskDetail,
   PlanTaskStatus,
   PlanTaskSummary,
@@ -96,10 +100,16 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
+  const [routeWorkspace, setRouteWorkspace] = useState<PlanRouteWorkspaceData | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routePreviewing, setRoutePreviewing] = useState(false);
+  const [routeAdopting, setRouteAdopting] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dayRequestId = useRef(0);
   const detailRequestId = useRef(0);
+  const routeRequestId = useRef(0);
 
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
@@ -107,6 +117,28 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
     const response = await getPlanDays();
     setDays(response.items);
     return response.items;
+  }, []);
+
+  const loadRoute = useCallback(async (serviceDate: string, hasTasks = true) => {
+    const requestId = ++routeRequestId.current;
+    setRouteError(null);
+    if (!hasTasks) {
+      setRouteWorkspace(null);
+      setRouteLoading(false);
+      return;
+    }
+    setRouteLoading(true);
+    try {
+      const response = await getPlanRoute(serviceDate);
+      if (requestId === routeRequestId.current) setRouteWorkspace(response);
+    } catch (cause) {
+      if (requestId === routeRequestId.current) {
+        setRouteWorkspace(null);
+        setRouteError(cause instanceof Error ? cause.message : "路线数据加载失败，请重试。");
+      }
+    } finally {
+      if (requestId === routeRequestId.current) setRouteLoading(false);
+    }
   }, []);
 
   const loadDay = useCallback(async (serviceDate: string, preferredTaskId?: number) => {
@@ -119,6 +151,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
       setPlan(response);
       setDraftTasks(response.tasks);
       setDirty(false);
+      void loadRoute(serviceDate, response.tasks.length > 0);
       setSelectedTaskId((current) => {
         const desired = preferredTaskId ?? current;
         if (desired && response.tasks.some((task) => task.id === desired)) return desired;
@@ -131,12 +164,13 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
         setDraftTasks([]);
         setSelectedTaskId(null);
         setTaskDetail(null);
+        setRouteWorkspace(null);
         setError(cause instanceof Error ? cause.message : "当日计划加载失败，请重试。");
       }
     } finally {
       if (requestId === dayRequestId.current) setLoading(false);
     }
-  }, []);
+  }, [loadRoute]);
 
   useEffect(() => {
     let active = true;
@@ -196,13 +230,21 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
 
   function moveTask(index: number, direction: -1 | 1) {
     const destination = index + direction;
-    if (destination < 0 || destination >= draftTasks.length || plan?.schedule_locked) return;
+    if (destination < 0 || destination >= draftTasks.length || plan?.schedule_locked || routeBusy) return;
     const next = [...draftTasks];
     [next[index], next[destination]] = [next[destination], next[index]];
+    setRouteWorkspace((current) => current ? {
+      ...current,
+      current_route: null,
+      recommended_route: null,
+      recommended_task_ids: [],
+      can_adopt_recommendation: false,
+    } : current);
     updateDraft(next);
   }
 
   function updateTime(taskId: number, value: string) {
+    if (routeBusy) return;
     updateDraft(
       draftTasks.map((task) =>
         task.id === taskId ? { ...task, planned_time: value || null } : task,
@@ -214,10 +256,11 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
     if (!plan) return;
     setDraftTasks(plan.tasks);
     setDirty(false);
+    void loadRoute(selectedDate, plan.tasks.length > 0);
   }
 
   async function handleSave() {
-    if (!plan || !dirty) return;
+    if (!plan || !dirty || routeBusy) return;
     setSaving(true);
     setError(null);
     try {
@@ -231,6 +274,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
       setPlan(saved);
       setDraftTasks(saved.tasks);
       setDirty(false);
+      await loadRoute(selectedDate, saved.tasks.length > 0);
       await refreshDays();
       if (selectedTaskId) setTaskDetail(await getPlanTask(selectedTaskId));
     } catch (cause) {
@@ -241,7 +285,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
   }
 
   async function handleStatusChange(taskStatus: PlanTaskStatus) {
-    if (!plan || !taskDetail || dirty || taskStatus === taskDetail.task.status) return;
+    if (!plan || !taskDetail || dirty || routeBusy || taskStatus === taskDetail.task.status) return;
     setStatusSaving(true);
     setError(null);
     try {
@@ -259,15 +303,78 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
     }
   }
 
-  const routeTasks = useMemo(
-    () => draftTasks.filter((task) => task.status !== "cancelled"),
-    [draftTasks],
-  );
+  async function handleRoutePreview() {
+    if (!plan || dirty || routePreviewing) return;
+    setRoutePreviewing(true);
+    setRouteError(null);
+    try {
+      const workspace = await previewPlanRoute(selectedDate, {
+        expected_revision: plan.revision,
+        geocode_missing: true,
+      });
+      setRouteWorkspace(workspace);
+      if (workspace.revision !== plan.revision) {
+        setPlan({ ...plan, revision: workspace.revision });
+      }
+    } catch (cause) {
+      setRouteError(cause instanceof Error ? cause.message : "路线生成失败，请重试。");
+    } finally {
+      setRoutePreviewing(false);
+    }
+  }
+
+  async function handleAdoptRecommendation() {
+    if (!plan || !routeWorkspace?.can_adopt_recommendation || dirty) return;
+    const tasksById = new Map(draftTasks.map((task) => [task.id, task]));
+    const recommendedTasks = routeWorkspace.recommended_task_ids.map((taskId) => tasksById.get(taskId));
+    if (recommendedTasks.some((task) => !task)) {
+      setRouteError("推荐路线已过期，请重新生成后再采用。");
+      return;
+    }
+
+    setRouteAdopting(true);
+    setRouteError(null);
+    try {
+      const saved = await saveDaySchedule(selectedDate, {
+        expected_revision: routeWorkspace.revision,
+        tasks: recommendedTasks.map((task) => ({
+          task_id: task!.id,
+          planned_time: task!.planned_time ? timeValue(task!.planned_time) : null,
+        })),
+      });
+      setPlan(saved);
+      setDraftTasks(saved.tasks);
+      setDirty(false);
+      setRouteWorkspace({
+        ...routeWorkspace,
+        revision: saved.revision,
+        current_route: routeWorkspace.recommended_route,
+        recommended_route: null,
+        recommended_task_ids: [],
+        can_adopt_recommendation: false,
+        markers: routeWorkspace.markers.map((marker) => ({
+          ...marker,
+          sequence: saved.tasks.findIndex((task) => task.id === marker.task_id) + 1,
+        })),
+      });
+      await refreshDays();
+      if (selectedTaskId) setTaskDetail(await getPlanTask(selectedTaskId));
+    } catch (cause) {
+      setRouteError(cause instanceof Error ? cause.message : "推荐路线采用失败，请重试。");
+    } finally {
+      setRouteAdopting(false);
+    }
+  }
+
   const currentDay = days.find((day) => day.service_date === selectedDate);
   const detailStatusEditable =
     taskDetail &&
     !taskDetail.task.has_execution_history &&
     !["cancelled", "completed"].includes(taskDetail.order_status);
+  const selectedRouteMarker = routeWorkspace?.markers.find(
+    (marker) => marker.task_id === selectedTaskId,
+  );
+  const routeBusy = routePreviewing || routeAdopting;
 
   return (
     <>
@@ -288,7 +395,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                 className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                 value={selectedDate}
                 onChange={(event) => selectDate(event.target.value)}
-                disabled={dirty}
+                disabled={dirty || routeBusy}
               />
             </label>
             <div className="mt-3 max-h-36 space-y-1 overflow-y-auto" aria-label="有任务的日期">
@@ -298,7 +405,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                   type="button"
                   className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${selectedDate === day.service_date ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`}
                   onClick={() => selectDate(day.service_date)}
-                  disabled={dirty}
+                  disabled={dirty || routeBusy}
                 >
                   <span className="font-medium">{displayDate(day.service_date)}</span>
                   <span className={selectedDate === day.service_date ? "text-slate-300" : "text-slate-500"}>
@@ -350,12 +457,12 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                           aria-label={`任务 #${task.id} 计划时间`}
                           value={timeValue(task.planned_time)}
                           onChange={(event) => updateTime(task.id, event.target.value)}
-                          disabled={plan?.schedule_locked}
+                          disabled={plan?.schedule_locked || saving || routeBusy}
                         />
                       </label>
                       <div className="flex gap-1">
-                        <button type="button" className="rounded-md border border-slate-300 p-2 text-slate-600 disabled:opacity-30" aria-label={`上移 ${task.customer.name} 任务`} onClick={() => moveTask(index, -1)} disabled={index === 0 || plan?.schedule_locked}><ArrowUp size={14} /></button>
-                        <button type="button" className="rounded-md border border-slate-300 p-2 text-slate-600 disabled:opacity-30" aria-label={`下移 ${task.customer.name} 任务`} onClick={() => moveTask(index, 1)} disabled={index === draftTasks.length - 1 || plan?.schedule_locked}><ArrowDown size={14} /></button>
+                        <button type="button" className="rounded-md border border-slate-300 p-2 text-slate-600 disabled:opacity-30" aria-label={`上移 ${task.customer.name} 任务`} onClick={() => moveTask(index, -1)} disabled={index === 0 || plan?.schedule_locked || saving || routeBusy}><ArrowUp size={14} /></button>
+                        <button type="button" className="rounded-md border border-slate-300 p-2 text-slate-600 disabled:opacity-30" aria-label={`下移 ${task.customer.name} 任务`} onClick={() => moveTask(index, 1)} disabled={index === draftTasks.length - 1 || plan?.schedule_locked || saving || routeBusy}><ArrowDown size={14} /></button>
                       </div>
                     </div>
                   </li>
@@ -367,44 +474,25 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
           <div className="border-t border-slate-200 p-3">
             {plan?.schedule_locked ? <p className="mb-2 text-xs leading-5 text-amber-700">当天已有执行记录，时间与顺序已锁定。</p> : null}
             <div className="grid grid-cols-2 gap-2">
-              <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-40" onClick={discardChanges} disabled={!dirty || saving}><RotateCcw size={15} />撤销</button>
-              <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40" onClick={() => void handleSave()} disabled={!dirty || saving || plan?.schedule_locked}>{saving ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存排程</button>
+              <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-40" onClick={discardChanges} disabled={!dirty || saving || routeBusy}><RotateCcw size={15} />撤销</button>
+              <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40" onClick={() => void handleSave()} disabled={!dirty || saving || routeBusy || plan?.schedule_locked}>{saving ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存排程</button>
             </div>
           </div>
         </aside>
 
-        <section className="relative min-h-[520px] overflow-hidden border-b border-slate-200 bg-slate-100 xl:border-r xl:border-b-0" aria-labelledby="route-map-title">
-          <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(#cbd5e1_1px,transparent_1px),linear-gradient(90deg,#cbd5e1_1px,transparent_1px)] [background-size:32px_32px]" />
-          <div className="relative flex h-full flex-col p-5">
-            <div className="rounded-lg border border-slate-200 bg-white/95 p-4 shadow-sm">
-              <div className="flex items-center gap-2">
-                <MapPinned size={18} />
-                <h2 id="route-map-title" className="text-sm font-semibold text-slate-950">路线地图</h2>
-                {dirty ? <span className="ml-auto text-xs font-medium text-amber-700">顺序待保存</span> : null}
-              </div>
-              <p className="mt-1 text-xs leading-5 text-slate-500">P4 按人工顺序预览路线；真实坐标、路线、距离和预计路程将在 P5 通过地图 Provider 接入。</p>
-            </div>
-
-            <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center py-8">
-              <div className="rounded-lg border border-dashed border-slate-300 bg-white/80 px-4 py-3 text-center text-sm font-medium text-slate-700">起点 · 家</div>
-              {routeTasks.length === 0 ? (
-                <div className="my-5 rounded-lg border border-dashed border-slate-300 bg-white/70 px-4 py-8 text-center text-sm text-slate-500">当天没有需要规划路线的任务</div>
-              ) : (
-                <ol className="py-2">
-                  {routeTasks.map((task, index) => (
-                    <li key={task.id} className="relative flex flex-col items-center">
-                      <div className="h-6 w-px bg-slate-400" />
-                      <button type="button" className={`flex w-full items-center gap-3 rounded-lg border bg-white px-4 py-3 text-left shadow-sm ${selectedTaskId === task.id ? "border-slate-900 ring-2 ring-slate-900/10" : "border-slate-200"}`} onClick={() => selectTask(task.id)}>
-                        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">{index + 1}</span>
-                        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-900">{task.customer.name}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{timeValue(task.planned_time) || "时间待定"} · {task.customer.community || "小区待补充"}</span></span>
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          </div>
-        </section>
+        <RouteWorkspace
+          workspace={routeWorkspace}
+          tasks={draftTasks}
+          selectedTaskId={selectedTaskId}
+          loading={routeLoading}
+          previewing={routePreviewing}
+          adopting={routeAdopting}
+          dirty={dirty}
+          error={routeError}
+          onSelectTask={selectTask}
+          onPreview={() => void handleRoutePreview()}
+          onAdopt={() => void handleAdoptRecommendation()}
+        />
 
         <aside className="bg-white" aria-label="任务详情">
           <div className="border-b border-slate-200 px-4 py-3">
@@ -424,6 +512,16 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                     <span className={`rounded-full px-2 py-1 text-xs font-medium ${statusStyle(taskDetail.task.status)}`}>{planTaskStatusLabels[taskDetail.task.status]}</span>
                   </div>
                   <p className="mt-3 text-sm leading-6 text-slate-700">{addressLine(taskDetail)}</p>
+                  {selectedRouteMarker?.navigation_url ? (
+                    <a
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      href={selectedRouteMarker.navigation_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink size={14} />打开高德导航
+                    </a>
+                  ) : null}
                 </section>
 
                 <section className="rounded-lg bg-slate-50 p-3">
@@ -469,7 +567,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                       aria-label="任务状态"
                       value={taskDetail.task.status}
                       onChange={(event) => void handleStatusChange(event.target.value as PlanTaskStatus)}
-                      disabled={!detailStatusEditable || dirty || statusSaving}
+                      disabled={!detailStatusEditable || dirty || statusSaving || routeBusy}
                     >
                       {!editablePlanStatuses.includes(taskDetail.task.status) ? <option value={taskDetail.task.status}>{planTaskStatusLabels[taskDetail.task.status]}</option> : null}
                       {editablePlanStatuses.map((status) => <option key={status} value={status}>{planTaskStatusLabels[status]}</option>)}

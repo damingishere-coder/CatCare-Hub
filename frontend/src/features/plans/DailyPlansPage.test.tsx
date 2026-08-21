@@ -1,12 +1,19 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { DailyPlansPage } from "./DailyPlansPage";
-import type { DayPlan, PlanTaskDetail, PlanTaskSummary } from "./types";
+import type {
+  DayPlan,
+  PlanRouteWorkspace,
+  PlanTaskDetail,
+  PlanTaskSummary,
+} from "./types";
 
 const apiMocks = vi.hoisted(() => ({
   getPlanDays: vi.fn(),
   getDayPlan: vi.fn(),
+  getPlanRoute: vi.fn(),
   getPlanTask: vi.fn(),
+  previewPlanRoute: vi.fn(),
   saveDaySchedule: vi.fn(),
   updatePlanTaskStatus: vi.fn(),
 }));
@@ -54,6 +61,54 @@ const dayPlan: DayPlan = {
   tasks,
 };
 
+const routeWorkspace: PlanRouteWorkspace = {
+  service_date: "2034-10-01",
+  revision: revisionA,
+  schedule_locked: false,
+  provider: {
+    name: "amap",
+    configured: true,
+    coordinate_system: "GCJ-02",
+    message: null,
+  },
+  start: {
+    label: "家",
+    position: { latitude: 30, longitude: 120 },
+  },
+  markers: tasks.map((planTask, index) => ({
+    task_id: planTask.id,
+    sequence: index + 1,
+    customer_name: planTask.customer.name,
+    community: planTask.customer.community,
+    position: { latitude: 30 + (index + 1) / 10, longitude: 120 + (index + 1) / 10 },
+    navigation_url: `https://uri.amap.com/navigation?to=${index + 1}`,
+  })),
+  unresolved_tasks: [],
+  current_route: null,
+  recommended_route: null,
+  recommended_task_ids: [],
+  can_adopt_recommendation: false,
+};
+
+const previewWorkspace: PlanRouteWorkspace = {
+  ...routeWorkspace,
+  revision: revisionB,
+  current_route: {
+    task_ids: [1, 2, 3],
+    distance_meters: 12600,
+    duration_seconds: 2880,
+    polyline: [routeWorkspace.start!.position, ...routeWorkspace.markers.map((marker) => marker.position)],
+  },
+  recommended_route: {
+    task_ids: [3, 2, 1],
+    distance_meters: 9800,
+    duration_seconds: 2220,
+    polyline: [routeWorkspace.start!.position, ...[...routeWorkspace.markers].reverse().map((marker) => marker.position)],
+  },
+  recommended_task_ids: [3, 2, 1],
+  can_adopt_recommendation: true,
+};
+
 function detailFor(planTask: PlanTaskSummary): PlanTaskDetail {
   return {
     task: planTask,
@@ -96,6 +151,8 @@ beforeEach(() => {
     total: 1,
   });
   apiMocks.getDayPlan.mockResolvedValue(dayPlan);
+  apiMocks.getPlanRoute.mockResolvedValue(routeWorkspace);
+  apiMocks.previewPlanRoute.mockResolvedValue(previewWorkspace);
   apiMocks.getPlanTask.mockImplementation(async (taskId: number) => {
     const selected = tasks.find((entry) => entry.id === taskId);
     if (!selected) throw new Error("测试任务不存在");
@@ -119,20 +176,26 @@ beforeEach(() => {
 it("shows date tasks, route workspace, and a privacy-minimized selected detail", async () => {
   render(<DailyPlansPage onDirtyChange={vi.fn()} />);
 
-  expect((await screen.findAllByText("P4 第一位虚构客户")).length).toBeGreaterThanOrEqual(2);
+  expect(await screen.findByText("P4 第一位虚构客户")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "路线地图" })).toBeInTheDocument();
-  expect(screen.getByText(/真实坐标、路线、距离和预计路程将在 P5/)).toBeInTheDocument();
+  expect(screen.getByText(/只有点击生成路线后/)).toBeInTheDocument();
+  expect(await screen.findByText("未配置街道底图，按真实坐标展示")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "打开高德导航" })).toHaveAttribute(
+    "href",
+    "https://uri.amap.com/navigation?to=1",
+  );
   expect(await screen.findByText(/虚构路 100 号/)).toBeInTheDocument();
   expect(screen.getByText("服务：虚构服务注意事项")).toBeInTheDocument();
   expect(screen.queryByText("000-PLAN-TEST")).not.toBeInTheDocument();
   expect(apiMocks.getDayPlan).toHaveBeenCalledWith("2034-10-01");
+  expect(apiMocks.getPlanRoute).toHaveBeenCalledWith("2034-10-01");
   expect(apiMocks.getPlanTask).toHaveBeenCalledWith(1);
 });
 
 it("moves tasks, edits time, and saves one revision-protected day schedule", async () => {
   const onDirtyChange = vi.fn();
   render(<DailyPlansPage onDirtyChange={onDirtyChange} />);
-  expect((await screen.findAllByText("P4 第二位虚构客户")).length).toBeGreaterThanOrEqual(2);
+  expect(await screen.findByText("P4 第二位虚构客户")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "上移 P4 第二位虚构客户 任务" }));
   fireEvent.change(screen.getByLabelText("任务 #2 计划时间"), {
@@ -187,4 +250,60 @@ it("locks schedule and status controls when execution history exists", async () 
   expect(screen.getByLabelText("任务 #1 计划时间")).toBeDisabled();
   expect(screen.getByRole("button", { name: "保存排程" })).toBeDisabled();
   expect(await screen.findByRole("combobox", { name: "任务状态" })).toBeDisabled();
+});
+
+it("previews real route metrics and adopts the revision-protected recommendation", async () => {
+  render(<DailyPlansPage onDirtyChange={vi.fn()} />);
+  await screen.findByRole("button", { name: "生成路线" });
+
+  fireEvent.click(screen.getByRole("button", { name: "生成路线" }));
+  await waitFor(() => expect(apiMocks.previewPlanRoute).toHaveBeenCalledWith(
+    "2034-10-01",
+    { expected_revision: revisionA, geocode_missing: true },
+  ));
+  expect(await screen.findByText("12.6 km · 48 分钟")).toBeInTheDocument();
+  expect(screen.getByText("9.8 km · 37 分钟")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "推荐" }));
+  expect(screen.getByRole("button", { name: "地图任务 1：P4 第三位虚构客户" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "一键采用推荐" }));
+
+  await waitFor(() => expect(apiMocks.saveDaySchedule).toHaveBeenCalledWith(
+    "2034-10-01",
+    {
+      expected_revision: revisionB,
+      tasks: [
+        { task_id: 3, planned_time: null },
+        { task_id: 2, planned_time: null },
+        { task_id: 1, planned_time: "09:30" },
+      ],
+    },
+  ));
+  expect(await screen.findByText("P4 第三位虚构客户")).toBeInTheDocument();
+});
+
+it("keeps manual scheduling available when the map provider is not configured", async () => {
+  apiMocks.getPlanRoute.mockResolvedValue({
+    ...routeWorkspace,
+    provider: {
+      name: "disabled",
+      configured: false,
+      coordinate_system: "unknown",
+      message: "地图服务尚未配置；请参考 .env.example 启用高德 Adapter",
+    },
+    start: null,
+    markers: [],
+    unresolved_tasks: routeWorkspace.markers.map((marker) => ({
+      task_id: marker.task_id,
+      customer_name: marker.customer_name,
+      community: marker.community,
+      reason: "not_geocoded" as const,
+    })),
+  });
+  render(<DailyPlansPage onDirtyChange={vi.fn()} />);
+
+  expect(await screen.findByText(/请参考 .env.example/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "生成路线" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "保存排程" })).toBeInTheDocument();
+  expect(apiMocks.previewPlanRoute).not.toHaveBeenCalled();
 });

@@ -1,7 +1,9 @@
 import {
   getDayPlan,
   getPlanDays,
+  getPlanRoute,
   getPlanTask,
+  previewPlanRoute,
   saveDaySchedule,
   updatePlanTaskStatus,
 } from "./api";
@@ -28,6 +30,11 @@ it("uses dedicated day, task, schedule, and planning-status endpoints", async ()
   await updatePlanTaskStatus(7, {
     expected_revision: "b".repeat(64),
     task_status: "ready",
+  });
+  await getPlanRoute("2034-10-01");
+  await previewPlanRoute("2034-10-01", {
+    expected_revision: "c".repeat(64),
+    geocode_missing: true,
   });
 
   expect(fetchMock).toHaveBeenNthCalledWith(
@@ -56,6 +63,22 @@ it("uses dedicated day, task, schedule, and planning-status endpoints", async ()
       body: JSON.stringify({
         expected_revision: "b".repeat(64),
         task_status: "ready",
+      }),
+    }),
+  );
+  expect(fetchMock).toHaveBeenNthCalledWith(
+    6,
+    "/api/admin/plans/2034-10-01/route",
+    expect.any(Object),
+  );
+  expect(fetchMock).toHaveBeenNthCalledWith(
+    7,
+    "/api/admin/plans/2034-10-01/route/preview",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        expected_revision: "c".repeat(64),
+        geocode_missing: true,
       }),
     }),
   );

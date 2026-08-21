@@ -67,8 +67,26 @@ def day_plan_revision(tasks: Sequence[Task]) -> str:
             "id": task.id,
             "order_id": task.order_id,
             "planned_time": _datetime_value(task.planned_time),
+            "planned_lat": str(task.planned_lat) if task.planned_lat is not None else None,
+            "planned_lng": str(task.planned_lng) if task.planned_lng is not None else None,
+            "estimated_arrival": _datetime_value(task.estimated_arrival),
             "sort_order": task.sort_order,
             "status": task.status.value,
+            "customer_map_state": {
+                "id": task.customer.id,
+                "geocode_status": task.customer.geocode_status,
+                "latitude": (
+                    str(task.customer.latitude)
+                    if task.customer.latitude is not None
+                    else None
+                ),
+                "longitude": (
+                    str(task.customer.longitude)
+                    if task.customer.longitude is not None
+                    else None
+                ),
+                "updated_at": _datetime_value(task.customer.updated_at),
+            },
             "updated_at": _datetime_value(task.updated_at),
             "started_at": _datetime_value(task.started_at),
             "completed_at": _datetime_value(task.completed_at),
@@ -94,7 +112,7 @@ def day_plan_revision(tasks: Sequence[Task]) -> str:
     return hashlib.sha256(serialized).hexdigest()
 
 
-def _require_current_revision(tasks: Sequence[Task], expected_revision: str) -> None:
+def require_current_revision(tasks: Sequence[Task], expected_revision: str) -> None:
     if day_plan_revision(tasks) != expected_revision:
         raise HTTPException(
             status_code=409,
@@ -116,7 +134,7 @@ def apply_day_schedule(
     tasks = load_day_tasks(session, service_date)
     if not tasks:
         raise HTTPException(status_code=404, detail="当天没有可排程任务")
-    _require_current_revision(tasks, expected_revision)
+    require_current_revision(tasks, expected_revision)
     if schedule_is_locked(tasks):
         raise HTTPException(
             status_code=409,
@@ -149,7 +167,7 @@ def update_task_planning_status(
 ) -> Task:
     task = load_plan_task(session, task_id)
     day_tasks = load_day_tasks(session, task.service_date)
-    _require_current_revision(day_tasks, expected_revision)
+    require_current_revision(day_tasks, expected_revision)
 
     if task_status not in PLANNING_TASK_STATUSES:
         raise HTTPException(

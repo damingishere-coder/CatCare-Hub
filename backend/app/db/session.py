@@ -3,12 +3,14 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(PROJECT_ROOT / ".env", override=False)
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "catcare.db"
 DATABASE_URL_ENV = "CATCARE_DATABASE_URL"
 

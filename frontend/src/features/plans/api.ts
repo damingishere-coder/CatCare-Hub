@@ -1,6 +1,8 @@
 import type {
   DayPlan,
   PlanDaysResponse,
+  PlanRoutePreviewInput,
+  PlanRouteWorkspace,
   PlanScheduleInput,
   PlanTaskDetail,
   PlanTaskStatusInput,
@@ -49,6 +51,20 @@ export function getDayPlan(serviceDate: string): Promise<DayPlan> {
 
 export function getPlanTask(taskId: number): Promise<PlanTaskDetail> {
   return request<PlanTaskDetail>(`${plansPath}/tasks/${taskId}`);
+}
+
+export function getPlanRoute(serviceDate: string): Promise<PlanRouteWorkspace> {
+  return request<PlanRouteWorkspace>(`${plansPath}/${serviceDate}/route`);
+}
+
+export function previewPlanRoute(
+  serviceDate: string,
+  payload: PlanRoutePreviewInput,
+): Promise<PlanRouteWorkspace> {
+  return request<PlanRouteWorkspace>(`${plansPath}/${serviceDate}/route/preview`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function saveDaySchedule(
