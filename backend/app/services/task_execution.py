@@ -17,6 +17,7 @@ from app.schemas.task import (
     TaskExecutionItem,
     TaskExecutionPhoto,
 )
+from app.services.business_time import as_utc
 from app.services.task_uploads import (
     UploadValidationError,
     delete_stored_photo,
@@ -55,14 +56,6 @@ def load_execution_task(session: Session, task_id: int) -> Task:
 def _datetime_value(value: datetime | None) -> str | None:
     normalized = as_utc(value)
     return normalized.isoformat() if normalized else None
-
-
-def as_utc(value: datetime | None) -> datetime | None:
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
 
 
 def execution_revision(task: Task) -> str:

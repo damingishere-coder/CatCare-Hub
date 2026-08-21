@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { CreditCard, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 
 interface PagePlaceholderProps {
   title: string;
@@ -42,17 +42,6 @@ function PagePlaceholder({
         </p>
       </div>
     </section>
-  );
-}
-
-export function PaymentsPage() {
-  return (
-    <PagePlaceholder
-      title="收款记录"
-      description="这里将管理订单应收、已收、待收和付款方式，并提供简单汇总。"
-      phase="P8 实现业务功能"
-      icon={CreditCard}
-    />
   );
 }
 

@@ -79,6 +79,9 @@ function statusStyle(status: TaskStatus): string {
 
 function reminderTarget(reminder: DashboardReminder): string {
   if (reminder.task_id) return `/admin/tasks/${reminder.task_id}`;
+  if (reminder.kind === "payment_due" && reminder.order_id) {
+    return `/admin/payments?action=create&order_id=${reminder.order_id}`;
+  }
   if (reminder.kind === "payment_due") return "/admin/payments";
   return "/admin/plans?view=orders";
 }

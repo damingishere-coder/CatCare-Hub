@@ -101,6 +101,10 @@ it("shows real metrics, schedule, reminders, and working quick links", async () 
     "/admin/customers?action=create",
   );
   expect(screen.getByRole("link", { name: /客户填写入口/ })).toHaveAttribute("href", "/fill");
+  expect(screen.getByRole("link", { name: "查看收款" })).toHaveAttribute(
+    "href",
+    "/admin/payments?action=create&order_id=8",
+  );
 });
 
 it("confirms a photo delivery marker and refreshes the dashboard", async () => {

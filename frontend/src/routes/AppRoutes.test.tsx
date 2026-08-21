@@ -11,6 +11,10 @@ vi.mock("../features/dashboard/DashboardPage", () => ({
   DashboardPage: () => <h1>工作台</h1>,
 }));
 
+vi.mock("../features/payments/PaymentsPage", () => ({
+  PaymentsPage: () => <h1>收款记录</h1>,
+}));
+
 function renderRoute(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>

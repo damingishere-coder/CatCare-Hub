@@ -3,12 +3,10 @@ import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { CustomersPage } from "../features/customers/CustomersPage";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
+import { PaymentsPage } from "../features/payments/PaymentsPage";
 import { PlansPage } from "../features/plans/PlansPage";
 import { TaskExecutionPage } from "../features/tasks/TaskExecutionPage";
-import {
-  PaymentsPage,
-  SettingsPage,
-} from "../pages/admin/AdminPages";
+import { SettingsPage } from "../pages/admin/AdminPages";
 import { FillPage } from "../pages/FillPage";
 import { MobilePage } from "../pages/MobilePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
@@ -16,6 +14,17 @@ import { NotFoundPage } from "../pages/NotFoundPage";
 function CustomersRoute() {
   const [searchParams] = useSearchParams();
   return <CustomersPage initialCreate={searchParams.get("action") === "create"} />;
+}
+
+function PaymentsRoute() {
+  const [searchParams] = useSearchParams();
+  const requestedOrderId = Number(searchParams.get("order_id"));
+  return (
+    <PaymentsPage
+      initialCreate={searchParams.get("action") === "create"}
+      initialOrderId={Number.isInteger(requestedOrderId) && requestedOrderId > 0 ? requestedOrderId : null}
+    />
+  );
 }
 
 export function AppRoutes() {
@@ -29,7 +38,7 @@ export function AppRoutes() {
         <Route path="tasks/:id" element={<TaskExecutionPage />} />
         <Route path="orders" element={<Navigate to="/admin/plans?view=orders" replace />} />
         <Route path="customers" element={<CustomersRoute />} />
-        <Route path="payments" element={<PaymentsPage />} />
+        <Route path="payments" element={<PaymentsRoute />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
 

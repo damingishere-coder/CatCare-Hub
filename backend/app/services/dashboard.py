@@ -22,16 +22,19 @@ from app.schemas.dashboard import (
     DashboardResponse,
     DashboardTaskSummary,
 )
+from app.services.business_time import (
+    as_utc,
+    business_month_bounds_utc,
+    current_business_date,
+)
 from app.services.orders import due_amount, money
 from app.services.task_execution import (
-    as_utc,
     execution_revision,
     load_execution_task,
     require_execution_revision,
 )
 
 
-BUSINESS_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Shanghai")
 OPEN_TASK_STATUSES = {
     TaskStatus.PENDING,
     TaskStatus.CONFIRMED,
@@ -39,34 +42,6 @@ OPEN_TASK_STATUSES = {
     TaskStatus.IN_PROGRESS,
 }
 PHOTO_DELIVERY_STATUSES = {TaskStatus.COMPLETED, TaskStatus.EXCEPTION}
-
-
-def current_business_date() -> date:
-    return datetime.now(BUSINESS_TIMEZONE).date()
-
-
-def _month_bounds_utc(business_date: date) -> tuple[datetime, datetime]:
-    local_start = datetime(
-        business_date.year,
-        business_date.month,
-        1,
-        tzinfo=BUSINESS_TIMEZONE,
-    )
-    if business_date.month == 12:
-        local_end = datetime(
-            business_date.year + 1,
-            1,
-            1,
-            tzinfo=BUSINESS_TIMEZONE,
-        )
-    else:
-        local_end = datetime(
-            business_date.year,
-            business_date.month + 1,
-            1,
-            tzinfo=BUSINESS_TIMEZONE,
-        )
-    return local_start.astimezone(timezone.utc), local_end.astimezone(timezone.utc)
 
 
 def _load_day_tasks(session: Session, business_date: date) -> list[Task]:
@@ -143,7 +118,7 @@ def _load_pending_photo_tasks(session: Session, business_date: date) -> list[Tas
 
 
 def _month_income(session: Session, business_date: date) -> Decimal:
-    start_utc, end_utc = _month_bounds_utc(business_date)
+    start_utc, end_utc = business_month_bounds_utc(business_date)
     total = session.scalar(
         select(func.sum(Payment.amount)).where(
             Payment.payment_status == PaymentRecordStatus.COMPLETED,
