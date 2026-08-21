@@ -11,6 +11,23 @@ $backendDir = Join-Path $projectRoot "backend"
 $runtimeDir = Join-Path $projectRoot ".runtime"
 $venvPython = Join-Path $projectRoot ".venv\Scripts\python.exe"
 
+function ConvertTo-UtcDateTime {
+    param([object]$Value)
+
+    if ($Value -is [DateTime]) {
+        return ([DateTime]$Value).ToUniversalTime()
+    }
+    if ($Value -is [DateTimeOffset]) {
+        return ([DateTimeOffset]$Value).UtcDateTime
+    }
+
+    return [DateTimeOffset]::Parse(
+        [string]$Value,
+        [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::RoundtripKind
+    ).UtcDateTime
+}
+
 function Test-ManagedProcess {
     param([string]$StatePath)
 
@@ -21,7 +38,7 @@ function Test-ManagedProcess {
     try {
         $state = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
         $process = Get-Process -Id ([int]$state.pid) -ErrorAction Stop
-        $recordedStart = [DateTimeOffset]::Parse([string]$state.startedAtUtc).UtcDateTime
+        $recordedStart = ConvertTo-UtcDateTime -Value $state.startedAtUtc
         $actualStart = $process.StartTime.ToUniversalTime()
         if ([Math]::Abs(($actualStart - $recordedStart).TotalSeconds) -le 2) {
             return $process

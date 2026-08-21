@@ -1,0 +1,5 @@
+CatCare-Hub database migrations are managed by Alembic.
+
+From the repository root, run:
+
+    .\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini upgrade head

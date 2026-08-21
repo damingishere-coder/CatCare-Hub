@@ -1,0 +1,25 @@
+import sys
+from pathlib import Path
+
+import pytest
+from alembic import command
+from alembic.config import Config
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+
+def alembic_config(database_url: str) -> Config:
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", database_url)
+    return config
+
+
+@pytest.fixture
+def migrated_database_url(tmp_path: Path) -> str:
+    database_path = tmp_path / "catcare-test.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    command.upgrade(alembic_config(database_url), "head")
+    return database_url

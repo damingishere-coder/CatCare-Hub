@@ -3,6 +3,23 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $runtimeDir = Join-Path $projectRoot ".runtime"
 
+function ConvertTo-UtcDateTime {
+    param([object]$Value)
+
+    if ($Value -is [DateTime]) {
+        return ([DateTime]$Value).ToUniversalTime()
+    }
+    if ($Value -is [DateTimeOffset]) {
+        return ([DateTimeOffset]$Value).UtcDateTime
+    }
+
+    return [DateTimeOffset]::Parse(
+        [string]$Value,
+        [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::RoundtripKind
+    ).UtcDateTime
+}
+
 function Stop-ManagedProcess {
     param(
         [string]$Name,
@@ -17,7 +34,7 @@ function Stop-ManagedProcess {
     try {
         $state = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
         $process = Get-Process -Id ([int]$state.pid) -ErrorAction Stop
-        $recordedStart = [DateTimeOffset]::Parse([string]$state.startedAtUtc).UtcDateTime
+        $recordedStart = ConvertTo-UtcDateTime -Value $state.startedAtUtc
         $actualStart = $process.StartTime.ToUniversalTime()
 
         if ([Math]::Abs(($actualStart - $recordedStart).TotalSeconds) -gt 2) {
