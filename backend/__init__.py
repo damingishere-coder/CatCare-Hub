@@ -1,0 +1,1 @@
+"""CatCare-Hub backend package."""

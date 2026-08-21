@@ -1,0 +1,58 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Real business data and runtime storage
+data/
+backend/data/
+uploads/
+backend/uploads/
+exports/
+backups/
+private-data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Runtime state and logs
+.runtime/
+*.log
+logs/
+
+# JavaScript dependencies, caches, and builds
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Python environments, caches, and builds
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
