@@ -13,6 +13,7 @@ from app.main import app
 from app.models import Cat, Customer, CustomerFormSubmission, CustomerFormToken, Order, Task
 from app.models.enums import FormSubmissionStatus, FormTokenStatus
 from app.services.privacy_logging import FillTokenRedactionFilter
+from app.services.credentials import token_digest
 
 
 @dataclass(frozen=True)
@@ -141,6 +142,13 @@ def test_token_generation_public_draft_and_data_isolation(
     assert client.get("/api/fill/not-valid").status_code == 404
     assert client.get(f"/api/fill/{'x' * 43}").status_code == 404
 
+    listed = client.get("/api/admin/intake/tokens").json()["items"]
+    assert all(item["fill_path"] is None for item in listed)
+    with intake_api_context.session_factory() as session:
+        stored_hashes = session.scalars(select(CustomerFormToken.token_hash)).all()
+        assert first_value not in stored_hashes
+        assert token_digest(first_value) in stored_hashes
+
     invalid = client.put(
         f"/api/fill/{first_value}",
         json={"customer": {"name": "x" * 101}},
@@ -213,13 +221,17 @@ def test_missing_expiry_is_closed_and_access_log_tokens_are_redacted(
 ) -> None:
     raw_token = "x" * 43
     with intake_api_context.session_factory.begin() as session:
-        session.add(CustomerFormToken(token=raw_token, expires_at=None))
+        session.add(
+            CustomerFormToken(token_hash=token_digest(raw_token), expires_at=None)
+        )
 
     response = intake_api_context.client.get(f"/api/fill/{raw_token}")
     assert response.status_code == 410
     with intake_api_context.session_factory() as session:
         stored = session.scalar(
-            select(CustomerFormToken).where(CustomerFormToken.token == raw_token)
+            select(CustomerFormToken).where(
+                CustomerFormToken.token_hash == token_digest(raw_token)
+            )
         )
         assert stored is not None
         assert stored.status is FormTokenStatus.EXPIRED

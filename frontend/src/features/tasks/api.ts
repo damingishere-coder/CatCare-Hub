@@ -5,6 +5,7 @@ import type {
   TaskRevisionInput,
   TaskTextInput,
 } from "./types";
+import { notifyUnauthorized } from "../../lib/authEvents";
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const tasksPath = `${apiBase}/api/admin/tasks`;
@@ -34,6 +35,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
+    notifyUnauthorized(response.status);
     let message = `请求失败（HTTP ${response.status}）`;
     try {
       const payload = (await response.json()) as ApiErrorPayload;

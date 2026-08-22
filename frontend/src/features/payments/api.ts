@@ -1,4 +1,5 @@
 import type { PaymentCreateInput, PaymentRegistration, PaymentsOverview } from "./types";
+import { notifyUnauthorized } from "../../lib/authEvents";
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const paymentsPath = `${apiBase}/api/admin/payments`;
@@ -27,6 +28,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
+    notifyUnauthorized(response.status);
     let message = `请求失败（HTTP ${response.status}）`;
     try {
       const payload = (await response.json()) as ApiErrorPayload;

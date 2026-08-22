@@ -137,7 +137,7 @@ class IntakeTokenRead(BaseModel):
     status: FormTokenStatus
     expires_at: datetime | None
     submitted_at: datetime | None
-    fill_path: str
+    fill_path: str | None
     submission_status: FormSubmissionStatus | None
     revision: str
     created_at: datetime

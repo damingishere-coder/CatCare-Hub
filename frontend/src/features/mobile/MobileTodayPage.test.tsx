@@ -69,7 +69,7 @@ it("shows the ordered route, safe summaries, navigation, and refresh", async () 
   );
   expect(screen.getByText("地址坐标尚未在电脑计划页解析")).toBeInTheDocument();
   expect(screen.getAllByRole("link", { name: "查看任务" })[0]).toHaveAttribute("href", "/mobile/tasks/7");
-  expect(screen.getByText(/正式登录与权限隔离将在 P12 完成/)).toBeInTheDocument();
+  expect(screen.getByText(/已启用执行端登录与权限隔离/)).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "刷新今日任务" }));
   await waitFor(() => expect(apiMocks.getMobileToday).toHaveBeenCalledTimes(2));

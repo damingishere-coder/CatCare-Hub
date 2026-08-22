@@ -1,3 +1,4 @@
+from app.models.auth import AccessSession
 from app.models.customer import Cat, Customer
 from app.models.enums import (
     FormSubmissionStatus,
@@ -16,6 +17,7 @@ from app.models.task import Task, TaskItem, TaskPhoto
 
 
 __all__ = [
+    "AccessSession",
     "Cat",
     "Customer",
     "CustomerFormSubmission",

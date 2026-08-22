@@ -26,6 +26,7 @@ from app.models import (
     TaskPhoto,
     TaskStatus,
 )
+from app.services.credentials import token_digest
 
 
 def test_core_entities_can_be_created_and_related(
@@ -97,7 +98,9 @@ def test_core_entities_can_be_created_and_related(
                 )
             )
 
-            form_token = CustomerFormToken(token="unit-test-placeholder-value")
+            form_token = CustomerFormToken(
+                token_hash=token_digest("unit-test-placeholder-value")
+            )
             form_token.submissions.append(
                 CustomerFormSubmission(
                     payload={"fixture": True},

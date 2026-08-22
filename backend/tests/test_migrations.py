@@ -1,11 +1,17 @@
+import hashlib
+from datetime import datetime, timezone
+
 from alembic import command
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
+from sqlalchemy.orm import Session
 
 from app.db.session import build_engine
+from app.services.intake import load_public_token
 from tests.conftest import alembic_config
 
 
 BUSINESS_TABLES = {
+    "access_sessions",
     "cats",
     "customer_form_submissions",
     "customer_form_tokens",
@@ -68,5 +74,46 @@ def test_intake_conversion_migration_adds_a_single_submission_contract(
             constraint["column_names"] == ["token_id"]
             for constraint in unique_constraints
         )
+    finally:
+        engine.dispose()
+
+
+def test_security_migration_hashes_existing_intake_token(tmp_path) -> None:
+    database_path = tmp_path / "p12-upgrade.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = alembic_config(database_url)
+    command.upgrade(config, "0004_customer_intake_conversion")
+    engine = build_engine(database_url)
+    raw_token = "legacy_P10_token_value_that_remains_usable_123"
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO customer_form_tokens "
+                    "(token, status, expires_at, created_at, updated_at) "
+                    "VALUES (:token, 'active', '2035-01-01', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                ),
+                {"token": raw_token},
+            )
+        command.upgrade(config, "head")
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("customer_form_tokens")
+        }
+        assert "token" not in columns
+        assert "token_hash" in columns
+        with engine.connect() as connection:
+            stored = connection.execute(
+                text("SELECT token_hash FROM customer_form_tokens")
+            ).scalar_one()
+        assert stored == hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        assert raw_token not in stored
+        with Session(engine) as session:
+            migrated_token = load_public_token(
+                session,
+                raw_token,
+                now=datetime(2034, 1, 1, tzinfo=timezone.utc),
+            )
+            assert migrated_token.token_hash == stored
     finally:
         engine.dispose()

@@ -115,6 +115,12 @@ function Wait-ForEndpoint {
 if (-not (Test-Path -LiteralPath $venvPython)) {
     throw "Python environment is missing. Run setup.bat first."
 }
+& $venvPython (Join-Path $projectRoot "backend\scripts\manage_access.py") `
+    --check `
+    --env-file (Join-Path $projectRoot ".env")
+if ($LASTEXITCODE -ne 0) {
+    throw "Local access codes are missing or invalid. Run setup.bat first."
+}
 if (-not (Test-Path -LiteralPath (Join-Path $frontendDir "node_modules"))) {
     throw "Frontend dependencies are missing. Run setup.bat first."
 }

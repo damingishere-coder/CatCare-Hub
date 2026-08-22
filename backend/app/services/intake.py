@@ -26,6 +26,7 @@ from app.schemas.intake import (
 )
 from app.schemas.order import OrderWrite
 from app.services.business_time import as_utc
+from app.services.credentials import token_digest
 from app.services.customers import build_customer
 from app.services.orders import DEFAULT_BASE_PRICE, build_order
 
@@ -114,7 +115,9 @@ def load_public_token(
 ) -> CustomerFormToken:
     if not TOKEN_PATTERN.fullmatch(raw_token):
         raise HTTPException(status_code=404, detail="填写链接无效")
-    token = session.scalar(_token_statement().where(CustomerFormToken.token == raw_token))
+    token = session.scalar(
+        _token_statement().where(CustomerFormToken.token_hash == token_digest(raw_token))
+    )
     if token is None:
         raise HTTPException(status_code=404, detail="填写链接无效")
 
@@ -193,18 +196,19 @@ def create_token(
     *,
     expires_in_days: int,
     now: datetime | None = None,
-) -> CustomerFormToken:
+) -> tuple[CustomerFormToken, str]:
     created_at = now or utc_now()
     for _ in range(TOKEN_GENERATION_ATTEMPTS):
+        raw_token = secrets.token_urlsafe(32)
         token = CustomerFormToken(
-            token=secrets.token_urlsafe(32),
+            token_hash=token_digest(raw_token),
             expires_at=created_at + timedelta(days=expires_in_days),
         )
         try:
             with session.begin_nested():
                 session.add(token)
                 session.flush()
-            return token
+            return token, raw_token
         except IntegrityError:
             continue
     raise HTTPException(status_code=503, detail="暂时无法生成填写链接，请重试")
@@ -222,14 +226,18 @@ def expire_loaded_tokens(
     return changed
 
 
-def to_token_read(token: CustomerFormToken) -> IntakeTokenRead:
+def to_token_read(
+    token: CustomerFormToken,
+    *,
+    raw_token: str | None = None,
+) -> IntakeTokenRead:
     submission = _submission_for(token)
     return IntakeTokenRead(
         id=token.id,
         status=token.status,
         expires_at=token.expires_at,
         submitted_at=token.submitted_at,
-        fill_path=f"/fill/{token.token}",
+        fill_path=f"/fill/{raw_token}" if raw_token else None,
         submission_status=submission.status if submission else None,
         revision=token_revision(token),
         created_at=token.created_at,

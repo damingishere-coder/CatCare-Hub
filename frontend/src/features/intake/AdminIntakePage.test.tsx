@@ -24,7 +24,7 @@ const token: IntakeTokenRead = {
   status: "active",
   expires_at: "2031-05-15T08:00:00Z",
   submitted_at: timestamp,
-  fill_path: "/fill/P10-test-token",
+  fill_path: null,
   submission_status: "submitted",
   revision,
   created_at: timestamp,
@@ -78,7 +78,7 @@ beforeEach(() => {
   apiMocks.listIntakeTokens.mockResolvedValue({ items: [token], total: 1 });
   apiMocks.listIntakeSubmissions.mockResolvedValue({ items: [summary], total: 1 });
   apiMocks.getIntakeSubmission.mockResolvedValue(detail);
-  apiMocks.createIntakeToken.mockResolvedValue({ ...token, id: 8, submitted_at: null, submission_status: null });
+  apiMocks.createIntakeToken.mockResolvedValue({ ...token, id: 8, fill_path: "/fill/P10-test-token", submitted_at: null, submission_status: null });
   apiMocks.updateIntakeToken.mockResolvedValue({ ...token, status: "disabled", submitted_at: null, submission_status: null });
   apiMocks.reviewIntakeSubmission.mockResolvedValue({ ...detail, status: "reviewed", reviewed_at: timestamp, revision: "b".repeat(64) });
   apiMocks.convertIntakeSubmission.mockResolvedValue({ submission_id: 9, status: "converted", customer_id: 3, order_id: 4, revision: "c".repeat(64) });
@@ -97,7 +97,8 @@ it("keeps sensitive fields out of the summary list and shows them in selected de
   expect(within(list).queryByText("TEST-CONTACT")).not.toBeInTheDocument();
   expect(within(list).queryByText("虚构敏感入户说明")).not.toBeInTheDocument();
   expect(within(list).queryByText("TEST-KEY")).not.toBeInTheDocument();
-  expect(screen.getByText(/当前尚未完成 P12 正式登录/)).toBeInTheDocument();
+  expect(screen.getByText(/填写链接只在生成时显示一次/)).toBeInTheDocument();
+  expect(screen.getByText(/链接原文未保存/)).toBeInTheDocument();
 });
 
 it("creates a link and copies the browser-origin URL", async () => {
@@ -108,6 +109,7 @@ it("creates a link and copies the browser-origin URL", async () => {
   fireEvent.click(screen.getByRole("button", { name: "生成链接" }));
   await waitFor(() => expect(apiMocks.createIntakeToken).toHaveBeenCalledWith(21));
   expect(await screen.findByText("链接 #8")).toBeInTheDocument();
+  expect(screen.getByText(/新链接仅本次可查看/)).toBeInTheDocument();
 
   fireEvent.click(screen.getAllByRole("button", { name: "复制" })[0]);
   await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(

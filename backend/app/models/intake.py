@@ -32,7 +32,9 @@ class CustomerFormToken(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    token: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    token_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True, index=True
+    )
     status: Mapped[FormTokenStatus] = mapped_column(
         portable_enum(FormTokenStatus, name="form_token_status", length=16),
         nullable=False,

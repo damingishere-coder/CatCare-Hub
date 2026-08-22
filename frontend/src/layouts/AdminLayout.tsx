@@ -8,6 +8,8 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 
+import { SessionControls } from "../features/auth/SessionControls";
+
 interface NavigationItem {
   label: string;
   to: string;
@@ -66,8 +68,9 @@ export function AdminLayout() {
       </aside>
 
       <main className="min-w-0">
-        <header className="flex h-16 items-center border-b border-slate-200 bg-white px-5 lg:px-8">
+        <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 lg:px-8">
           <p className="text-sm text-slate-500">本地管理后台</p>
+          <SessionControls />
         </header>
         <div className="p-5 lg:p-8">
           <Outlet />

@@ -82,6 +82,8 @@ class OrderWrite(NormalizedOrderModel):
 
 
 class OrderStatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     order_status: OrderStatus
 
 

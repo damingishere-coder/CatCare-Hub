@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { SessionControls } from "../auth/SessionControls";
 import type { TaskStatus } from "../orders/types";
 import { planTaskStatusLabels } from "../plans/constants";
 import { getMobileToday } from "./api";
@@ -93,7 +94,7 @@ export function MobileTodayPage() {
               {today ? `${displayBusinessDate(today.business_date)} · 上海业务时间` : "按上海业务时间读取"}
             </p>
           </div>
-          <button
+          <div className="flex items-center gap-2"><SessionControls compact /><button
             type="button"
             className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 disabled:opacity-50"
             aria-label="刷新今日任务"
@@ -101,12 +102,12 @@ export function MobileTodayPage() {
             disabled={loading}
           >
             <RefreshCw className={loading ? "animate-spin" : ""} size={18} />
-          </button>
+          </button></div>
         </header>
 
         <div className="mt-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900">
           <ShieldAlert className="mt-0.5 shrink-0" size={16} />
-          当前仅适用于本机或可信局域网；正式登录与权限隔离将在 P12 完成，请勿暴露到公网。
+          已启用执行端登录与权限隔离；仍仅建议在本机或已配置的可信私网中使用。
         </div>
 
         <PwaInstallPrompt />

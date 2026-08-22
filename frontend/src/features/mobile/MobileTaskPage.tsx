@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { SessionControls } from "../auth/SessionControls";
 import { serviceItemOptions } from "../orders/constants";
 import type { ServiceItem, TaskStatus } from "../orders/types";
 import { planTaskStatusLabels } from "../plans/constants";
@@ -252,7 +253,7 @@ export function MobileTaskPage() {
             <Link className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-slate-700" to="/mobile">
               <ArrowLeft size={17} />今日任务
             </Link>
-            <button
+            <div className="flex items-center gap-2"><SessionControls compact /><button
               type="button"
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 disabled:opacity-50"
               aria-label="刷新任务"
@@ -260,7 +261,7 @@ export function MobileTaskPage() {
               disabled={loading}
             >
               <RefreshCw className={loading ? "animate-spin" : ""} size={18} />
-            </button>
+            </button></div>
           </div>
           <div className="mt-3 flex items-start justify-between gap-3">
             <div>
@@ -277,7 +278,7 @@ export function MobileTaskPage() {
 
         <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900">
           <ShieldAlert className="mt-0.5 shrink-0" size={16} />
-          本页含地址、电话和门禁信息，仅限本机或可信局域网使用，禁止暴露到公网。
+          本页含地址、电话和门禁信息，已受执行端会话保护；仍禁止直接暴露到公网。
         </div>
 
         {error ? (

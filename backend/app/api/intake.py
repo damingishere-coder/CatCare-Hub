@@ -37,7 +37,6 @@ from app.services.intake import (
 )
 
 
-router = APIRouter()
 public_router = APIRouter(prefix="/api/fill", tags=["customer-fill"])
 admin_router = APIRouter(prefix="/api/admin/intake", tags=["admin-intake"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -143,9 +142,9 @@ def list_tokens(session: DatabaseSession) -> IntakeTokenList:
     status_code=status.HTTP_201_CREATED,
 )
 def post_token(payload: TokenCreate, session: DatabaseSession) -> IntakeTokenRead:
-    token = create_token(session, expires_in_days=payload.expires_in_days)
+    token, raw_token = create_token(session, expires_in_days=payload.expires_in_days)
     session.commit()
-    return to_token_read(token)
+    return to_token_read(token, raw_token=raw_token)
 
 
 @admin_router.patch("/tokens/{token_id}", response_model=IntakeTokenRead)
@@ -232,7 +231,3 @@ def confirm_submission(
     except Exception:
         session.rollback()
         raise
-
-
-router.include_router(public_router)
-router.include_router(admin_router)

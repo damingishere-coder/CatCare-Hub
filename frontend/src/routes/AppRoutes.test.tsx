@@ -3,6 +3,27 @@ import { MemoryRouter } from "react-router-dom";
 
 import { AppRoutes } from "./AppRoutes";
 
+const authMocks = vi.hoisted(() => ({
+  logout: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../features/auth/authContext", () => ({
+  useAuth: () => ({
+    session: { role: "admin", expires_at: "2035-01-01T00:00:00Z" },
+    loading: false,
+    error: null,
+    login: vi.fn(),
+    logout: authMocks.logout,
+  }),
+  useOptionalAuth: () => ({
+    session: { role: "admin", expires_at: "2035-01-01T00:00:00Z" },
+    loading: false,
+    error: null,
+    login: vi.fn(),
+    logout: authMocks.logout,
+  }),
+}));
+
 vi.mock("../features/tasks/TaskExecutionPage", () => ({
   TaskExecutionPage: () => <h1>单次服务执行</h1>,
 }));

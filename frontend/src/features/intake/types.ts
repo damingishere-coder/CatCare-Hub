@@ -67,7 +67,7 @@ export interface IntakeTokenRead {
   status: FormTokenStatus;
   expires_at: string | null;
   submitted_at: string | null;
-  fill_path: string;
+  fill_path: string | null;
   submission_status: FormSubmissionStatus | null;
   revision: string;
   created_at: string;

@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 
 import { AdminLayout } from "../layouts/AdminLayout";
+import { LoginPage } from "../features/auth/LoginPage";
+import { RequireRole } from "../features/auth/RequireRole";
 import { CustomersPage } from "../features/customers/CustomersPage";
 import { AdminIntakePage } from "../features/intake/AdminIntakePage";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
@@ -33,20 +35,25 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/admin" replace />} />
+      <Route path="/login" element={<LoginPage />} />
 
-      <Route path="/admin" element={<AdminLayout />}>
-        <Route index element={<DashboardPage />} />
-        <Route path="plans" element={<PlansPage />} />
-        <Route path="tasks/:id" element={<TaskExecutionPage />} />
-        <Route path="orders" element={<Navigate to="/admin/plans?view=orders" replace />} />
-        <Route path="customers" element={<CustomersRoute />} />
-        <Route path="intake" element={<AdminIntakePage />} />
-        <Route path="payments" element={<PaymentsRoute />} />
-        <Route path="settings" element={<SettingsPage />} />
+      <Route element={<RequireRole allowed={["admin"]} />}>
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="plans" element={<PlansPage />} />
+          <Route path="tasks/:id" element={<TaskExecutionPage />} />
+          <Route path="orders" element={<Navigate to="/admin/plans?view=orders" replace />} />
+          <Route path="customers" element={<CustomersRoute />} />
+          <Route path="intake" element={<AdminIntakePage />} />
+          <Route path="payments" element={<PaymentsRoute />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
       </Route>
 
-      <Route path="/mobile" element={<MobilePage />} />
-      <Route path="/mobile/tasks/:id" element={<MobileTaskPage />} />
+      <Route element={<RequireRole allowed={["admin", "mobile"]} />}>
+        <Route path="/mobile" element={<MobilePage />} />
+        <Route path="/mobile/tasks/:id" element={<MobileTaskPage />} />
+      </Route>
       <Route path="/fill" element={<FillPage />} />
       <Route path="/fill/:token" element={<FillPage />} />
       <Route path="*" element={<NotFoundPage />} />
