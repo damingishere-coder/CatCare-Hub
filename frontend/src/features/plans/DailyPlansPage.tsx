@@ -381,36 +381,36 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
   return (
     <>
       {error ? (
-        <div className="mb-4 flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+        <div className="cc-alert cc-alert--danger mb-4" role="alert">
           <AlertCircle className="mt-0.5 shrink-0" size={17} />
           <span>{error}</span>
         </div>
       ) : null}
 
-      <div className="grid min-h-[720px] overflow-hidden rounded-xl border border-slate-200 bg-white xl:grid-cols-[340px_minmax(360px,1fr)_340px]">
-        <aside className="border-b border-slate-200 xl:border-r xl:border-b-0" aria-label="按天计划">
-          <div className="border-b border-slate-200 p-4">
+      <div className="cc-surface grid min-h-[720px] overflow-hidden xl:grid-cols-[minmax(280px,0.82fr)_minmax(360px,1.35fr)_minmax(300px,0.9fr)] 2xl:grid-cols-[320px_minmax(420px,1fr)_360px]">
+        <aside className="border-b border-[#e4e8ef] bg-white xl:border-r xl:border-b-0" aria-label="按天计划">
+          <div className="border-b border-[#e4e8ef] p-4">
             <label className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
               跳转日期
               <input
                 type="date"
-                className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
                 value={selectedDate}
                 onChange={(event) => selectDate(event.target.value)}
                 disabled={dirty || routeBusy}
               />
             </label>
-            <div className="mt-3 max-h-36 space-y-1 overflow-y-auto" aria-label="有任务的日期">
+            <div className="cc-scrollbar mt-3 max-h-36 space-y-1 overflow-y-auto" aria-label="有任务的日期">
               {days.map((day) => (
                 <button
                   key={day.service_date}
                   type="button"
-                  className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${selectedDate === day.service_date ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${selectedDate === day.service_date ? "bg-indigo-600 text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
                   onClick={() => selectDate(day.service_date)}
                   disabled={dirty || routeBusy}
                 >
                   <span className="font-medium">{displayDate(day.service_date)}</span>
-                  <span className={selectedDate === day.service_date ? "text-slate-300" : "text-slate-500"}>
+                  <span className={selectedDate === day.service_date ? "text-indigo-100" : "text-slate-500"}>
                     {day.order_count} 单 / {day.cat_count} 只猫
                   </span>
                 </button>
@@ -418,7 +418,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <div className="flex items-center justify-between border-b border-[#e4e8ef] px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-slate-900">{selectedDate ? displayDate(selectedDate) : "当日任务"}</p>
               <p className="mt-0.5 text-xs text-slate-500">
@@ -428,7 +428,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
             {dirty ? <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">未保存</span> : null}
           </div>
 
-          <div className="max-h-[520px] overflow-y-auto p-2">
+          <div className="cc-scrollbar max-h-[520px] overflow-y-auto p-2.5">
             {loading ? (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={17} />正在加载…</div>
             ) : draftTasks.length === 0 ? (
@@ -439,11 +439,11 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
             ) : (
               <ol className="space-y-2">
                 {draftTasks.map((task, index) => (
-                  <li key={task.id} className={`rounded-lg border p-3 ${selectedTaskId === task.id ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                  <li key={task.id} className={`rounded-lg border p-3 transition-all ${selectedTaskId === task.id ? "border-indigo-200 bg-indigo-50/60 shadow-sm" : "border-transparent bg-slate-50/70 hover:border-slate-200 hover:bg-white"}`}>
                     <div className="flex items-start gap-2">
                       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => selectTask(task.id)}>
                         <div className="flex items-center gap-2">
-                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">{index + 1}</span>
+                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white">{index + 1}</span>
                           <span className="truncate text-sm font-semibold text-slate-900">{task.customer.name}</span>
                         </div>
                         <p className="mt-1.5 truncate text-xs text-slate-500">{task.customer.community || "未填写小区"} · {task.cats.length} 只猫</p>
@@ -455,7 +455,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                         计划时间
                         <input
                           type="time"
-                          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900 disabled:bg-slate-100"
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900 disabled:bg-slate-100"
                           aria-label={`任务 #${task.id} 计划时间`}
                           value={timeValue(task.planned_time)}
                           onChange={(event) => updateTime(task.id, event.target.value)}
@@ -463,8 +463,8 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                         />
                       </label>
                       <div className="flex gap-1">
-                        <button type="button" className="rounded-md border border-slate-300 p-2 text-slate-600 disabled:opacity-30" aria-label={`上移 ${task.customer.name} 任务`} onClick={() => moveTask(index, -1)} disabled={index === 0 || plan?.schedule_locked || saving || routeBusy}><ArrowUp size={14} /></button>
-                        <button type="button" className="rounded-md border border-slate-300 p-2 text-slate-600 disabled:opacity-30" aria-label={`下移 ${task.customer.name} 任务`} onClick={() => moveTask(index, 1)} disabled={index === draftTasks.length - 1 || plan?.schedule_locked || saving || routeBusy}><ArrowDown size={14} /></button>
+                        <button type="button" className="cc-icon-button min-h-9 min-w-9 p-2" aria-label={`上移 ${task.customer.name} 任务`} onClick={() => moveTask(index, -1)} disabled={index === 0 || plan?.schedule_locked || saving || routeBusy}><ArrowUp size={14} /></button>
+                        <button type="button" className="cc-icon-button min-h-9 min-w-9 p-2" aria-label={`下移 ${task.customer.name} 任务`} onClick={() => moveTask(index, 1)} disabled={index === draftTasks.length - 1 || plan?.schedule_locked || saving || routeBusy}><ArrowDown size={14} /></button>
                       </div>
                     </div>
                   </li>
@@ -473,11 +473,11 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
             )}
           </div>
 
-          <div className="border-t border-slate-200 p-3">
+          <div className="border-t border-[#e4e8ef] bg-white p-3">
             {plan?.schedule_locked ? <p className="mb-2 text-xs leading-5 text-amber-700">当天已有执行记录，时间与顺序已锁定。</p> : null}
             <div className="grid grid-cols-2 gap-2">
-              <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 disabled:opacity-40" onClick={discardChanges} disabled={!dirty || saving || routeBusy}><RotateCcw size={15} />撤销</button>
-              <button type="button" className="inline-flex items-center justify-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40" onClick={() => void handleSave()} disabled={!dirty || saving || routeBusy || plan?.schedule_locked}>{saving ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存排程</button>
+              <button type="button" className="cc-button cc-button--secondary" onClick={discardChanges} disabled={!dirty || saving || routeBusy}><RotateCcw size={15} />撤销</button>
+              <button type="button" className="cc-button cc-button--primary" onClick={() => void handleSave()} disabled={!dirty || saving || routeBusy || plan?.schedule_locked}>{saving ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存排程</button>
             </div>
           </div>
         </aside>
@@ -497,11 +497,11 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
         />
 
         <aside className="bg-white" aria-label="任务详情">
-          <div className="border-b border-slate-200 px-4 py-3">
+          <div className="border-b border-[#e4e8ef] px-4 py-3">
             <p className="text-sm font-semibold text-slate-900">任务 / 客户信息</p>
             <p className="mt-0.5 text-xs text-slate-500">仅在选中单个任务后读取现场所需摘要</p>
           </div>
-          <div className="max-h-[760px] overflow-y-auto p-4">
+          <div className="cc-scrollbar max-h-[760px] overflow-y-auto p-4">
             {detailLoading || (selectedTaskId && taskDetail?.task.id !== selectedTaskId) ? (
               <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={17} />正在加载详情…</div>
             ) : !taskDetail ? (
@@ -516,7 +516,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                   <p className="mt-3 text-sm leading-6 text-slate-700">{addressLine(taskDetail)}</p>
                   {selectedRouteMarker?.navigation_url ? (
                     <a
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      className="cc-button cc-button--secondary mt-3"
                       href={selectedRouteMarker.navigation_url}
                       target="_blank"
                       rel="noreferrer"
@@ -525,7 +525,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                     </a>
                   ) : null}
                   <Link
-                    className={`mt-2 inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white ${(dirty || saving || routeBusy) ? "pointer-events-none opacity-40" : ""}`}
+                    className={`cc-button cc-button--primary mt-2 ${(dirty || saving || routeBusy) ? "pointer-events-none opacity-40" : ""}`}
                     to={`/admin/tasks/${taskDetail.task.id}`}
                     aria-disabled={dirty || saving || routeBusy}
                     tabIndex={dirty || saving || routeBusy ? -1 : undefined}
@@ -537,7 +537,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                   </Link>
                 </section>
 
-                <section className="rounded-lg bg-slate-50 p-3">
+                <section className="cc-surface-muted p-3">
                   <p className="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase"><Clock3 size={14} />计划到达</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">{timeValue(taskDetail.task.planned_time) || "待设置"}</p>
                   {taskDetail.estimated_arrival ? <p className="mt-1 text-xs text-slate-500">路线预计：{new Date(taskDetail.estimated_arrival).toLocaleString("zh-CN")}</p> : null}
@@ -547,7 +547,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                   <h3 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">猫咪</h3>
                   <div className="mt-2 space-y-2">
                     {taskDetail.cats.map((cat) => (
-                      <article key={cat.id} className="rounded-lg border border-slate-200 p-3">
+                      <article key={cat.id} className="rounded-lg bg-slate-50/80 p-3">
                         <p className="text-sm font-semibold text-slate-900">{cat.name}{cat.is_active ? "" : "（已停用）"}</p>
                         {cat.medication_required ? <p className="mt-1 text-xs leading-5 text-red-700">用药：{cat.medication_notes || "需要用药，请核对档案"}</p> : null}
                         {cat.service_notes ? <p className="mt-1 text-xs leading-5 text-slate-600">服务：{cat.service_notes}</p> : null}
@@ -561,7 +561,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                   <h3 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">本次服务</h3>
                   <ul className="mt-2 space-y-1.5">
                     {taskDetail.task.items.map((item) => (
-                      <li key={item.item_type} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700"><span>{serviceLabels[item.item_type]}</span><span className="text-xs text-slate-500">{item.completed ? "已完成" : item.required ? "必做" : "可选"}</span></li>
+                      <li key={item.item_type} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700"><span>{serviceLabels[item.item_type]}</span><span className="text-xs text-slate-500">{item.completed ? "已完成" : item.required ? "必做" : "可选"}</span></li>
                     ))}
                   </ul>
                 </section>
@@ -576,7 +576,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                   <label className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
                     计划状态
                     <select
-                      className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:bg-slate-100"
+                      className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 disabled:bg-slate-100"
                       aria-label="任务状态"
                       value={taskDetail.task.status}
                       onChange={(event) => void handleStatusChange(event.target.value as PlanTaskStatus)}

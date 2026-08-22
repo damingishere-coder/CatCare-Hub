@@ -246,8 +246,8 @@ export function MobileTaskPage() {
   const controlsDisabled = Boolean(busy) || stale;
 
   return (
-    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-slate-100 text-slate-950">
-      <div className="mx-auto max-w-xl px-4 py-5 sm:px-5">
+    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-[#f3f5f8] text-slate-950">
+      <div className="mx-auto max-w-xl px-4 py-5 sm:px-5 sm:py-7">
         <header>
           <div className="flex items-center justify-between gap-3">
             <Link className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-slate-700" to="/mobile">
@@ -255,7 +255,7 @@ export function MobileTaskPage() {
             </Link>
             <div className="flex items-center gap-2"><SessionControls compact /><button
               type="button"
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 disabled:opacity-50"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm disabled:opacity-50"
               aria-label="刷新任务"
               onClick={() => void loadTask()}
               disabled={loading}
@@ -265,8 +265,8 @@ export function MobileTaskPage() {
           </div>
           <div className="mt-3 flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold tracking-wider text-slate-500 uppercase">现场执行</p>
-              <h1 className="mt-1 text-2xl font-bold tracking-tight">单次喂猫任务</h1>
+              <p className="text-xs font-semibold tracking-[0.14em] text-indigo-600 uppercase">现场执行</p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight">单次喂猫任务</h1>
             </div>
             {detail ? (
               <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle(detail.status)}`}>
@@ -276,26 +276,26 @@ export function MobileTaskPage() {
           </div>
         </header>
 
-        <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900">
+        <div className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-3 text-xs leading-5 text-slate-600 shadow-sm">
           <ShieldAlert className="mt-0.5 shrink-0" size={16} />
           本页含地址、电话和门禁信息，已受执行端会话保护；仍禁止直接暴露到公网。
         </div>
 
         {error ? (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+          <div className="cc-alert cc-alert--danger mt-4" role="alert">
             <span className="flex items-start gap-2"><AlertTriangle className="mt-0.5 shrink-0" size={16} />{error}</span>
           </div>
         ) : null}
 
         {loading && !detail ? (
-          <div className="mt-5 flex min-h-52 items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+          <div className="cc-surface mt-5 flex min-h-52 items-center justify-center text-sm text-slate-500">
             <LoaderCircle className="mr-2 animate-spin" size={18} />正在加载任务…
           </div>
         ) : !detail ? (
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">无法显示该任务。</div>
+          <div className="cc-surface mt-5 p-8 text-center text-sm text-slate-500">无法显示该任务。</div>
         ) : (
           <div className="mt-5 space-y-4">
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="cc-surface p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-xl font-bold">{detail.customer.name}</h2>
@@ -314,28 +314,28 @@ export function MobileTaskPage() {
 
               <div className="mt-4 grid grid-cols-2 gap-2">
                 {detail.customer.phone ? (
-                  <a className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-300 text-sm font-semibold" href={`tel:${detail.customer.phone}`}>
+                  <a className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold" href={`tel:${detail.customer.phone}`}>
                     <Phone size={16} />联系客户
                   </a>
                 ) : (
-                  <span className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-500">未填写电话</span>
+                  <span className="inline-flex min-h-11 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-500">未填写电话</span>
                 )}
                 {detail.navigation_url ? (
-                  <a className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-slate-900 text-sm font-semibold text-white" href={detail.navigation_url} target="_blank" rel="noreferrer">
+                  <a className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 text-sm font-semibold text-white shadow-sm" href={detail.navigation_url} target="_blank" rel="noreferrer">
                     <Navigation size={16} />一键导航
                   </a>
                 ) : (
-                  <span className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-100 px-2 text-center text-xs leading-4 text-slate-500">暂不可导航</span>
+                  <span className="inline-flex min-h-11 items-center justify-center rounded-lg bg-slate-100 px-2 text-center text-xs leading-4 text-slate-500">暂不可导航</span>
                 )}
               </div>
               {!detail.navigation_url ? <p className="mt-2 text-xs leading-5 text-amber-700">{navigationMessage(detail.navigation_state)}</p> : null}
             </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <section className="cc-surface p-4">
               <h2 className="font-bold">猫咪与服务要求</h2>
               <div className="mt-3 space-y-3">
                 {detail.cats.map((cat) => (
-                  <article key={cat.id} className="rounded-xl border border-slate-200 p-3">
+                  <article key={cat.id} className="rounded-lg border border-slate-200 p-3">
                     <p className="font-bold">{cat.name}{cat.is_active ? "" : "（已停用）"}</p>
                     <dl className="mt-3 grid grid-cols-2 gap-3">
                       <FieldValue label="主粮" value={cat.food} />
@@ -350,14 +350,14 @@ export function MobileTaskPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <section className="cc-surface p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="font-bold">执行状态</h2>
                   <p className="mt-1 text-xs text-slate-500">先开始任务，再记录现场情况。</p>
                 </div>
                 {startable ? (
-                  <button type="button" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white disabled:opacity-40" onClick={() => void handleStart()} disabled={controlsDisabled}>
+                  <button type="button" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm disabled:opacity-40" onClick={() => void handleStart()} disabled={controlsDisabled}>
                     {busy === "start" ? <LoaderCircle className="animate-spin" size={16} /> : <Play size={16} />}开始任务
                   </button>
                 ) : null}
@@ -367,7 +367,7 @@ export function MobileTaskPage() {
               {detail.exception_notes ? <p className="mt-3 whitespace-pre-wrap rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">异常：{detail.exception_notes}</p> : null}
             </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <section className="cc-surface p-4">
               <div className="flex items-center justify-between gap-3">
                 <div><h2 className="font-bold">服务 Checklist</h2><p className="mt-1 text-xs text-slate-500">必做事项完成后才能结束任务</p></div>
                 <span className="text-sm font-semibold text-slate-600">{detail.items.filter((item) => item.completed).length}/{detail.items.length}</span>
@@ -376,10 +376,10 @@ export function MobileTaskPage() {
                 {detail.items.map((item) => {
                   const photoItem = item.item_type === "photo";
                   return (
-                    <label key={item.id} className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 ${item.completed ? "border-emerald-200 bg-emerald-50" : "border-slate-200"}`}>
+                    <label key={item.id} className={`flex min-h-12 items-center gap-3 rounded-lg border px-3 ${item.completed ? "border-emerald-200 bg-emerald-50" : "border-slate-200"}`}>
                       <input
                         type="checkbox"
-                        className="size-5 accent-slate-900"
+                        className="size-5 accent-indigo-600"
                         checked={item.completed}
                         onChange={(event) => void handleChecklist(item.id, event.target.checked)}
                         disabled={!editing || photoItem || controlsDisabled}
@@ -393,18 +393,18 @@ export function MobileTaskPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <section className="cc-surface p-4">
               <h2 className="flex items-center gap-2 font-bold"><Camera size={18} />现场照片</h2>
               {detail.photos.length ? (
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {detail.photos.map((photo, index) => (
-                    <a key={photo.id} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50" href={mobilePhotoUrl(photo.url)} target="_blank" rel="noreferrer">
+                    <a key={photo.id} className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50" href={mobilePhotoUrl(photo.url)} target="_blank" rel="noreferrer">
                       <img className="aspect-square w-full object-cover" src={mobilePhotoUrl(photo.url)} alt={`现场照片 ${index + 1}`} />
                     </a>
                   ))}
                 </div>
               ) : <p className="mt-3 text-sm text-slate-500">尚未上传现场照片。</p>}
-              <div className="mt-3 rounded-xl border border-dashed border-slate-300 p-3">
+              <div className="mt-3 rounded-lg border border-dashed border-slate-300 p-3">
                 <input
                   ref={photoInput}
                   type="file"
@@ -415,31 +415,31 @@ export function MobileTaskPage() {
                   onChange={(event) => setSelectedPhoto(event.target.files?.[0] ?? null)}
                   className="block w-full text-sm text-slate-600 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold"
                 />
-                <button type="button" className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 text-sm font-semibold text-white disabled:opacity-40" onClick={() => void handleUpload()} disabled={!editing || !selectedPhoto || controlsDisabled}>
+                <button type="button" className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-indigo-600 text-sm font-semibold text-white shadow-sm disabled:opacity-40" onClick={() => void handleUpload()} disabled={!editing || !selectedPhoto || controlsDisabled}>
                   {busy === "photo" ? <LoaderCircle className="animate-spin" size={16} /> : <Upload size={16} />}上传图片
                 </button>
                 <p className="mt-2 text-xs text-slate-500">JPEG / PNG / WebP，单张不超过 10 MiB</p>
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <section className="cc-surface p-4">
               <h2 className="font-bold">现场记录</h2>
               <label className="mt-3 block text-sm font-semibold text-slate-700">猫咪状态
-                <textarea className="mt-2 min-h-24 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal disabled:bg-slate-100" maxLength={4000} value={catStatus} onChange={(event) => setCatStatus(event.target.value)} disabled={!editing || controlsDisabled} placeholder="如：精神良好、正常进食饮水" />
+                <textarea className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal disabled:bg-slate-100" maxLength={4000} value={catStatus} onChange={(event) => setCatStatus(event.target.value)} disabled={!editing || controlsDisabled} placeholder="如：精神良好、正常进食饮水" />
               </label>
               <label className="mt-3 block text-sm font-semibold text-slate-700">本次备注
-                <textarea className="mt-2 min-h-28 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal disabled:bg-slate-100" maxLength={4000} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={!editing || controlsDisabled} placeholder="记录喂养、清洁和客户沟通情况" />
+                <textarea className="mt-2 min-h-28 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal disabled:bg-slate-100" maxLength={4000} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={!editing || controlsDisabled} placeholder="记录喂养、清洁和客户沟通情况" />
               </label>
-              <button type="button" className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 text-sm font-semibold disabled:opacity-40" onClick={() => void handleSaveText()} disabled={!editing || !textDirty || controlsDisabled}>
+              <button type="button" className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold disabled:opacity-40" onClick={() => void handleSaveText()} disabled={!editing || !textDirty || controlsDisabled}>
                 {busy === "notes" ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}保存现场记录
               </button>
             </section>
 
             {editing ? (
-              <section className="rounded-2xl bg-slate-900 p-4 text-white">
+              <section className="rounded-xl bg-indigo-700 p-4 text-white shadow-sm">
                 <h2 className="font-bold">完成本次服务</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-300">{textDirty ? "现场记录尚未保存" : missingRequired.length ? `仍有 ${missingRequired.length} 项必做事项未完成` : "必做事项已完成，请最后核对现场记录"}</p>
-                <button type="button" className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-bold text-slate-900 disabled:opacity-40" onClick={() => void handleComplete()} disabled={missingRequired.length > 0 || textDirty || controlsDisabled}>
+                <p className="mt-1 text-sm leading-6 text-indigo-100">{textDirty ? "现场记录尚未保存" : missingRequired.length ? `仍有 ${missingRequired.length} 项必做事项未完成` : "必做事项已完成，请最后核对现场记录"}</p>
+                <button type="button" className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-white text-sm font-bold text-indigo-700 disabled:opacity-40" onClick={() => void handleComplete()} disabled={missingRequired.length > 0 || textDirty || controlsDisabled}>
                   {busy === "complete" ? <LoaderCircle className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}完成本次服务
                 </button>
               </section>

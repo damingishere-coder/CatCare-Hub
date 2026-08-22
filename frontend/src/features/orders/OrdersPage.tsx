@@ -211,16 +211,16 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
   );
 
   return (
-    <section className="mx-auto max-w-7xl" aria-labelledby="page-title">
+    <section aria-labelledby="page-title">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="mb-1 text-xs font-semibold tracking-wider text-slate-500 uppercase">P3 · 订单与任务生成</p>
-          <h2 id="page-title" className="text-xl font-semibold tracking-tight">订单管理</h2>
+          <p className="cc-eyebrow">订单与任务</p>
+          <h2 id="page-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">订单管理</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">录入服务订单，自动计算次数和费用，并生成每日任务。</p>
         </div>
         <button
           type="button"
-          className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="cc-button cc-button--primary"
           onClick={() => setFormMode("create")}
           disabled={!formOptions || formOptions.customers.length === 0}
         >
@@ -230,23 +230,23 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
       </div>
 
       {pageError ? (
-        <div className="mt-5 flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+        <div className="cc-alert cc-alert--danger mt-5" role="alert">
           <AlertCircle className="mt-0.5 shrink-0" size={17} />
           <span>{pageError}</span>
         </div>
       ) : null}
 
       {!listLoading && formOptions?.customers.length === 0 ? (
-        <p className="mt-5 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">请先在“客户档案”中新增客户和猫咪，再创建订单。</p>
+        <p className="cc-alert cc-alert--warning mt-5">请先在“客户档案”中新增客户和猫咪，再创建订单。</p>
       ) : null}
 
-      <div className="mt-6 grid min-h-[680px] overflow-hidden rounded-xl border border-slate-200 bg-white lg:grid-cols-[350px_minmax(0,1fr)]">
+      <div className="cc-surface mt-6 grid min-h-[680px] overflow-hidden p-0 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="border-b border-slate-200 lg:border-r lg:border-b-0" aria-label="订单列表">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <p className="text-sm font-semibold text-slate-900">全部订单</p>
             <span className="text-xs text-slate-500">{orders.length} 单</span>
           </div>
-          <div className="max-h-[760px] overflow-y-auto p-2">
+          <div className="cc-scrollbar max-h-[760px] overflow-y-auto p-2">
             {listLoading ? (
               <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={17} />正在加载订单…</div>
             ) : orders.length === 0 ? (
@@ -261,7 +261,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                   <li key={order.id}>
                     <button
                       type="button"
-                      className={`w-full rounded-lg px-3 py-3 text-left transition-colors ${selectedOrderId === order.id ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`}
+                      className={`w-full rounded-lg px-3 py-3 text-left transition-colors ${selectedOrderId === order.id ? "bg-indigo-600 text-white shadow-sm" : "hover:bg-slate-100"}`}
                       onClick={() => setSelectedOrderId(order.id)}
                       aria-pressed={selectedOrderId === order.id}
                     >
@@ -305,7 +305,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <select
-                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                    className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
                     value={orderDetail.order_status}
                     onChange={(event) => void handleStatusChange(event.target.value as OrderStatus)}
                     disabled={statusSaving}
@@ -313,7 +313,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                   >
                     {Object.entries(orderStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
-                  <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => setFormMode("edit")}>
+                  <button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={() => setFormMode("edit")}>
                     <Pencil size={15} />编辑订单
                   </button>
                 </div>
@@ -335,7 +335,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-md bg-slate-50 p-3"><p className="text-xs text-slate-500">每次费用</p><p className="mt-1 font-semibold">{currency(String(Number(orderDetail.base_price) + Number(orderDetail.extra_cat_fee) + Number(orderDetail.stairs_fee)))}</p><p className="mt-1 text-xs text-slate-500">基础 {currency(orderDetail.base_price)} + 猫咪 {currency(orderDetail.extra_cat_fee)} + 爬楼 {currency(orderDetail.stairs_fee)}</p></div>
                   <div className="rounded-md bg-slate-50 p-3"><p className="text-xs text-slate-500">其他费用</p><p className="mt-1 font-semibold">{currency(orderDetail.other_fee)}</p></div>
-                  <div className="rounded-md bg-slate-900 p-3 text-white"><p className="text-xs text-slate-300">应收</p><p className="mt-1 text-lg font-semibold">{currency(orderDetail.total_amount)}</p></div>
+                  <div className="rounded-lg bg-indigo-600 p-3 text-white"><p className="text-xs text-indigo-100">应收</p><p className="mt-1 text-lg font-semibold">{currency(orderDetail.total_amount)}</p></div>
                   <div className="rounded-md bg-amber-50 p-3"><p className="text-xs text-amber-700">待收 · {paymentStatusLabels[orderDetail.payment_status]}</p><p className="mt-1 text-lg font-semibold text-amber-900">{currency(orderDetail.due_amount)}</p></div>
                 </div>
               </section>

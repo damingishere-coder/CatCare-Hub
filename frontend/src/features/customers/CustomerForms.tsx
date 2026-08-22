@@ -4,7 +4,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import type { CatDetail, CatInput, CustomerDetail, CustomerInput } from "./types";
 
 const inputClass =
-  "mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm placeholder:text-slate-400";
+  "mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-400";
 const labelClass = "block text-sm font-medium text-slate-700";
 
 function optionalValue(formData: FormData, field: string): string | null {
@@ -37,13 +37,13 @@ function FormDialog({
 }: FormDialogProps) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/35 p-4 sm:p-8"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-[2px] sm:p-8"
       role="dialog"
       aria-modal="true"
       aria-labelledby="record-form-title"
     >
       <form
-        className="w-full max-w-3xl rounded-xl border border-slate-200 bg-white shadow-xl"
+        className="w-full max-w-3xl rounded-xl border border-slate-200 bg-white shadow-2xl"
         onSubmit={onSubmit}
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
@@ -55,7 +55,7 @@ function FormDialog({
           </div>
           <button
             type="button"
-            className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="cc-icon-button"
             onClick={onCancel}
             aria-label="关闭表单"
             disabled={saving}
@@ -64,9 +64,9 @@ function FormDialog({
           </button>
         </div>
 
-        <div className="max-h-[calc(100vh-13rem)] space-y-7 overflow-y-auto px-5 py-5 sm:px-6">
+        <div className="cc-scrollbar max-h-[calc(100vh-13rem)] space-y-7 overflow-y-auto px-5 py-5 sm:px-6">
           {error ? (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+            <p className="cc-alert cc-alert--danger" role="alert">
               {error}
             </p>
           ) : null}
@@ -76,7 +76,7 @@ function FormDialog({
         <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4 sm:px-6">
           <button
             type="button"
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="cc-button cc-button--secondary"
             onClick={onCancel}
             disabled={saving}
           >
@@ -84,7 +84,7 @@ function FormDialog({
           </button>
           <button
             type="submit"
-            className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="cc-button cc-button--primary"
             disabled={saving}
           >
             {saving ? <LoaderCircle className="animate-spin" size={16} /> : null}

@@ -12,7 +12,7 @@ import type {
 import { serviceItemOptions } from "./constants";
 
 const inputClass =
-  "mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm";
+  "mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950";
 const labelClass = "block text-sm font-medium text-slate-700";
 
 function localDateValue(date = new Date()): string {
@@ -157,12 +157,12 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/35 p-4 sm:p-8"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-[2px] sm:p-8"
       role="dialog"
       aria-modal="true"
       aria-labelledby="order-form-title"
     >
-      <form className="w-full max-w-4xl rounded-xl border border-slate-200 bg-white shadow-xl" onSubmit={handleSubmit}>
+      <form className="w-full max-w-4xl rounded-xl border border-slate-200 bg-white shadow-2xl" onSubmit={handleSubmit}>
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
           <div>
             <h2 id="order-form-title" className="text-lg font-semibold text-slate-950">
@@ -170,13 +170,13 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
             </h2>
             <p className="mt-1 text-sm text-slate-500">保存后系统会按日期和每日次数自动生成任务。</p>
           </div>
-          <button type="button" className="rounded-md p-2 text-slate-500 hover:bg-slate-100" onClick={onCancel} disabled={saving} aria-label="关闭订单表单">
+          <button type="button" className="cc-icon-button" onClick={onCancel} disabled={saving} aria-label="关闭订单表单">
             <X size={18} />
           </button>
         </div>
 
-        <div className="max-h-[calc(100vh-13rem)] overflow-y-auto px-5 py-5 sm:px-6">
-          {error ? <p className="mb-5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p> : null}
+        <div className="cc-scrollbar max-h-[calc(100vh-13rem)] overflow-y-auto px-5 py-5 sm:px-6">
+          {error ? <p className="cc-alert cc-alert--danger mb-5" role="alert">{error}</p> : null}
           {initial ? (
             <p className="mb-5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
               修改日期、每日次数、客户、猫咪或服务事项会重建尚未执行的任务；已有执行记录时系统会拒绝修改并保留历史。
@@ -310,8 +310,8 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
         </div>
 
         <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4 sm:px-6">
-          <button type="button" className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={onCancel} disabled={saving}>取消</button>
-          <button type="submit" className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60" disabled={saving || options.customers.length === 0}>
+          <button type="button" className="cc-button cc-button--secondary" onClick={onCancel} disabled={saving}>取消</button>
+          <button type="submit" className="cc-button cc-button--primary" disabled={saving || options.customers.length === 0}>
             {saving ? <LoaderCircle className="animate-spin" size={16} /> : null}
             {saving ? "保存中…" : initial ? "保存并同步任务" : "创建订单并生成任务"}
           </button>

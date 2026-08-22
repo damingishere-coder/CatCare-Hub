@@ -39,7 +39,7 @@ function durationLabel(seconds: number): string {
 
 function MetricCard({ label, route }: { label: string; route: PlanRoutePath }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+    <div className="rounded-lg bg-white px-3 py-2.5 shadow-sm ring-1 ring-slate-200/70">
       <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">{label}</p>
       <p className="mt-1 text-sm font-semibold text-slate-950">
         {distanceLabel(route.distance_meters)} · {durationLabel(route.duration_seconds)}
@@ -109,9 +109,9 @@ export function RouteWorkspace({
   );
 
   return (
-    <section className="min-h-[620px] border-b border-slate-200 bg-slate-50 xl:border-r xl:border-b-0" aria-labelledby="route-map-title">
+    <section className="min-h-[620px] border-b border-[#e4e8ef] bg-[#f7f8fb] xl:border-r xl:border-b-0" aria-labelledby="route-map-title">
       <div className="flex h-full flex-col gap-3 p-4">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="cc-surface p-4">
           <div className="flex flex-wrap items-center gap-2">
             <MapPinned size={18} />
             <h2 id="route-map-title" className="text-sm font-semibold text-slate-950">路线地图</h2>
@@ -129,7 +129,7 @@ export function RouteWorkspace({
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+              className="cc-button cc-button--primary"
               onClick={onPreview}
               disabled={!canPreview}
             >
@@ -137,15 +137,15 @@ export function RouteWorkspace({
               {workspace?.current_route ? "刷新路线" : "生成路线"}
             </button>
             {workspace?.recommended_route ? (
-              <div className="inline-flex rounded-md border border-slate-300 bg-white p-0.5" aria-label="路线视图">
-                <button type="button" className={`rounded px-2.5 py-1.5 text-xs ${routeView === "current" ? "bg-slate-900 text-white" : "text-slate-600"}`} onClick={() => selectRouteView("current")}>当前</button>
-                <button type="button" className={`rounded px-2.5 py-1.5 text-xs ${routeView === "recommended" ? "bg-slate-900 text-white" : "text-slate-600"}`} onClick={() => selectRouteView("recommended")}>推荐</button>
+              <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5" aria-label="路线视图">
+                <button type="button" className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${routeView === "current" ? "bg-indigo-600 text-white" : "text-slate-600"}`} onClick={() => selectRouteView("current")}>当前</button>
+                <button type="button" className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${routeView === "recommended" ? "bg-indigo-600 text-white" : "text-slate-600"}`} onClick={() => selectRouteView("recommended")}>推荐</button>
               </div>
             ) : null}
             {workspace?.recommended_route ? (
               <button
                 type="button"
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-900 bg-white px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-40"
+                className="cc-button cc-button--secondary border-indigo-200 text-indigo-700"
                 onClick={onAdopt}
                 disabled={!workspace.can_adopt_recommendation || dirty || adopting || previewing}
               >
@@ -163,17 +163,17 @@ export function RouteWorkspace({
         </div>
 
         {error ? (
-          <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700" role="alert">
+          <div className="cc-alert cc-alert--danger text-xs" role="alert">
             <AlertTriangle className="mt-0.5 shrink-0" size={15} />{error}
           </div>
         ) : null}
 
         {loading ? (
-          <div className="flex min-h-[390px] items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
+          <div className="cc-surface flex min-h-[390px] items-center justify-center gap-2 text-sm text-slate-500">
             <LoaderCircle className="animate-spin" size={17} />正在加载路线数据…
           </div>
         ) : activeTaskCount === 0 ? (
-          <div className="flex min-h-[390px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-6 text-center text-sm text-slate-500">当天没有需要规划路线的任务</div>
+          <div className="cc-empty min-h-[390px] rounded-lg border border-dashed border-slate-300 bg-white">当天没有需要规划路线的任务</div>
         ) : (
           <RouteMap
             providerName={workspace?.provider.name ?? "disabled"}

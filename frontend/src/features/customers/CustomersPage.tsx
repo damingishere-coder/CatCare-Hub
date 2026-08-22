@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
+import { PageHeader } from "../../components/ui/PageHeader";
 import {
   createCat,
   createCustomer,
@@ -59,7 +60,7 @@ function CatCard({ cat, changingStatus, onEdit, onToggleStatus }: CatCardProps) 
     <article className={`rounded-lg border p-4 ${cat.is_active ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50 opacity-75"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
             <Cat size={20} aria-hidden="true" />
           </div>
           <div className="min-w-0">
@@ -82,7 +83,7 @@ function CatCard({ cat, changingStatus, onEdit, onToggleStatus }: CatCardProps) 
         <div className="flex gap-2">
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="cc-button cc-button--secondary min-h-9 px-3 text-xs"
             onClick={onEdit}
             aria-label={`编辑猫咪 ${cat.name}`}
           >
@@ -91,7 +92,7 @@ function CatCard({ cat, changingStatus, onEdit, onToggleStatus }: CatCardProps) 
           </button>
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            className="cc-button cc-button--secondary min-h-9 px-3 text-xs"
             onClick={onToggleStatus}
             disabled={changingStatus}
           >
@@ -282,34 +283,33 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
   }
 
   return (
-    <section className="mx-auto max-w-7xl" aria-labelledby="page-title">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="mb-1 text-xs font-semibold tracking-wider text-slate-500 uppercase">P2 · 客户与猫咪资料</p>
-          <h1 id="page-title" className="text-2xl font-semibold tracking-tight">客户档案</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-600">统一维护客户地址、门禁、钥匙和多只猫咪的服务注意事项。</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <a href="/admin/intake" className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"><ClipboardPenLine size={17} />客户填写</a>
+    <section className="cc-page" aria-labelledby="page-title">
+      <PageHeader
+        eyebrow="客户与猫咪"
+        title="客户档案"
+        headingId="page-title"
+        description="集中维护客户地址、入户信息与每只猫咪的服务注意事项。"
+        actions={<>
+          <a href="/admin/intake" className="cc-button cc-button--secondary"><ClipboardPenLine size={17} />客户填写</a>
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
+            className="cc-button cc-button--primary"
             onClick={() => setCustomerFormMode("create")}
           >
             <Plus size={17} />
             新增客户
           </button>
-        </div>
-      </div>
+        </>}
+      />
 
       {pageError ? (
-        <div className="mt-5 flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+        <div className="cc-alert cc-alert--danger mt-5" role="alert">
           <AlertCircle className="mt-0.5 shrink-0" size={17} />
           <span>{pageError}</span>
         </div>
       ) : null}
 
-      <div className="mt-6 grid min-h-[640px] overflow-hidden rounded-xl border border-slate-200 bg-white lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="cc-surface mt-6 grid min-h-[640px] overflow-hidden p-0 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="border-b border-slate-200 lg:border-r lg:border-b-0" aria-label="客户列表">
           <form className="border-b border-slate-200 p-4" onSubmit={handleSearch} role="search">
             <label className="sr-only" htmlFor="customer-search">搜索客户</label>
@@ -319,14 +319,14 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                 <input
                   id="customer-search"
                   type="search"
-                  className="w-full rounded-md border border-slate-300 py-2 pr-3 pl-9 text-sm"
+                  className="min-h-10 w-full rounded-lg border border-slate-300 py-2 pr-3 pl-9 text-sm"
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
                   placeholder="姓名、手机号、小区或猫咪"
                   maxLength={100}
                 />
               </div>
-              <button type="submit" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              <button type="submit" className="cc-button cc-button--secondary min-h-10 px-3">
                 搜索
               </button>
             </div>
@@ -345,7 +345,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
             ) : null}
           </form>
 
-          <div className="max-h-[720px] overflow-y-auto p-2">
+          <div className="cc-scrollbar max-h-[720px] overflow-y-auto p-2">
             {listLoading ? (
               <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
                 <LoaderCircle className="animate-spin" size={17} />
@@ -363,7 +363,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                   <li key={customer.id}>
                     <button
                       type="button"
-                      className={`w-full rounded-lg px-3 py-3 text-left transition-colors ${selectedCustomerId === customer.id ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`}
+                      className={`w-full rounded-lg px-3 py-3 text-left transition-colors ${selectedCustomerId === customer.id ? "bg-indigo-600 text-white shadow-sm" : "hover:bg-slate-100"}`}
                       onClick={() => setSelectedCustomerId(customer.id)}
                       aria-pressed={selectedCustomerId === customer.id}
                     >
@@ -413,7 +413,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="cc-button cc-button--secondary min-h-10 px-3"
                     onClick={() => setCustomerFormMode("edit")}
                   >
                     <Pencil size={15} />
@@ -421,7 +421,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                   </button>
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                    className="cc-button cc-button--primary min-h-10 px-3"
                     onClick={() => setCatFormValue("create")}
                   >
                     <Plus size={15} />

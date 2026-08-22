@@ -27,23 +27,23 @@ const navigation: readonly NavigationItem[] = [
 
 export function AdminLayout() {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950 lg:grid lg:grid-cols-[240px_1fr]">
-      <aside className="border-b border-slate-200 bg-white lg:min-h-screen lg:border-r lg:border-b-0">
-        <div className="flex h-16 items-center gap-3 border-b border-slate-200 px-5">
+    <div className="min-h-screen bg-[#f3f5f8] text-[#182033] lg:grid lg:grid-cols-[232px_minmax(0,1fr)]">
+      <aside className="border-b border-white/10 bg-[#171d2a] text-white lg:sticky lg:top-0 lg:h-dvh lg:border-r lg:border-b-0">
+        <div className="flex h-[72px] items-center gap-3 border-b border-white/10 px-5">
           <div
-            className="flex size-9 items-center justify-center rounded-lg bg-slate-900 text-white"
+            className="flex size-9 items-center justify-center rounded-lg bg-indigo-500 text-white shadow-[0_8px_20px_rgba(79,70,229,0.25)]"
             aria-hidden="true"
           >
             <PawPrint size={19} />
           </div>
           <div>
-            <p className="font-semibold tracking-tight">CatCare-Hub</p>
-            <p className="text-xs text-slate-500">喂猫业务管理</p>
+            <p className="font-semibold tracking-[-0.02em]">CatCare-Hub</p>
+            <p className="text-[11px] text-slate-400">喂猫业务管理</p>
           </div>
         </div>
 
         <nav
-          className="flex gap-1 overflow-x-auto p-3 lg:block lg:space-y-1"
+          className="cc-scrollbar flex gap-1.5 overflow-x-auto p-3 lg:block lg:space-y-1.5 lg:p-4"
           aria-label="后台主导航"
         >
           {navigation.map(({ label, to, icon: Icon, end }) => (
@@ -53,26 +53,29 @@ export function AdminLayout() {
               end={end}
               className={({ isActive }) =>
                 [
-                  "flex shrink-0 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                  "group flex min-h-10 shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
                   isActive
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
+                    ? "bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+                    : "text-slate-400 hover:bg-white/7 hover:text-white",
                 ].join(" ")
               }
             >
-              <Icon size={18} aria-hidden="true" />
+              <Icon className="transition-transform group-hover:scale-105" size={17} aria-hidden="true" />
               {label}
             </NavLink>
           ))}
         </nav>
       </aside>
 
-      <main className="min-w-0">
-        <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 lg:px-8">
-          <p className="text-sm text-slate-500">本地管理后台</p>
+      <main className="min-w-0 bg-[#f3f5f8]">
+        <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[#e4e8ef]/80 bg-white/88 px-5 backdrop-blur-xl lg:px-8">
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+            本地安全工作区
+          </div>
           <SessionControls />
         </header>
-        <div className="p-5 lg:p-8">
+        <div className="p-5 sm:p-6 lg:p-8 xl:p-9">
           <Outlet />
         </div>
       </main>

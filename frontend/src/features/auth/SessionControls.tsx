@@ -21,5 +21,5 @@ export function SessionControls({ compact = false }: { compact?: boolean }) {
     }
   }
 
-  return <button type="button" className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-50" onClick={() => void handleLogout()} disabled={busy} aria-label="退出登录"><LogOut size={14} />{compact ? "退出" : "退出登录"}</button>;
+  return <button type="button" className={`cc-button cc-button--secondary px-3 text-xs ${compact ? "cc-touch" : ""}`} onClick={() => void handleLogout()} disabled={busy} aria-label="退出登录"><LogOut size={14} />{compact ? "退出" : "退出登录"}</button>;
 }

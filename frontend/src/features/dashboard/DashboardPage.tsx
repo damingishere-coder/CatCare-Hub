@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { Link } from "react-router-dom";
 
+import { PageHeader } from "../../components/ui/PageHeader";
 import type { TaskStatus } from "../orders/types";
 import { getDashboard, markTaskPhotosSent } from "./api";
 import type {
@@ -137,28 +138,25 @@ export function DashboardPage() {
   }
 
   return (
-    <section className="mx-auto max-w-7xl" aria-labelledby="dashboard-title">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="mb-1 text-xs font-semibold tracking-wider text-slate-500 uppercase">P7 · 今日工作台</p>
-          <h1 id="dashboard-title" className="text-2xl font-semibold tracking-tight">工作台</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            {dashboard ? businessDateLabel(dashboard.business_date) : "快速掌握今天的任务、提醒和收款概况。"}
-          </p>
-        </div>
-        <button type="button" className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50" onClick={() => void loadDashboard()} disabled={loading}>
+    <section className="cc-page" aria-labelledby="dashboard-title">
+      <PageHeader
+        eyebrow="今日经营概览"
+        title="工作台"
+        headingId="dashboard-title"
+        description={dashboard ? businessDateLabel(dashboard.business_date) : "快速掌握今天的任务、提醒和收款概况。"}
+        actions={<button type="button" className="cc-button cc-button--secondary" onClick={() => void loadDashboard()} disabled={loading}>
           {loading ? <LoaderCircle className="animate-spin" size={16} /> : <RefreshCw size={16} />}刷新
-        </button>
-      </div>
+        </button>}
+      />
 
       {error ? (
-        <div className="mt-5 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+        <div className="cc-alert cc-alert--danger mt-5" role="alert">
           <AlertCircle className="mt-0.5 shrink-0" size={16} />{error}
         </div>
       ) : null}
 
       {loading && !dashboard ? (
-        <div className="mt-8 flex min-h-80 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-slate-500">
+        <div className="cc-surface mt-8 flex min-h-80 items-center justify-center text-sm text-slate-500">
           <LoaderCircle className="mr-2 animate-spin" size={18} />正在汇总今日数据…
         </div>
       ) : dashboard ? (
@@ -170,26 +168,26 @@ export function DashboardPage() {
               { label: "待收款", value: `${dashboard.metrics.pending_payment_count}`, unit: "单", icon: WalletCards },
               { label: "本月收入", value: currency(dashboard.metrics.month_income), unit: "", icon: CircleDollarSign },
             ].map(({ label, value, unit, icon: Icon }) => (
-              <article key={label} className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center justify-between text-slate-500"><p className="text-sm font-medium">{label}</p><Icon size={18} /></div>
-                <p className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">{value}{unit ? <span className="ml-1 text-sm font-medium text-slate-500">{unit}</span> : null}</p>
+              <article key={label} className="cc-metric p-4 sm:p-5">
+                <div className="flex items-center justify-between text-slate-500"><p className="text-sm font-medium">{label}</p><span className="flex size-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"><Icon size={17} /></span></div>
+                <p className="mt-5 text-2xl font-bold tracking-[-0.035em] text-slate-950">{value}{unit ? <span className="ml-1 text-sm font-medium text-slate-500">{unit}</span> : null}</p>
               </article>
             ))}
           </div>
 
-          <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4" aria-labelledby="quick-actions-title">
+          <section className="cc-surface mt-5 p-4 sm:p-5" aria-labelledby="quick-actions-title">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h2 id="quick-actions-title" className="text-sm font-semibold text-slate-950">快捷入口</h2><p className="mt-1 text-xs text-slate-500">常用录入操作直接开始</p></div>
               <div className="flex flex-wrap gap-2">
-                <Link className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white" to="/admin/plans?view=orders&action=create"><Plus size={15} />新增订单</Link>
-                <Link className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700" to="/admin/customers?action=create"><UserPlus size={15} />新增客户</Link>
-                <Link className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700" to="/fill"><Rocket size={15} />客户填写入口 <span className="text-xs text-slate-400">P10</span></Link>
+                <Link className="cc-button cc-button--primary" to="/admin/plans?view=orders&action=create"><Plus size={15} />新增订单</Link>
+                <Link className="cc-button cc-button--secondary" to="/admin/customers?action=create"><UserPlus size={15} />新增客户</Link>
+                <Link className="cc-button cc-button--secondary" to="/fill"><Rocket size={15} />客户填写入口</Link>
               </div>
             </div>
           </section>
 
           <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white" aria-labelledby="today-schedule-title">
+            <section className="cc-surface overflow-hidden" aria-labelledby="today-schedule-title">
               <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                 <div><h2 id="today-schedule-title" className="font-semibold text-slate-950">今日安排</h2><p className="mt-1 text-xs text-slate-500">按已保存的路线顺序，共 {dashboard.schedule.length} 项任务</p></div>
                 <Cat size={19} className="text-slate-400" />
@@ -197,7 +195,7 @@ export function DashboardPage() {
               {dashboard.schedule.length ? (
                 <div className="divide-y divide-slate-100">
                   {dashboard.schedule.map((task, index) => (
-                    <Link key={task.id} to={`/admin/tasks/${task.id}`} className="grid gap-2 px-5 py-4 hover:bg-slate-50 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
+                    <Link key={task.id} to={`/admin/tasks/${task.id}`} className="grid gap-2 px-5 py-4 transition-colors hover:bg-indigo-50/40 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
                       <div><p className="text-sm font-semibold text-slate-950">{task.planned_time?.slice(0, 5) || "待定"}</p><p className="mt-1 text-xs text-slate-400">第 {index + 1} 站</p></div>
                       <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{task.customer_name}</p><p className="mt-1 truncate text-xs text-slate-500">{task.community || "未填写小区"} · {task.cat_count} 只猫</p></div>
                       <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-medium ${statusStyle(task.status)}`}>{taskStatusLabels[task.status]}</span>
@@ -207,7 +205,7 @@ export function DashboardPage() {
               ) : <p className="px-5 py-12 text-center text-sm text-slate-500">今天没有需要展示的任务。</p>}
             </section>
 
-            <section className="rounded-xl border border-slate-200 bg-white" aria-labelledby="today-reminders-title">
+            <section className="cc-surface" aria-labelledby="today-reminders-title">
               <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                 <div><h2 id="today-reminders-title" className="font-semibold text-slate-950">今日提醒</h2><p className="mt-1 text-xs text-slate-500">{dashboard.reminders.length} 条需要留意</p></div>
                 <Bell size={19} className="text-slate-400" />

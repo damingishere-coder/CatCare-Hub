@@ -97,7 +97,7 @@ function CoordinateCanvas({
           <button
             key={marker.task_id}
             type="button"
-            className={`absolute flex size-8 -translate-1/2 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white shadow-md ${selectedTaskId === marker.task_id ? "bg-amber-600 ring-2 ring-amber-300" : "bg-slate-900"}`}
+            className={`absolute flex size-8 -translate-1/2 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white shadow-md ${selectedTaskId === marker.task_id ? "bg-amber-600 ring-2 ring-amber-300" : "bg-indigo-600"}`}
             style={{
               left: `${projected.left}%`,
               top: `${projected.top}%`,
@@ -164,7 +164,7 @@ export function RouteMap(props: RouteMapProps) {
   }, [canUseAmap, modelKey, props.markers, props.route, props.selectedTaskId, props.start]);
 
   return (
-    <div className="relative h-[390px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+    <div className="relative h-[390px] overflow-hidden rounded-[10px] border border-slate-200/80 bg-slate-100 shadow-inner">
       {canUseAmap ? <div ref={container} className="size-full" aria-label="高德路线地图" /> : (
         <CoordinateCanvas
           start={props.start}

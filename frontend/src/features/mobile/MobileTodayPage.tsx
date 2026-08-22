@@ -84,19 +84,19 @@ export function MobileTodayPage() {
   }, []);
 
   return (
-    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-slate-100 text-slate-950">
-      <div className="mx-auto max-w-xl px-4 py-6 sm:px-5">
+    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-[#f3f5f8] text-slate-950">
+      <div className="mx-auto max-w-xl px-4 py-6 sm:px-5 sm:py-8">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold tracking-wider text-slate-500 uppercase">移动执行端 · 可安装</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight">今天的喂猫任务</h1>
+            <p className="text-xs font-semibold tracking-[0.14em] text-indigo-600 uppercase">移动执行端</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">今天的喂猫任务</h1>
             <p className="mt-2 text-sm text-slate-600">
               {today ? `${displayBusinessDate(today.business_date)} · 上海业务时间` : "按上海业务时间读取"}
             </p>
           </div>
           <div className="flex items-center gap-2"><SessionControls compact /><button
             type="button"
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 disabled:opacity-50"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm disabled:opacity-50"
             aria-label="刷新今日任务"
             onClick={() => void loadToday()}
             disabled={loading}
@@ -105,7 +105,7 @@ export function MobileTodayPage() {
           </button></div>
         </header>
 
-        <div className="mt-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900">
+        <div className="mt-5 flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-3 text-xs leading-5 text-slate-600 shadow-sm">
           <ShieldAlert className="mt-0.5 shrink-0" size={16} />
           已启用执行端登录与权限隔离；仍仅建议在本机或已配置的可信私网中使用。
         </div>
@@ -113,20 +113,20 @@ export function MobileTodayPage() {
         <PwaInstallPrompt />
 
         {error ? (
-          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+          <div className="cc-alert cc-alert--danger mt-5" role="alert">
             <span className="flex items-start gap-2"><AlertTriangle className="mt-0.5 shrink-0" size={16} />{error}</span>
           </div>
         ) : null}
 
         {loading && !today ? (
-          <div className="mt-6 flex min-h-52 items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+          <div className="cc-surface mt-6 flex min-h-52 items-center justify-center text-sm text-slate-500">
             <LoaderCircle className="mr-2 animate-spin" size={18} />正在加载今天的任务…
           </div>
         ) : today ? (
           <>
             <section className="mt-6 grid grid-cols-3 gap-2" aria-label="今日任务概览">
-              <div className="rounded-xl bg-slate-900 p-3 text-white">
-                <p className="text-xs text-slate-300">全部</p>
+              <div className="rounded-xl bg-indigo-600 p-3 text-white shadow-sm">
+                <p className="text-xs text-indigo-100">全部</p>
                 <p className="mt-1 text-2xl font-bold">{today.task_count}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -149,9 +149,9 @@ export function MobileTodayPage() {
               {today.tasks.length ? (
                 <ol className="mt-4 space-y-3">
                   {today.tasks.map((task) => (
-                    <li key={task.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <li key={task.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                       <div className="flex items-start gap-3">
-                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
                           {task.sequence}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -174,7 +174,7 @@ export function MobileTodayPage() {
                       <div className="mt-4 grid grid-cols-2 gap-2">
                         {task.navigation_url ? (
                           <a
-                            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 text-sm font-semibold text-slate-800"
+                            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800"
                             href={task.navigation_url}
                             target="_blank"
                             rel="noreferrer"
@@ -182,12 +182,12 @@ export function MobileTodayPage() {
                             <Navigation size={16} />一键导航
                           </a>
                         ) : (
-                          <span className="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-100 px-2 text-center text-xs leading-4 text-slate-500">
+                          <span className="inline-flex min-h-11 items-center justify-center rounded-lg bg-slate-100 px-2 text-center text-xs leading-4 text-slate-500">
                             {navigationMessage(task.navigation_state)}
                           </span>
                         )}
                         <Link
-                          className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white"
+                          className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
                           to={`/mobile/tasks/${task.id}`}
                         >
                           查看任务<ChevronRight size={16} />
@@ -197,7 +197,7 @@ export function MobileTodayPage() {
                   ))}
                 </ol>
               ) : (
-                <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
+                <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
                   <CheckCircle2 className="mx-auto text-emerald-600" size={28} />
                   <p className="mt-3 font-semibold">今天没有待展示的任务</p>
                   <p className="mt-1 text-sm text-slate-500">新增或确认订单后，任务会按计划顺序出现在这里。</p>

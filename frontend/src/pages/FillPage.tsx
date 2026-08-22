@@ -6,7 +6,7 @@ import { getPublicIntake, savePublicDraft, submitPublicIntake } from "../feature
 import { editableDraft, emptyCat, serviceItemOptions } from "../features/intake/constants";
 import type { IntakeCatDraft, IntakeCustomerDraft, IntakeDraftPayload, PublicIntakeState, TaskItemType } from "../features/intake/types";
 
-const inputClass = "mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-400";
+const inputClass = "mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-400";
 const textareaClass = `${inputClass} min-h-24 resize-y leading-6`;
 
 function valueOf(value: string | null): string {
@@ -169,36 +169,36 @@ export function FillPage() {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-slate-50 px-4 py-7 text-slate-950 sm:px-6 sm:py-10">
+    <main className="min-h-screen overflow-x-hidden bg-[#f3f5f8] px-4 py-7 text-slate-950 sm:px-6 sm:py-10">
       <section className="mx-auto max-w-3xl" aria-labelledby="fill-title">
-        <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-          <ClipboardPenLine className="text-slate-700" aria-hidden="true" />
-          <p className="mt-4 text-xs font-semibold tracking-wider text-slate-500 uppercase">CatCare-Hub · 客户填写</p>
-          <h1 id="fill-title" className="mt-1 text-2xl font-semibold">上门喂猫服务资料</h1>
+        <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <span className="flex size-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"><ClipboardPenLine aria-hidden="true" size={20} /></span>
+          <p className="mt-5 text-xs font-semibold tracking-[0.14em] text-indigo-600 uppercase">CatCare-Hub · 客户填写</p>
+          <h1 id="fill-title" className="mt-1 text-2xl font-semibold tracking-tight">上门喂猫服务资料</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">请填写本次服务所需资料。提交后由后台人工审核，不会自动生成或确认正式订单。</p>
           {expiresAt ? <p className="mt-2 text-xs text-slate-500">链接有效期至：{new Date(expiresAt).toLocaleString("zh-CN")}</p> : null}
         </header>
 
         {loading ? (
-          <div className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-16 text-sm text-slate-500">
+          <div className="cc-surface mt-5 flex items-center justify-center gap-2 py-16 text-sm text-slate-500">
             <LoaderCircle className="animate-spin" size={18} />正在读取填写链接…
           </div>
         ) : error && !draft ? (
-          <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-5 text-sm leading-6 text-red-700" role="alert">
+          <div className="cc-alert cc-alert--danger mt-5 p-5" role="alert">
             <AlertCircle className="mt-0.5 shrink-0" size={18} /><span>{error}</span>
           </div>
         ) : state && state !== "editable" ? (
-          <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center">
+          <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center shadow-sm">
             <CheckCircle2 className="mx-auto text-emerald-700" size={36} />
             <h2 className="mt-4 text-lg font-semibold text-emerald-950">资料已收到</h2>
             <p className="mt-2 text-sm leading-6 text-emerald-800">{statusMessage(state)}</p>
           </div>
         ) : draft ? (
           <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
-            {error ? <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert"><AlertCircle className="mt-0.5 shrink-0" size={17} /><span>{error}</span></div> : null}
-            {message ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800" role="status">{message}</div> : null}
+            {error ? <div className="cc-alert cc-alert--danger" role="alert"><AlertCircle className="mt-0.5 shrink-0" size={17} /><span>{error}</span></div> : null}
+            {message ? <div className="cc-alert border border-emerald-200 bg-emerald-50 text-emerald-800" role="status"><CheckCircle2 className="mt-0.5 shrink-0" size={17} />{message}</div> : null}
 
-            <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="contact-title">
+            <section className="cc-surface p-5 sm:p-6" aria-labelledby="contact-title">
               <h2 id="contact-title" className="text-lg font-semibold">1. 联系与地址</h2>
               <p className="mt-1 text-xs leading-5 text-slate-500">带 * 为提交必填；手机号和微信昵称至少填写一项。</p>
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -218,14 +218,14 @@ export function FillPage() {
               </div>
             </section>
 
-            <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="cats-title">
+            <section className="cc-surface p-5 sm:p-6" aria-labelledby="cats-title">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div><h2 id="cats-title" className="text-lg font-semibold">2. 猫咪资料</h2><p className="mt-1 text-xs text-slate-500">至少填写一只，最多 20 只。</p></div>
-                <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50" onClick={() => setDraft({ ...draft, cats: [...draft.cats, emptyCat()] })}><Plus size={16} />添加猫咪</button>
+                <button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={() => setDraft({ ...draft, cats: [...draft.cats, emptyCat()] })}><Plus size={16} />添加猫咪</button>
               </div>
               <div className="mt-5 space-y-4">
                 {draft.cats.map((cat, index) => (
-                  <article key={index} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5" aria-label={`猫咪 ${index + 1}`}>
+                  <article key={index} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 sm:p-5" aria-label={`猫咪 ${index + 1}`}>
                     <div className="flex items-center justify-between gap-3"><h3 className="flex items-center gap-2 font-semibold"><Cat size={17} />猫咪 {index + 1}</h3>{draft.cats.length > 1 ? <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-red-700" onClick={() => setDraft({ ...draft, cats: draft.cats.filter((_, catIndex) => catIndex !== index) })}><Trash2 size={14} />移除</button> : null}</div>
                     <div className="mt-4 grid gap-4 sm:grid-cols-2">
                       <Field label="名字" required maxLength={100} value={cat.name} onChange={(value) => updateCat(index, { name: value })} />
@@ -246,7 +246,7 @@ export function FillPage() {
               </div>
             </section>
 
-            <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="service-title">
+            <section className="cc-surface p-5 sm:p-6" aria-labelledby="service-title">
               <h2 id="service-title" className="text-lg font-semibold">3. 服务计划</h2>
               <div className="mt-5 grid gap-4 sm:grid-cols-3">
                 <Field label="开始日期" required type="date" value={draft.service.start_date} onChange={(value) => setDraft({ ...draft, service: { ...draft.service, start_date: value } })} />
@@ -257,12 +257,12 @@ export function FillPage() {
               <div className="mt-5"><TextAreaField label="本次服务补充备注" maxLength={4000} value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} /></div>
             </section>
 
-            <section className="rounded-xl border border-amber-200 bg-amber-50 p-5">
-              <h2 className="font-semibold text-amber-950">4. 确认提交</h2>
-              <p className="mt-2 text-sm leading-6 text-amber-900">提交后不能继续修改；后台仍会人工核对资料，订单不会自动确认。若还没填完，可以先保存草稿。</p>
+            <section className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-5">
+              <h2 className="font-semibold text-indigo-950">4. 确认提交</h2>
+              <p className="mt-2 text-sm leading-6 text-indigo-900">提交后不能继续修改；后台仍会人工核对资料，订单不会自动确认。若还没填完，可以先保存草稿。</p>
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium disabled:opacity-60" onClick={() => void handleSave()} disabled={action !== null}>{action === "save" ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}保存草稿</button>
-                <button type="submit" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60" disabled={action !== null}>{action === "submit" ? <LoaderCircle className="animate-spin" size={16} /> : <Send size={16} />}提交资料</button>
+                <button type="button" className="cc-button cc-button--secondary min-h-11" onClick={() => void handleSave()} disabled={action !== null}>{action === "save" ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}保存草稿</button>
+                <button type="submit" className="cc-button cc-button--primary min-h-11" disabled={action !== null}>{action === "submit" ? <LoaderCircle className="animate-spin" size={16} /> : <Send size={16} />}提交资料</button>
               </div>
             </section>
           </form>
