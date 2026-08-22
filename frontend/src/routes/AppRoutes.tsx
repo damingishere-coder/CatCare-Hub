@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 
 import { AdminLayout } from "../layouts/AdminLayout";
 import { CustomersPage } from "../features/customers/CustomersPage";
+import { AdminIntakePage } from "../features/intake/AdminIntakePage";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
 import { PaymentsPage } from "../features/payments/PaymentsPage";
 import { MobileTaskPage } from "../features/mobile/MobileTaskPage";
@@ -39,6 +40,7 @@ export function AppRoutes() {
         <Route path="tasks/:id" element={<TaskExecutionPage />} />
         <Route path="orders" element={<Navigate to="/admin/plans?view=orders" replace />} />
         <Route path="customers" element={<CustomersRoute />} />
+        <Route path="intake" element={<AdminIntakePage />} />
         <Route path="payments" element={<PaymentsRoute />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

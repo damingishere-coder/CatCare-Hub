@@ -17,6 +17,7 @@ from app.schemas.customer import (
     CustomerSummary,
     CustomerUpdate,
 )
+from app.services.customers import build_customer
 
 
 router = APIRouter(prefix="/api/admin/customers", tags=["admin-customers"])
@@ -118,14 +119,7 @@ def search_customers(
 
 @router.post("", response_model=CustomerDetail, status_code=status.HTTP_201_CREATED)
 def create_customer(payload: CustomerCreate, session: DatabaseSession) -> CustomerDetail:
-    values = payload.model_dump()
-    has_geocode_address = any(
-        values.get(field) for field in ("community", "address", "building")
-    )
-    customer = Customer(
-        **values,
-        geocode_status="pending" if has_geocode_address else "missing",
-    )
+    customer = build_customer(payload)
     session.add(customer)
     session.commit()
     return _customer_detail(_load_customer(session, customer.id))

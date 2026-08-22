@@ -43,3 +43,30 @@ def test_migration_creates_and_reverses_complete_schema(
 
 def test_migration_matches_sqlalchemy_metadata(migrated_database_url: str) -> None:
     command.check(alembic_config(migrated_database_url))
+
+
+def test_intake_conversion_migration_adds_a_single_submission_contract(
+    migrated_database_url: str,
+) -> None:
+    engine = build_engine(migrated_database_url)
+    try:
+        inspector = inspect(engine)
+        columns = {
+            column["name"]
+            for column in inspector.get_columns("customer_form_submissions")
+        }
+        assert {
+            "reviewed_at",
+            "converted_at",
+            "converted_customer_id",
+            "converted_order_id",
+        } <= columns
+        unique_constraints = inspector.get_unique_constraints(
+            "customer_form_submissions"
+        )
+        assert any(
+            constraint["column_names"] == ["token_id"]
+            for constraint in unique_constraints
+        )
+    finally:
+        engine.dispose()

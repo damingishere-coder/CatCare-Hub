@@ -27,6 +27,7 @@ from app.services.orders import (
     DEFAULT_BASE_PRICE,
     EXTRA_CAT_UNIT_PRICE,
     STAIRS_UNIT_PRICE,
+    build_order,
     calculate_order_pricing,
     due_amount,
     generate_order_tasks,
@@ -215,25 +216,7 @@ def create_order(payload: OrderWrite, session: DatabaseSession) -> OrderDetail:
         customer_id=payload.customer_id,
         cat_ids=payload.cat_ids,
     )
-    pricing = _pricing(payload)
-    order = Order(
-        customer_id=payload.customer_id,
-        start_date=payload.start_date,
-        end_date=payload.end_date,
-        visits_per_day=payload.visits_per_day,
-        service_items=[item.value for item in payload.service_items],
-        base_price=pricing.base_price,
-        extra_cat_fee=pricing.extra_cat_fee,
-        stairs_fee=pricing.stairs_fee,
-        other_fee=pricing.other_fee,
-        total_amount=pricing.total_amount,
-        paid_amount=0,
-        payment_status=OrderPaymentStatus.UNPAID,
-        order_status=payload.order_status,
-        notes=payload.notes,
-    )
-    order.cat_links.extend(OrderCat(cat=cat) for cat in cats)
-    generate_order_tasks(order)
+    order = build_order(payload, cats=cats)
     session.add(order)
     session.commit()
     return _order_detail(_load_order(session, order.id))

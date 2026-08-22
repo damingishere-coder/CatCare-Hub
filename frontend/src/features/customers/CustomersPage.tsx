@@ -1,6 +1,7 @@
 import {
   AlertCircle,
   Cat,
+  ClipboardPenLine,
   KeyRound,
   LoaderCircle,
   LockKeyhole,
@@ -288,14 +289,17 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
           <h1 id="page-title" className="text-2xl font-semibold tracking-tight">客户档案</h1>
           <p className="mt-2 text-sm leading-6 text-slate-600">统一维护客户地址、门禁、钥匙和多只猫咪的服务注意事项。</p>
         </div>
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
-          onClick={() => setCustomerFormMode("create")}
-        >
-          <Plus size={17} />
-          新增客户
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <a href="/admin/intake" className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"><ClipboardPenLine size={17} />客户填写</a>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
+            onClick={() => setCustomerFormMode("create")}
+          >
+            <Plus size={17} />
+            新增客户
+          </button>
+        </div>
       </div>
 
       {pageError ? (

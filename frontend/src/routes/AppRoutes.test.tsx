@@ -23,6 +23,10 @@ vi.mock("../features/mobile/MobileTaskPage", () => ({
   MobileTaskPage: () => <h1>单次喂猫任务</h1>,
 }));
 
+vi.mock("../features/intake/AdminIntakePage", () => ({
+  AdminIntakePage: () => <h1>客户填写</h1>,
+}));
+
 function renderRoute(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -58,6 +62,7 @@ describe("P0 application routes", () => {
     ["/admin/tasks/7", "单次服务执行"],
     ["/admin/orders", "订单计划"],
     ["/admin/customers", "客户档案"],
+    ["/admin/intake", "客户填写"],
     ["/admin/payments", "收款记录"],
     ["/admin/settings", "设置"],
   ])("renders admin route %s", (path, heading) => {
@@ -87,15 +92,9 @@ describe("P0 application routes", () => {
     ).toBeInTheDocument();
   });
 
-  it("distinguishes a token fill link from the tokenless entry", () => {
-    const view = renderRoute("/fill/P0-test-token");
-    expect(
-      screen.getByText(/填写链接格式已识别/),
-    ).toBeInTheDocument();
-
-    view.unmount();
+  it("rejects the tokenless customer fill entry clearly", () => {
     renderRoute("/fill");
-    expect(screen.getByText(/缺少专属 Token/)).toBeInTheDocument();
+    expect(screen.getByText(/当前链接缺少专属 Token/)).toBeInTheDocument();
   });
 
   it("renders a clear not-found page", () => {

@@ -1,7 +1,15 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, JSON, String
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    JSON,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -48,6 +56,7 @@ class CustomerFormSubmission(TimestampMixin, Base):
             "status IN ('draft', 'submitted', 'reviewed', 'converted', 'expired')",
             name="status_values",
         ),
+        UniqueConstraint("token_id", name="uq_customer_form_submissions_token_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -63,6 +72,14 @@ class CustomerFormSubmission(TimestampMixin, Base):
         default=FormSubmissionStatus.DRAFT,
         server_default=FormSubmissionStatus.DRAFT.value,
         index=True,
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    converted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    converted_customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL")
+    )
+    converted_order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("orders.id", ondelete="SET NULL")
     )
 
     token: Mapped[CustomerFormToken] = relationship(back_populates="submissions")

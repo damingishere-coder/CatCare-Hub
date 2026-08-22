@@ -4,9 +4,11 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException
 
+from app.models.customer import Cat
 from app.models.enums import OrderPaymentStatus, OrderStatus, TaskItemType, TaskStatus
-from app.models.order import Order
+from app.models.order import Order, OrderCat
 from app.models.task import Task, TaskItem
+from app.schemas.order import OrderWrite
 
 
 MONEY = Decimal("0.01")
@@ -66,6 +68,39 @@ def calculate_order_pricing(
         other_fee=normalized_other,
         total_amount=total_amount,
     )
+
+
+def build_order(payload: OrderWrite, *, cats: list[Cat]) -> Order:
+    """Build an order and its tasks without committing the caller's transaction."""
+
+    pricing = calculate_order_pricing(
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        visits_per_day=payload.visits_per_day,
+        cat_count=len(cats),
+        base_price=payload.base_price,
+        stairs_fee=payload.stairs_fee,
+        other_fee=payload.other_fee,
+    )
+    order = Order(
+        customer_id=payload.customer_id,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        visits_per_day=payload.visits_per_day,
+        service_items=[item.value for item in payload.service_items],
+        base_price=pricing.base_price,
+        extra_cat_fee=pricing.extra_cat_fee,
+        stairs_fee=pricing.stairs_fee,
+        other_fee=pricing.other_fee,
+        total_amount=pricing.total_amount,
+        paid_amount=0,
+        payment_status=OrderPaymentStatus.UNPAID,
+        order_status=payload.order_status,
+        notes=payload.notes,
+    )
+    order.cat_links.extend(OrderCat(cat=cat) for cat in cats)
+    generate_order_tasks(order)
+    return order
 
 
 def due_amount(order: Order) -> Decimal:
