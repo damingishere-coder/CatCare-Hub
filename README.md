@@ -2,7 +2,7 @@
 
 CatCare-Hub 是面向个人上门喂猫业务的本地 Web 管理中台，用于逐步替代 Excel 管理客户、猫咪、订单、每日任务、路线与收款。
 
-当前已完成 **P12｜安全与权限隔离**：PC 管理后台、轻量手机执行端和客户填写入口已建立独立权限边界；本地访问码只保存 PBKDF2 哈希，登录使用可撤销的服务端会话，客户填写 Token 也只以哈希落库。
+当前已完成 **P13｜测试与数据验证**：除各模块回归测试外，系统已有经过真实 admin/mobile 会话的隔离集成验收，覆盖客户、多猫、跨天多次订单、自动任务、排序、移动执行、图片、收款以及客户填写 Token 的完整生命周期。
 
 ## 当前技术栈
 
@@ -94,6 +94,9 @@ npm run preview --prefix frontend
 
 # 后端测试
 .\.venv\Scripts\python.exe -m pytest backend\tests
+
+# P13 核心业务闭环定向验收
+.\.venv\Scripts\python.exe -m pytest backend\tests\test_p13_acceptance.py -q
 
 # 数据库迁移与版本检查
 .\.venv\Scripts\python.exe -m alembic -c backend\alembic.ini upgrade head
