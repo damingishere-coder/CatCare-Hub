@@ -2,7 +2,7 @@
 
 CatCare-Hub 是面向个人上门喂猫业务的本地 Web 管理中台，用于逐步替代 Excel 管理客户、猫咪、订单、每日任务、路线与收款。
 
-当前已完成 **P10｜客户填写入口**：除 PC 管理后台与轻量手机执行端外，项目已经具备专属填写链接、客户草稿/提交、后台审核，以及人工确认后原子创建客户、猫咪、待确认订单和每日任务的闭环。
+当前已完成 **P11｜响应式与 PWA**：除 PC 管理后台、客户填写闭环和轻量手机执行端外，生产构建已经具备应用清单、安装图标、standalone 启动、添加到主屏幕提示与不含业务数据的离线应用壳。
 
 ## 当前技术栈
 
@@ -78,6 +78,7 @@ npm run lint --prefix frontend
 npm run typecheck --prefix frontend
 npm test --prefix frontend -- --run
 npm run build --prefix frontend
+npm run preview --prefix frontend
 
 # 后端开发（先运行 setup.bat）
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --host 0.0.0.0 --port 8000
@@ -233,7 +234,22 @@ http://localhost:5180/mobile
 
 已确认或待出发任务可以在手机端开始。进行中任务可更新 Checklist、猫咪状态、本次备注并从相机或相册上传 JPEG、PNG、WebP；所有写入继续使用 P6 revision、状态机和照片校验。P9 不提供异常结单入口，也不复制客户、订单、收款和计划编辑后台。
 
-当前 `/mobile` 与 `/api/mobile/*` 只是为后续权限隔离建立独立边界，尚未实现 P12 登录与角色校验，也没有 P11 离线或安装能力。现阶段仅限本机或可信私网使用，禁止开放到公网。
+生产构建已经支持安装到主屏幕。为避免 Service Worker 缓存干扰日常开发，它只在生产构建和安全上下文注册；本机可使用两个 PowerShell 窗口验证：
+
+```powershell
+# 窗口 1：启动 API
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+
+# 窗口 2：构建并启动生产预览
+npm run build --prefix frontend
+npm run preview --prefix frontend
+```
+
+然后打开 `http://localhost:5180/mobile`，按页面提示或浏览器菜单选择“安装应用 / 添加到主屏幕”。普通局域网 IP 的 HTTP 页面通常不属于浏览器安全上下文，手机安装需要后续 HTTPS；能在局域网打开网页不等于可以安装 PWA。
+
+离线能力只保留无业务数据的应用壳：首次联网并显示“离线应用壳已就绪”后，断网仍能打开页面结构，但任务读取、导航数据、Checklist、文字保存、照片上传和客户填写全部需要网络。Service Worker 不缓存 API、`/fill/:token`、照片、上传或客户敏感资料，也不提供离线写队列。
+
+当前 `/mobile` 与 `/api/mobile/*` 仍只是为后续权限隔离建立独立边界，尚未实现 P12 登录与角色校验。现阶段仅限本机或可信私网使用，禁止开放到公网。
 
 ## 路由边界
 

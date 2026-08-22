@@ -2,6 +2,12 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const apiProxy = {
+  "/api": {
+    target: "http://127.0.0.1:8000",
+  },
+};
+
 export default defineConfig({
   envDir: "..",
   plugins: [react(), tailwindcss()],
@@ -9,10 +15,12 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5180,
     strictPort: true,
-    proxy: {
-      "/api": {
-        target: "http://127.0.0.1:8000",
-      },
-    },
+    proxy: apiProxy,
+  },
+  preview: {
+    host: "127.0.0.1",
+    port: 5180,
+    strictPort: true,
+    proxy: apiProxy,
   },
 });

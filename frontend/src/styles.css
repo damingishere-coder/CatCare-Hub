@@ -25,6 +25,11 @@ body {
   margin: 0;
 }
 
+.mobile-safe-area {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 button,
 a {
   -webkit-tap-highlight-color: transparent;

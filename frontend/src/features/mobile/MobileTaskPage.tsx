@@ -245,7 +245,7 @@ export function MobileTaskPage() {
   const controlsDisabled = Boolean(busy) || stale;
 
   return (
-    <main className="min-h-dvh bg-slate-100 text-slate-950">
+    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-slate-100 text-slate-950">
       <div className="mx-auto max-w-xl px-4 py-5 sm:px-5">
         <header>
           <div className="flex items-center justify-between gap-3">

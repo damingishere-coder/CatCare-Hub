@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import type { TaskStatus } from "../orders/types";
 import { planTaskStatusLabels } from "../plans/constants";
 import { getMobileToday } from "./api";
+import { PwaInstallPrompt } from "./PwaInstallPrompt";
 import type { MobileTodayRead, NavigationState } from "./types";
 
 function statusStyle(status: TaskStatus): string {
@@ -82,11 +83,11 @@ export function MobileTodayPage() {
   }, []);
 
   return (
-    <main className="min-h-dvh bg-slate-100 text-slate-950">
+    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-slate-100 text-slate-950">
       <div className="mx-auto max-w-xl px-4 py-6 sm:px-5">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold tracking-wider text-slate-500 uppercase">P9 · 现场执行</p>
+            <p className="text-xs font-semibold tracking-wider text-slate-500 uppercase">移动执行端 · 可安装</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">今天的喂猫任务</h1>
             <p className="mt-2 text-sm text-slate-600">
               {today ? `${displayBusinessDate(today.business_date)} · 上海业务时间` : "按上海业务时间读取"}
@@ -107,6 +108,8 @@ export function MobileTodayPage() {
           <ShieldAlert className="mt-0.5 shrink-0" size={16} />
           当前仅适用于本机或可信局域网；正式登录与权限隔离将在 P12 完成，请勿暴露到公网。
         </div>
+
+        <PwaInstallPrompt />
 
         {error ? (
           <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">

@@ -1,0 +1,41 @@
+{
+  "id": "/mobile",
+  "name": "CatCare-Hub 上门喂猫执行端",
+  "short_name": "CatCare",
+  "description": "CatCare-Hub 上门喂猫任务查看与现场执行端",
+  "lang": "zh-CN",
+  "start_url": "/mobile",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f1f5f9",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icons/catcare-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/catcare-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "今天的任务",
+      "short_name": "今日任务",
+      "url": "/mobile",
+      "icons": [
+        {
+          "src": "/icons/catcare-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

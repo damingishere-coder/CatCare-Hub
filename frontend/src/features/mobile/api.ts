@@ -24,14 +24,19 @@ export class MobileApiError extends Error {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const hasJsonBody = Boolean(init?.body) && !(init?.body instanceof FormData);
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch {
+    throw new MobileApiError(0, "当前网络不可用，任务数据需要联网加载。");
+  }
   if (!response.ok) {
     let message = `请求失败（HTTP ${response.status}）`;
     try {
