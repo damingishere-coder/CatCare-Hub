@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   Bell,
   CalendarCheck2,
   Camera,
@@ -18,6 +17,7 @@ import {
 import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { Link } from "react-router-dom";
 
+import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import { PageHeader } from "../../components/ui/PageHeader";
 import type { TaskStatus } from "../orders/types";
 import { getDashboard, markTaskPhotosSent } from "./api";
@@ -150,9 +150,7 @@ export function DashboardPage() {
       />
 
       {error ? (
-        <div className="cc-alert cc-alert--danger mt-5" role="alert">
-          <AlertCircle className="mt-0.5 shrink-0" size={16} />{error}
-        </div>
+        <ConnectionErrorAlert className="mt-5" message={error} onRetry={() => void loadDashboard()} />
       ) : null}
 
       {loading && !dashboard ? (

@@ -6,12 +6,10 @@ import type {
   OrderPatchInput,
   OrderStatus,
 } from "./types";
+import { requestJson } from "../../lib/api";
+
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const ordersPath = `${apiBase}/api/admin/orders`;
-
-interface ApiErrorPayload {
-  detail?: string | Array<{ msg?: string }>;
-}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -24,30 +22,9 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
+  return requestJson<T>(path, init, {
+    errorFactory: (status, message) => new ApiError(status, message),
   });
-  if (!response.ok) {
-    let message = `请求失败（HTTP ${response.status}）`;
-    try {
-      const payload = (await response.json()) as ApiErrorPayload;
-      if (typeof payload.detail === "string") {
-        message = payload.detail;
-      } else if (Array.isArray(payload.detail)) {
-        message = payload.detail.map((item) => item.msg).filter(Boolean).join("；") || message;
-      }
-    } catch {
-      // Keep the HTTP fallback when the response is not JSON.
-    }
-    throw new ApiError(response.status, message);
-  }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
 }
 
 export function listOrders(): Promise<OrderListResponse> {

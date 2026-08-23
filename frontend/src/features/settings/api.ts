@@ -1,3 +1,5 @@
+import { requestJson } from "../../lib/api";
+
 export interface IntegrationState {
   name: string;
   configured: boolean;
@@ -20,18 +22,7 @@ const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const path = `${apiBase}/api/admin/settings/integrations`;
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-    },
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { detail?: string } | null;
-    throw new Error(payload?.detail || `连接测试失败（HTTP ${response.status}）`);
-  }
-  return response.json() as Promise<T>;
+  return requestJson<T>(url, init);
 }
 
 export function getIntegrationSettings(): Promise<IntegrationSettings> {

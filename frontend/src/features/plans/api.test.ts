@@ -13,6 +13,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -82,4 +83,19 @@ it("uses dedicated day, task, schedule, and planning-status endpoints", async ()
       }),
     }),
   );
+});
+
+it("allows route preview up to 45 seconds before timing out", async () => {
+  vi.useFakeTimers();
+  vi.mocked(fetch).mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+  }));
+
+  const request = previewPlanRoute("2034-10-01", {
+    expected_revision: "c".repeat(64),
+    geocode_missing: true,
+  });
+  const assertion = expect(request).rejects.toThrow("请求已等待 45 秒仍未完成");
+  await vi.advanceTimersByTimeAsync(45_000);
+  await assertion;
 });

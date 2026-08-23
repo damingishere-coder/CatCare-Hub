@@ -220,6 +220,23 @@ it("shows date tasks, route workspace, and a privacy-minimized selected detail",
   expect(apiMocks.getPlanTask).toHaveBeenCalledWith(1);
 });
 
+it("ends route loading after failure, reports unknown status, and retries", async () => {
+  apiMocks.getPlanRoute
+    .mockRejectedValueOnce(new TypeError("路线服务暂时断开"))
+    .mockResolvedValueOnce(routeWorkspace);
+  renderPage();
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("路线服务暂时断开");
+  expect(screen.queryByText("正在加载路线数据…")).not.toBeInTheDocument();
+  expect(screen.getByText("高德后端：状态未知")).toBeInTheDocument();
+  expect(screen.getByText("GPT 建议：状态未知")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "重试" }));
+
+  expect(await screen.findByText("高德后端：已配置")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
 it("moves tasks, edits time, and saves one revision-protected day schedule", async () => {
   const onDirtyChange = vi.fn();
   renderPage(onDirtyChange);

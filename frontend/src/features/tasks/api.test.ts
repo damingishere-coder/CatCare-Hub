@@ -17,6 +17,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -55,4 +56,21 @@ it("uses revision-protected execution endpoints and multipart photo upload", asy
   expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/admin/tasks/7/complete", expect.objectContaining({ method: "POST" }));
   expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/admin/tasks/7/exception", expect.objectContaining({ method: "POST" }));
   expect(taskPhotoUrl("/api/admin/tasks/7/photos/1")).toBe("/api/admin/tasks/7/photos/1");
+});
+
+it("allows photo upload up to 60 seconds before timing out", async () => {
+  vi.useFakeTimers();
+  vi.mocked(fetch).mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+  }));
+  const photo = new File(["synthetic"], "synthetic.png", { type: "image/png" });
+
+  const request = uploadTaskPhoto(7, "a".repeat(64), photo);
+  const assertion = expect(request).rejects.toMatchObject({
+    name: "TaskApiError",
+    status: 0,
+    message: expect.stringContaining("请求已等待 60 秒仍未完成"),
+  });
+  await vi.advanceTimersByTimeAsync(60_000);
+  await assertion;
 });

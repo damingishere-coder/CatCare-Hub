@@ -1,6 +1,7 @@
-import { AlertCircle, CheckCircle2, CircleDollarSign, Clock3, LoaderCircle, Plus, RefreshCw, WalletCards } from "lucide-react";
+import { CheckCircle2, CircleDollarSign, Clock3, LoaderCircle, Plus, RefreshCw, WalletCards } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { getPaymentsOverview, registerPayment } from "./api";
 import { PaymentForm } from "./PaymentForm";
@@ -125,7 +126,7 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
         </>}
       />
 
-      {error ? <div className="cc-alert cc-alert--danger mt-5" role="alert"><AlertCircle className="mt-0.5 shrink-0" size={16} />{error}</div> : null}
+      {error ? <ConnectionErrorAlert className="mt-5" message={error} onRetry={() => void loadOverview()} /> : null}
 
       {loading && !overview ? (
         <div className="cc-surface mt-8 flex min-h-80 items-center justify-center text-sm text-slate-500"><LoaderCircle className="mr-2 animate-spin" size={18} />正在汇总收款数据…</div>

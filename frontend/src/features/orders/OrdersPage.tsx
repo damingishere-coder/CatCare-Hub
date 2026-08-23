@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   CalendarDays,
   CheckCircle2,
   CircleDollarSign,
@@ -12,6 +11,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import {
   createOrder,
   deleteOrder,
@@ -251,10 +251,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
       </div>
 
       {pageError ? (
-        <div className="cc-alert cc-alert--danger mt-5" role="alert">
-          <AlertCircle className="mt-0.5 shrink-0" size={17} />
-          <span>{pageError}</span>
-        </div>
+        <ConnectionErrorAlert className="mt-5" message={pageError} onRetry={() => void refreshOrders()} />
       ) : null}
 
       <div className="cc-surface mt-6 grid min-h-[680px] overflow-hidden p-0 lg:grid-cols-[320px_minmax(0,1fr)]">

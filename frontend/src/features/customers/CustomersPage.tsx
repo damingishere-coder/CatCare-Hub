@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   Archive,
   Cat,
   ClipboardPenLine,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
+import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { customerAddress } from "../../lib/customerDisplay";
 import {
@@ -344,10 +344,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
       />
 
       {pageError ? (
-        <div className="cc-alert cc-alert--danger mt-5" role="alert">
-          <AlertCircle className="mt-0.5 shrink-0" size={17} />
-          <span>{pageError}</span>
-        </div>
+        <ConnectionErrorAlert className="mt-5" message={pageError} onRetry={() => void refreshList(searchQuery)} />
       ) : null}
 
       <div className="cc-surface mt-6 grid min-h-[640px] overflow-hidden p-0 lg:grid-cols-[300px_minmax(0,1fr)]">

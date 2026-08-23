@@ -132,6 +132,10 @@ it("recovers from an API error and shows clean empty states", async () => {
   renderPage();
 
   expect(await screen.findByRole("alert")).toHaveTextContent("P7 虚构加载失败");
+  expect(screen.getByRole("link", { name: "使用 127.0.0.1 重新打开" })).toHaveAttribute(
+    "href",
+    "http://127.0.0.1:5180/",
+  );
   apiMocks.getDashboard.mockResolvedValueOnce({
     ...dashboard,
     metrics: {
@@ -143,7 +147,7 @@ it("recovers from an API error and shows clean empty states", async () => {
     schedule: [],
     reminders: [],
   });
-  fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+  fireEvent.click(screen.getByRole("button", { name: "重试" }));
 
   expect(await screen.findByText("今天没有需要展示的任务。")).toBeInTheDocument();
   expect(screen.getByText("今天没有额外提醒。")).toBeInTheDocument();

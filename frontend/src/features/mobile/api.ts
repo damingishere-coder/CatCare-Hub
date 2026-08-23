@@ -4,12 +4,10 @@ import type {
   TaskTextInput,
 } from "../tasks/types";
 import type { MobileTaskExecutionDetail, MobileTodayRead } from "./types";
+import { requestJson, UPLOAD_REQUEST_TIMEOUT_MS } from "../../lib/api";
+
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const mobilePath = `${apiBase}/api/mobile`;
-
-interface ApiErrorPayload {
-  detail?: string | Array<{ msg?: string }>;
-}
 
 export class MobileApiError extends Error {
   readonly status: number;
@@ -21,36 +19,12 @@ export class MobileApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const hasJsonBody = Boolean(init?.body) && !(init?.body instanceof FormData);
-  let response: Response;
-  try {
-    response = await fetch(path, {
-      ...init,
-      headers: {
-        Accept: "application/json",
-        ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
-        ...init?.headers,
-      },
-    });
-  } catch {
-    throw new MobileApiError(0, "当前网络不可用，任务数据需要联网加载。");
-  }
-  if (!response.ok) {
-    let message = `请求失败（HTTP ${response.status}）`;
-    try {
-      const payload = (await response.json()) as ApiErrorPayload;
-      if (typeof payload.detail === "string") {
-        message = payload.detail;
-      } else if (Array.isArray(payload.detail)) {
-        message = payload.detail.map((item) => item.msg).filter(Boolean).join("；") || message;
-      }
-    } catch {
-      // Keep the HTTP fallback for a non-JSON response.
-    }
-    throw new MobileApiError(response.status, message);
-  }
-  return (await response.json()) as T;
+async function request<T>(path: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
+  return requestJson<T>(path, init, {
+    timeoutMs,
+    errorFactory: (status, message) => new MobileApiError(status, message),
+    networkMessage: "当前网络不可用，任务数据需要联网加载。",
+  });
 }
 
 export function getMobileToday(): Promise<MobileTodayRead> {
@@ -100,10 +74,14 @@ export function uploadMobileTaskPhoto(
   const form = new FormData();
   form.append("expected_revision", expectedRevision);
   form.append("photo", photo);
-  return request<MobileTaskExecutionDetail>(`${mobilePath}/tasks/${taskId}/photos`, {
-    method: "POST",
-    body: form,
-  });
+  return request<MobileTaskExecutionDetail>(
+    `${mobilePath}/tasks/${taskId}/photos`,
+    {
+      method: "POST",
+      body: form,
+    },
+    UPLOAD_REQUEST_TIMEOUT_MS,
+  );
 }
 
 export function completeMobileTask(

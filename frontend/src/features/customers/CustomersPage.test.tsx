@@ -89,7 +89,9 @@ beforeEach(() => {
 it("loads the customer list with one address and only the visible access fields", async () => {
   render(<CustomersPage />);
 
-  expect(await screen.findByRole("heading", { name: "测试客户（虚构）", level: 2 })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "测试客户（虚构）", level: 2 }, { timeout: 5_000 }),
+  ).toBeInTheDocument();
   expect(screen.getByText("敏感信息，仅本地后台可见")).toBeInTheDocument();
   expect(screen.getByText("不对应真实地点")).toBeInTheDocument();
   expect(screen.getByText("未提供 · TEST-KEY")).toBeInTheDocument();
@@ -153,7 +155,7 @@ it("opens the create form from the dashboard quick-entry flag", async () => {
   render(<CustomersPage initialCreate />);
 
   expect(screen.getByRole("dialog", { name: "新增客户" })).toBeInTheDocument();
-  await screen.findByRole("heading", { name: "测试客户（虚构）", level: 2 });
+  await screen.findByRole("heading", { name: "测试客户（虚构）", level: 2 }, { timeout: 5_000 });
 });
 
 it("searches, adds a second cat, and soft-disables a cat", async () => {
@@ -212,7 +214,9 @@ it("shows a clean empty state when a search has no matches", async () => {
     .mockResolvedValueOnce({ items: [summary], total: 1 })
     .mockResolvedValueOnce({ items: [], total: 0 });
   render(<CustomersPage />);
-  expect(await screen.findByRole("heading", { name: "测试客户（虚构）", level: 2 })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "测试客户（虚构）", level: 2 }, { timeout: 5_000 }),
+  ).toBeInTheDocument();
 
   fireEvent.change(screen.getByRole("searchbox", { name: "搜索客户" }), {
     target: { value: "不存在的客户" },

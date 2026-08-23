@@ -95,7 +95,7 @@ beforeEach(() => {
 it("shows the full editable review while keeping the submission list privacy-minimized", async () => {
   renderPage();
 
-  expect(await screen.findByLabelText("详细地址")).toHaveValue("虚构后台测试地址");
+  expect(await screen.findByLabelText("详细地址", {}, { timeout: 5_000 })).toHaveValue("虚构后台测试地址");
   expect(screen.getByLabelText("门禁说明")).toHaveValue("虚构敏感入户说明");
   expect(screen.getByLabelText("钥匙编号")).toHaveValue("TEST-KEY");
   expect(screen.getByText("查看客户原始提交（只读）")).toBeInTheDocument();

@@ -32,7 +32,7 @@ start.bat
 浏览器会打开：
 
 ```text
-http://localhost:5180/admin
+http://127.0.0.1:5180/admin
 ```
 
 停止服务时双击：
@@ -41,9 +41,9 @@ http://localhost:5180/admin
 stop.bat
 ```
 
-`setup.bat` 会安装依赖，并自动把本地数据库迁移到最新版本。应用不再生成或检查访问码，也没有登录页、会话 Cookie 或管理员/执行端账号。升级已有项目时，建议先复制备份 `data/catcare.db`，再运行 `setup.bat` 应用最新迁移；旧 `.env` 中遗留的密码哈希不会再被读取。运行日志与进程信息保存在本地 `.runtime/`，两者都不会提交到 Git。
+`setup.bat` 会安装依赖，并自动把本地数据库迁移到最新版本。每次启动还会检查业务就绪状态：默认 SQLite 数据库版本落后时，程序先通过 SQLite 一致性备份写入 `data/backups/`，再执行迁移；迁移或备份失败会停止启动。非 SQLite 数据库不会被自动迁移。应用不再生成或检查访问码，也没有登录页、会话 Cookie 或管理员/执行端账号。旧 `.env` 中遗留的密码哈希不会再被读取。运行日志与进程信息保存在本地 `.runtime/`，两者都不会提交到 Git。
 
-`start.bat` 默认只监听 `127.0.0.1`，因此后台只能从运行 CatCare-Hub 的这台电脑打开。客户填写 Token 仍只能读取和提交该 Token 对应的一份表单，不能访问后台、任务或财务 API。
+`start.bat` 默认只监听 `127.0.0.1`，因此后台只能从运行 CatCare-Hub 的这台电脑打开。如果 Alter 已经健康运行同一项目，`start.bat` 会复用现有进程；若 5180/8000 被其他程序占用或只启动了一半，它会显示端口、PID 和进程来源并停止，不会自动结束未知程序。客户填写 Token 仍只能读取和提交该 Token 对应的一份表单，不能访问后台、任务或财务 API。
 
 ## 数据库与虚构开发数据
 
@@ -83,7 +83,7 @@ npm run build --prefix frontend
 npm run preview --prefix frontend
 
 # 后端开发（先运行 setup.bat）
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --host 0.0.0.0 --port 8000
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 
 # 后端测试
 .\.venv\Scripts\python.exe -m pytest backend\tests
@@ -101,14 +101,14 @@ Push-Location backend
 Pop-Location
 ```
 
-后端健康检查地址：`http://localhost:8000/api/health`。
+进程存活检查保留为 `http://127.0.0.1:8000/api/health`；启动器和 Alter 使用业务就绪检查 `http://127.0.0.1:8000/api/ready`，后者还会验证数据库连接和 Alembic 版本。
 
 ## 今日工作台
 
 启动后打开：
 
 ```text
-http://localhost:5180/admin
+http://127.0.0.1:5180/admin
 ```
 
 工作台默认按 Asia/Shanghai 当天显示：
@@ -129,7 +129,7 @@ http://localhost:5180/admin
 启动后在客户档案点击“客户填写”，或直接打开：
 
 ```text
-http://localhost:5180/admin/intake
+http://127.0.0.1:5180/admin/intake
 ```
 
 后台可设置 1-90 天有效期并生成随机专属链接、复制完整链接、在未提交时关闭或恢复链接。客户打开 `/fill/:token` 后可保存草稿，并填写联系人、联系方式、地址、门禁/钥匙、多只猫咪、服务日期、每日次数、服务事项和备注。
@@ -143,7 +143,7 @@ http://localhost:5180/admin/intake
 启动后打开：
 
 ```text
-http://localhost:5180/admin/payments
+http://127.0.0.1:5180/admin/payments
 ```
 
 顶部显示今日已完成收款、待收订单数、本月已完成收款和累计完成订单。待收订单区展示客户、服务日期、猫咪数量、应收、已收和待收；收款流水区展示订单项目、微信/支付宝/现金/其他方式、金额、状态和 Asia/Shanghai 时间。
@@ -157,7 +157,7 @@ P8 流水只追加，不提供编辑、删除、撤销或退款。现有模型�
 启动后打开：
 
 ```text
-http://localhost:5180/admin/customers
+http://127.0.0.1:5180/admin/customers
 ```
 
 客户列表只读取姓名、联系方式、小区和猫咪数量等必要摘要。详细地址、门禁、入户信息、钥匙编号和客户备注只在选中单个客户后显示。猫咪停用采用可恢复的状态标记，不会物理删除档案或未来订单历史。
@@ -169,7 +169,7 @@ http://localhost:5180/admin/customers
 启动后打开：
 
 ```text
-http://localhost:5180/admin/plans
+http://127.0.0.1:5180/admin/plans
 ```
 
 可以按客户、猫咪、起止日期、每日次数和服务项目创建订单。系统会按包含首尾日期的天数自动生成每日任务，并按“基础服务费 + 多猫加价 + 爬楼费 + 其他费用”计算订单总额。订单编辑仅允许在任务尚未开始且没有照片、完成项目或执行时间记录时重建任务，以免覆盖执行历史。
@@ -212,7 +212,7 @@ Web 服务 Key 不会返回浏览器。没有配置 JS API Key 时，页面仍�
 在按天计划右侧选中任务后，可通过“进入任务执行”打开：
 
 ```text
-http://localhost:5180/admin/tasks/:id
+http://127.0.0.1:5180/admin/tasks/:id
 ```
 
 已确认或待出发的任务可以开始执行。任务开始后可逐项完成 Checklist、记录本次服务备注和猫咪状态、上传现场照片，也可以在发生问题时填写原因并标记异常。所有必做事项完成后才能完成任务；照片事项必须通过实际上传图片完成。完成或异常后记录进入只读状态，避免覆盖历史。
@@ -228,7 +228,7 @@ http://localhost:5180/admin/tasks/:id
 在运行 CatCare-Hub 的电脑上打开：
 
 ```text
-http://localhost:5180/mobile
+http://127.0.0.1:5180/mobile
 ```
 
 `/mobile` 是适合窄屏显示的执行界面，但当前本机免登录模式只监听 `127.0.0.1`，因此应在运行 CatCare-Hub 的电脑上使用。它默认按 Asia/Shanghai 当天显示任务总数、待执行数、已完成数和 P4 已保存的路线顺序；同一订单当天多次上门会保留为多条任务，不会被合并。
@@ -250,7 +250,7 @@ npm run build --prefix frontend
 npm run preview --prefix frontend
 ```
 
-然后打开 `http://localhost:5180/mobile`，按页面提示或浏览器菜单选择“安装应用 / 添加到主屏幕”。普通局域网 IP 的 HTTP 页面通常不属于浏览器安全上下文，手机安装需要后续 HTTPS；能在局域网打开网页不等于可以安装 PWA。
+然后打开 `http://127.0.0.1:5180/mobile`，按页面提示或浏览器菜单选择“安装应用 / 添加到主屏幕”。普通局域网 IP 的 HTTP 页面通常不属于浏览器安全上下文，手机安装需要后续 HTTPS；能在局域网打开网页不等于可以安装 PWA。
 
 离线能力只保留无业务数据的应用壳：首次联网并显示“离线应用壳已就绪”后，断网仍能打开页面结构，但任务读取、导航数据、Checklist、文字保存、照片上传和客户填写全部需要网络。Service Worker 不缓存 API、`/fill/:token`、照片、上传或客户敏感资料，也不提供离线写队列。
 

@@ -10,6 +10,7 @@ CatCare-Hub 已按本机单人使用方式取消密码登录。`start.bat` 会�
 | `/mobile/*`、`/api/mobile/*` | 本机免登录 | 今日任务和单任务现场执行 |
 | `/fill/:token`、`/api/fill/:token` | 随机填写 Token | 仅该 Token 对应的草稿与单次提交 |
 | `/api/health` | 本机匿名 | 仅服务状态，不含业务数据 |
+| `/api/ready` | 本机匿名 | 数据库连接与迁移版本就绪状态，不含连接串或异常细节 |
 
 应用不再生成、检查或保存访问码，也不创建登录会话 Cookie。旧 `.env` 里若存在 `CATCARE_ADMIN_PASSWORD_HASH`、`CATCARE_MOBILE_PASSWORD_HASH`、`CATCARE_SESSION_HOURS` 或 `CATCARE_COOKIE_SECURE`，这些字段不会再被代码读取，可在方便时手工删除；不要为了清理配置而读取或复制其中的值。
 
@@ -31,7 +32,7 @@ CATCARE_TRUSTED_ORIGINS=...    允许发起后台写请求的完整 Origin，逗
 
 ## 使用限制
 
-1. 使用 `start.bat` 启动，不要自行把 `127.0.0.1` 改成 `0.0.0.0`。
+1. 使用 Alter 或 `start.bat` 启动，不要自行把 `127.0.0.1` 改成 `0.0.0.0`；管理入口统一使用 `http://127.0.0.1:5180/admin`。
 2. 不要在 Windows 防火墙中向局域网或公网开放 `5180`、`8000`。
 3. 不要使用 Tailscale Serve、Cloudflare Tunnel、端口转发、反向代理或路由器映射发布整个应用。
 4. 如将来需要从手机或另一台电脑访问，应先重新增加身份验证或由外层访问控制限制人员和设备。

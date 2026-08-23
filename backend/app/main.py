@@ -16,6 +16,8 @@ from app.api.payments import router as payments_router
 from app.api.plans import router as plans_router
 from app.api.settings import router as settings_router
 from app.api.tasks import router as tasks_router
+from app.db.session import engine
+from app.services.readiness import database_readiness
 from app.services.privacy_logging import install_fill_token_redaction
 from app.services.local_access import allowed_hosts, require_local_request
 
@@ -23,6 +25,13 @@ from app.services.local_access import allowed_hosts, require_local_request
 class HealthResponse(TypedDict):
     status: Literal["ok"]
     service: str
+
+
+class ReadyResponse(TypedDict):
+    status: Literal["ready"]
+    service: str
+    database: Literal["ready"]
+    schema_revision: str
 
 
 install_fill_token_redaction()
@@ -83,6 +92,30 @@ app.include_router(tasks_router, dependencies=local_dependencies)
 
 @app.get("/api/health", response_model=HealthResponse, tags=["system"])
 async def health_check() -> HealthResponse:
-    """Return a small readiness response for local startup checks."""
+    """Return a small liveness response for compatibility checks."""
 
     return {"status": "ok", "service": "catcare-hub-api"}
+
+
+@app.get("/api/ready", tags=["system"], response_model=None)
+def ready_check() -> ReadyResponse | JSONResponse:
+    """Report whether business APIs can safely use the current database."""
+
+    readiness = database_readiness(engine)
+    if not readiness.ready:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "service": "catcare-hub-api",
+                "reason": readiness.reason,
+                "message": readiness.message,
+            },
+        )
+
+    return {
+        "status": "ready",
+        "service": "catcare-hub-api",
+        "database": "ready",
+        "schema_revision": readiness.revision or "unknown",
+    }

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { RuntimeErrorBoundary } from "./components/RuntimeErrorBoundary";
 import { schedulePwaRegistration } from "./pwa/register";
 import "./styles.css";
 
@@ -15,6 +16,8 @@ schedulePwaRegistration();
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <RuntimeErrorBoundary>
+      <App />
+    </RuntimeErrorBoundary>
   </StrictMode>,
 );

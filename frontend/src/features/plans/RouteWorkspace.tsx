@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import { RouteMap } from "./RouteMap";
 import { hasAmapBrowserKey, hasAmapBrowserSecurityCode } from "./mapProvider";
 import type {
@@ -60,6 +61,7 @@ interface RouteWorkspaceProps {
   error: string | null;
   onSelectTask: (taskId: number) => void;
   onPreview: () => void;
+  onRetry: () => void;
   onAdopt: () => void;
 }
 
@@ -74,6 +76,7 @@ export function RouteWorkspace({
   error,
   onSelectTask,
   onPreview,
+  onRetry,
   onAdopt,
 }: RouteWorkspaceProps) {
   const [routeSelection, setRouteSelection] = useState<{
@@ -117,9 +120,9 @@ export function RouteWorkspace({
           <div className="flex flex-wrap items-center gap-2">
             <MapPinned size={18} />
             <h2 id="route-map-title" className="text-sm font-semibold text-slate-950">路线地图</h2>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.provider.configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>高德后端：{workspace?.provider.configured ? "已配置" : "未配置"}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.provider.configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>高德后端：{workspace ? (workspace.provider.configured ? "已配置" : "未配置") : "状态未知"}</span>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${browserMapConfigured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>街道底图：{browserMapConfigured ? "已配置" : "未配置"}</span>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.recommendation_provider?.configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>GPT 建议：{workspace?.recommendation_provider?.configured ? "已配置" : "未配置"}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.recommendation_provider?.configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>GPT 建议：{workspace ? (workspace.recommendation_provider?.configured ? "已配置" : "未配置") : "状态未知"}</span>
             {dirty ? <span className="ml-auto text-xs font-medium text-amber-700">顺序待保存</span> : null}
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-500">
@@ -167,9 +170,7 @@ export function RouteWorkspace({
         </div>
 
         {error ? (
-          <div className="cc-alert cc-alert--danger text-xs" role="alert">
-            <AlertTriangle className="mt-0.5 shrink-0" size={15} />{error}
-          </div>
+          <ConnectionErrorAlert className="text-xs" message={error} onRetry={onRetry} />
         ) : null}
 
         {loading ? (

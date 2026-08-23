@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   ArrowDown,
   ArrowUp,
   CalendarDays,
@@ -14,6 +13,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import { serviceItemOptions } from "../orders/constants";
 import { customerAddress } from "../../lib/customerDisplay";
 import type { ServiceItem } from "../orders/types";
@@ -374,10 +374,11 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
   return (
     <>
       {error ? (
-        <div className="cc-alert cc-alert--danger mb-4" role="alert">
-          <AlertCircle className="mt-0.5 shrink-0" size={17} />
-          <span>{error}</span>
-        </div>
+        <ConnectionErrorAlert
+          className="mb-4"
+          message={error}
+          onRetry={() => void loadDay(selectedDate || localDateValue())}
+        />
       ) : null}
 
       <div className="cc-surface grid min-h-[720px] overflow-hidden xl:grid-cols-[minmax(280px,0.82fr)_minmax(360px,1.35fr)_minmax(300px,0.9fr)] 2xl:grid-cols-[320px_minmax(420px,1fr)_360px]">
@@ -486,6 +487,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
           error={routeError}
           onSelectTask={selectTask}
           onPreview={() => void handleRoutePreview()}
+          onRetry={() => void loadRoute(selectedDate, draftTasks.length > 0)}
           onAdopt={() => void handleAdoptRecommendation()}
         />
 
