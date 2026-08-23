@@ -36,7 +36,6 @@ TERMINAL_STATUSES = {
 
 def _task_load_options() -> tuple:
     return (
-        selectinload(Task.customer),
         selectinload(Task.items),
         selectinload(Task.photos),
         selectinload(Task.order).selectinload(Order.tasks),
@@ -112,7 +111,7 @@ def require_execution_revision(task: Task, expected_revision: str) -> None:
 
 
 def task_execution_detail(task: Task) -> TaskExecutionDetail:
-    customer = task.customer
+    order = task.order
     return TaskExecutionDetail(
         id=task.id,
         order_id=task.order_id,
@@ -128,35 +127,56 @@ def task_execution_detail(task: Task) -> TaskExecutionDetail:
         revision=execution_revision(task),
         order_status=task.order.order_status,
         order_notes=task.order.notes,
+        cat_count=task.order.cat_count,
         customer=TaskExecutionCustomer(
-            id=customer.id,
-            name=customer.name,
-            phone=customer.phone,
-            community=customer.community,
-            address=customer.address,
-            building=customer.building,
-            unit=customer.unit,
-            room=customer.room,
-            access_method=customer.access_method,
-            access_info=customer.access_info,
-            key_status=customer.key_status,
-            key_code=customer.key_code,
+            id=order.customer_id,
+            name=order.contact_name,
+            phone=order.contact_phone,
+            community=order.contact_community,
+            address=order.contact_address,
+            building=order.contact_building,
+            unit=order.contact_unit,
+            room=order.contact_room,
+            access_method=order.contact_access_method,
+            access_info=order.contact_access_info,
+            key_status=order.contact_key_status,
+            key_code=order.contact_key_code,
         ),
-        cats=[
-            TaskExecutionCat(
-                id=link.cat.id,
-                name=link.cat.name,
-                food=link.cat.food,
-                food_preference=link.cat.food_preference,
-                litter_type=link.cat.litter_type,
-                medication_required=link.cat.medication_required,
-                medication_notes=link.cat.medication_notes,
-                special_notes=link.cat.special_notes,
-                service_notes=link.cat.service_notes,
-                is_active=link.cat.is_active,
-            )
-            for link in sorted(task.order.cat_links, key=lambda entry: entry.cat_id)
-        ],
+        cats=(
+            [
+                TaskExecutionCat(
+                    id=item.get("source_cat_id"),
+                    name=str(item.get("name") or f"猫咪 {index + 1}"),
+                    food=item.get("food"),
+                    food_preference=item.get("food_preference"),
+                    litter_type=item.get("litter_type"),
+                    medication_required=bool(
+                        item.get("medication_required", False)
+                    ),
+                    medication_notes=item.get("medication_notes"),
+                    special_notes=item.get("special_notes"),
+                    service_notes=item.get("service_notes"),
+                    is_active=True,
+                )
+                for index, item in enumerate(order.cat_snapshot)
+            ]
+            if order.cat_snapshot
+            else [
+                TaskExecutionCat(
+                    id=link.cat.id,
+                    name=link.cat.name,
+                    food=link.cat.food,
+                    food_preference=link.cat.food_preference,
+                    litter_type=link.cat.litter_type,
+                    medication_required=link.cat.medication_required,
+                    medication_notes=link.cat.medication_notes,
+                    special_notes=link.cat.special_notes,
+                    service_notes=link.cat.service_notes,
+                    is_active=link.cat.is_active,
+                )
+                for link in sorted(order.cat_links, key=lambda entry: entry.cat_id)
+            ]
+        ),
         items=[
             TaskExecutionItem(
                 id=item.id,

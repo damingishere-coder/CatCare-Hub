@@ -25,7 +25,7 @@ it("sends customer search terms in a JSON body instead of the URL", async () => 
     "/api/admin/customers/search",
     expect.objectContaining({
       method: "POST",
-      body: JSON.stringify({ search: "TEST-PHONE" }),
+      body: JSON.stringify({ search: "TEST-PHONE", include_archived: false }),
     }),
   );
   expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain("TEST-PHONE");

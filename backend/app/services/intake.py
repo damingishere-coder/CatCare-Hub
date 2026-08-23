@@ -28,7 +28,7 @@ from app.schemas.order import OrderWrite
 from app.services.business_time import as_utc
 from app.services.credentials import token_digest
 from app.services.customers import build_customer
-from app.services.orders import DEFAULT_BASE_PRICE, build_order
+from app.services.orders import build_order, reprice_order
 
 
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{40,128}$")
@@ -75,6 +75,8 @@ def submission_revision(submission: CustomerFormSubmission) -> str:
             "id": submission.id,
             "status": submission.status.value,
             "payload": submission.payload,
+            "review_payload": submission.review_payload,
+            "review_unit_price": submission.review_unit_price,
             "reviewed_at": _iso(submission.reviewed_at),
             "converted_at": _iso(submission.converted_at),
             "converted_customer_id": submission.converted_customer_id,
@@ -271,7 +273,7 @@ def _safe_draft(payload: dict[str, object]) -> IntakeDraftPayload:
 def to_submission_summary(
     submission: CustomerFormSubmission,
 ) -> IntakeSubmissionSummary:
-    payload = _safe_draft(submission.payload)
+    payload = _safe_draft(submission.review_payload or submission.payload)
     return IntakeSubmissionSummary(
         id=submission.id,
         status=submission.status,
@@ -293,11 +295,42 @@ def to_submission_detail(
     return IntakeSubmissionDetail(
         **summary.model_dump(),
         payload=_safe_draft(submission.payload),
+        review_payload=(
+            IntakeSubmissionPayload.model_validate(submission.review_payload)
+            if submission.review_payload is not None
+            else None
+        ),
+        review_unit_price=submission.review_unit_price,
         reviewed_at=submission.reviewed_at,
         converted_at=submission.converted_at,
         converted_customer_id=submission.converted_customer_id,
         converted_order_id=submission.converted_order_id,
     )
+
+
+def save_review_draft(
+    submission: CustomerFormSubmission,
+    *,
+    review_payload: IntakeSubmissionPayload,
+    unit_price: Decimal,
+    expected_revision: str,
+    now: datetime | None = None,
+) -> None:
+    if submission_revision(submission) != expected_revision:
+        raise HTTPException(status_code=409, detail="提交记录已变化，请刷新后重试")
+    if submission.status is FormSubmissionStatus.CONVERTED:
+        raise HTTPException(status_code=409, detail="已落档记录不能再次编辑")
+    if submission.status not in {
+        FormSubmissionStatus.SUBMITTED,
+        FormSubmissionStatus.REVIEWED,
+    }:
+        raise HTTPException(status_code=409, detail="当前提交状态不能编辑审核稿")
+    changed_at = now or utc_now()
+    submission.review_payload = review_payload.model_dump(mode="json")
+    submission.review_unit_price = unit_price
+    submission.status = FormSubmissionStatus.REVIEWED
+    submission.reviewed_at = submission.reviewed_at or changed_at
+    submission.updated_at = changed_at
 
 
 def mark_reviewed(
@@ -337,8 +370,10 @@ def mark_reviewed(
 def _validated_submission_payload(
     submission: CustomerFormSubmission,
 ) -> IntakeSubmissionPayload:
+    if submission.review_payload is None or submission.review_unit_price is None:
+        raise HTTPException(status_code=409, detail="请先保存审核内容并填写每次价格")
     try:
-        return IntakeSubmissionPayload.model_validate(submission.payload)
+        return IntakeSubmissionPayload.model_validate(submission.review_payload)
     except ValidationError as exc:
         raise HTTPException(
             status_code=409,
@@ -373,6 +408,8 @@ def convert_submission(
         raise HTTPException(status_code=409, detail="当前提交状态不能转换")
 
     payload = _validated_submission_payload(submission)
+    unit_price = submission.review_unit_price
+    assert unit_price is not None
     changed_at = now or utc_now()
     original_status = submission.status
     result = session.execute(
@@ -406,10 +443,7 @@ def convert_submission(
             )
         raise HTTPException(status_code=409, detail="提交记录已被其他操作更新")
 
-    customer_values = payload.customer.model_dump()
-    customer = build_customer(
-        CustomerCreate(**customer_values, is_repeat_customer=False)
-    )
+    customer = build_customer(CustomerCreate(**payload.customer.model_dump()))
     session.add(customer)
     session.flush()
 
@@ -427,13 +461,14 @@ def convert_submission(
         end_date=payload.service.end_date,
         visits_per_day=payload.service.visits_per_day,
         service_items=payload.service.service_items,
-        base_price=DEFAULT_BASE_PRICE,
+        base_price=unit_price,
         stairs_fee=Decimal("0.00"),
         other_fee=Decimal("0.00"),
-        order_status=OrderStatus.PENDING_CONFIRMATION,
+        order_status=OrderStatus.CONFIRMED,
         notes=payload.notes,
     )
-    order = build_order(order_payload, cats=cats)
+    order = build_order(order_payload, cats=cats, customer=customer)
+    reprice_order(order, unit_price=unit_price)
     session.add(order)
     session.flush()
 

@@ -18,7 +18,7 @@ class TaskWriteModel(BaseModel):
 
 
 class TaskExecutionCustomer(BaseModel):
-    id: int
+    id: int | None
     name: str
     phone: str | None
     community: str | None
@@ -33,7 +33,7 @@ class TaskExecutionCustomer(BaseModel):
 
 
 class TaskExecutionCat(BaseModel):
-    id: int
+    id: int | None
     name: str
     food: str | None
     food_preference: str | None
@@ -73,6 +73,7 @@ class TaskExecutionDetail(BaseModel):
     revision: str
     order_status: OrderStatus
     order_notes: str | None
+    cat_count: int = Field(ge=1, le=50)
     customer: TaskExecutionCustomer
     cats: list[TaskExecutionCat]
     items: list[TaskExecutionItem]

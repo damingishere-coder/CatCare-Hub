@@ -1,10 +1,11 @@
-import { CircleDollarSign, LoaderCircle, X } from "lucide-react";
+import { CircleDollarSign } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { FormDialog } from "../../components/ui/FormDialog";
 import type { PaymentCreateInput, PaymentMethod, PaymentReceivable } from "./types";
 
 const inputClass =
-  "mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950";
+  "mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950";
 const labelClass = "block text-sm font-medium text-slate-700";
 
 const methodLabels: Record<PaymentMethod, string> = {
@@ -87,18 +88,18 @@ export function PaymentForm({ orders, initialOrderId, onCancel, onSave }: Paymen
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-[2px] sm:p-8" role="dialog" aria-modal="true" aria-labelledby="payment-form-title">
-      <form className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-2xl" onSubmit={handleSubmit}>
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div>
-            <h2 id="payment-form-title" className="text-lg font-semibold text-slate-950">登记收款</h2>
-            <p className="mt-1 text-sm text-slate-500">流水保存后不可在本轮编辑、删除或退款。</p>
-          </div>
-          <button type="button" className="cc-icon-button" onClick={onCancel} disabled={saving} aria-label="关闭收款表单"><X size={18} /></button>
-        </div>
-
-        <div className="space-y-5 px-5 py-5 sm:px-6">
-          {error ? <p className="cc-alert cc-alert--danger" role="alert">{error}</p> : null}
+    <FormDialog
+      title="登记收款"
+      description="流水保存后不可在本轮编辑、删除或退款。"
+      saving={saving}
+      error={error}
+      submitLabel="确认登记"
+      submitIcon={<CircleDollarSign size={16} />}
+      maxWidthClass="max-w-2xl"
+      onCancel={onCancel}
+      onSubmit={handleSubmit}
+    >
+        <div className="space-y-5">
           <label className={labelClass}>
             待收订单
             <select className={inputClass} value={orderId} onChange={(event) => handleOrderChange(Number(event.target.value))} disabled={saving}>
@@ -134,14 +135,6 @@ export function PaymentForm({ orders, initialOrderId, onCancel, onSave }: Paymen
             <textarea className={`${inputClass} min-h-24 resize-y`} maxLength={2000} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={saving} />
           </label>
         </div>
-
-        <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4 sm:px-6">
-          <button type="button" className="cc-button cc-button--secondary" onClick={onCancel} disabled={saving}>取消</button>
-          <button type="submit" className="cc-button cc-button--primary" disabled={saving}>
-            {saving ? <LoaderCircle className="animate-spin" size={16} /> : <CircleDollarSign size={16} />}{saving ? "保存中…" : "确认登记"}
-          </button>
-        </div>
-      </form>
-    </div>
+    </FormDialog>
   );
 }

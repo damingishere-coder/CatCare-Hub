@@ -220,7 +220,6 @@ def test_payment_summary_boundaries_records_and_privacy(
     for forbidden in (
         "FAKE-P8-PHONE",
         "P8 虚构微信",
-        "P8 不对应真实地点的地址",
         "P8 虚构门禁",
         "FAKE-P8-KEY",
         "P8 不应进入收款页的客户备注",

@@ -45,6 +45,14 @@ class RouteResult:
     polyline: tuple[GeoPoint, ...]
 
 
+@dataclass(frozen=True)
+class MatrixEntry:
+    origin_id: str
+    destination_id: str
+    distance_meters: int
+    duration_seconds: int
+
+
 class MapProvider(Protocol):
     def provider_state(self) -> ProviderState: ...
 
@@ -67,6 +75,12 @@ class RouteProvider(Protocol):
         origin: GeoPoint,
         stops: list[RouteStop],
     ) -> list[RouteStop]: ...
+
+    def distance_matrix(
+        self,
+        origin: GeoPoint,
+        stops: list[RouteStop],
+    ) -> list[MatrixEntry]: ...
 
 
 class NavigationProvider(Protocol):

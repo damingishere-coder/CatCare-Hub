@@ -84,7 +84,7 @@ function reminderTarget(reminder: DashboardReminder): string {
     return `/admin/payments?action=create&order_id=${reminder.order_id}`;
   }
   if (reminder.kind === "payment_due") return "/admin/payments";
-  return "/admin/plans?view=orders";
+  return "/admin/orders";
 }
 
 export function DashboardPage() {
@@ -169,7 +169,7 @@ export function DashboardPage() {
               { label: "本月收入", value: currency(dashboard.metrics.month_income), unit: "", icon: CircleDollarSign },
             ].map(({ label, value, unit, icon: Icon }) => (
               <article key={label} className="cc-metric p-4 sm:p-5">
-                <div className="flex items-center justify-between text-slate-500"><p className="text-sm font-medium">{label}</p><span className="flex size-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"><Icon size={17} /></span></div>
+                <div className="flex items-center justify-between text-slate-500"><p className="text-sm font-medium">{label}</p><span className="flex size-9 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><Icon size={17} /></span></div>
                 <p className="mt-5 text-2xl font-bold tracking-[-0.035em] text-slate-950">{value}{unit ? <span className="ml-1 text-sm font-medium text-slate-500">{unit}</span> : null}</p>
               </article>
             ))}
@@ -179,7 +179,7 @@ export function DashboardPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h2 id="quick-actions-title" className="text-sm font-semibold text-slate-950">快捷入口</h2><p className="mt-1 text-xs text-slate-500">常用录入操作直接开始</p></div>
               <div className="flex flex-wrap gap-2">
-                <Link className="cc-button cc-button--primary" to="/admin/plans?view=orders&action=create"><Plus size={15} />新增订单</Link>
+                <Link className="cc-button cc-button--primary" to="/admin/orders?action=create"><Plus size={15} />新增订单</Link>
                 <Link className="cc-button cc-button--secondary" to="/admin/customers?action=create"><UserPlus size={15} />新增客户</Link>
                 <Link className="cc-button cc-button--secondary" to="/fill"><Rocket size={15} />客户填写入口</Link>
               </div>
@@ -195,9 +195,9 @@ export function DashboardPage() {
               {dashboard.schedule.length ? (
                 <div className="divide-y divide-slate-100">
                   {dashboard.schedule.map((task, index) => (
-                    <Link key={task.id} to={`/admin/tasks/${task.id}`} className="grid gap-2 px-5 py-4 transition-colors hover:bg-indigo-50/40 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
+                    <Link key={task.id} to={`/admin/tasks/${task.id}`} className="grid gap-2 px-5 py-4 transition-colors hover:bg-orange-50/50 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
                       <div><p className="text-sm font-semibold text-slate-950">{task.planned_time?.slice(0, 5) || "待定"}</p><p className="mt-1 text-xs text-slate-400">第 {index + 1} 站</p></div>
-                      <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{task.customer_name}</p><p className="mt-1 truncate text-xs text-slate-500">{task.community || "未填写小区"} · {task.cat_count} 只猫</p></div>
+                      <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{task.customer_name}</p><p className="mt-1 truncate text-xs text-slate-500">{task.address || "地址未填写"} · {task.cat_count} 只猫</p></div>
                       <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-medium ${statusStyle(task.status)}`}>{taskStatusLabels[task.status]}</span>
                     </Link>
                   ))}
@@ -234,7 +234,7 @@ export function DashboardPage() {
             </section>
           </div>
 
-          <p className="mt-4 text-xs leading-5 text-slate-500">工作台仅展示客户姓名、小区和数量摘要；电话、详细地址、门禁、钥匙编号及照片请进入单任务详情查看。当前后台仍只限本机或可信私网使用。</p>
+          <p className="mt-4 text-xs leading-5 text-slate-500">工作台仅展示客户名称、地址和数量摘要；门禁、钥匙编号及照片请进入单任务详情查看。当前后台仍只限本机或可信私网使用。</p>
         </>
       ) : null}
     </section>

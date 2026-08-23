@@ -5,8 +5,6 @@ import type {
   CustomerInput,
   CustomerListResponse,
 } from "./types";
-import { notifyUnauthorized } from "../../lib/authEvents";
-
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const customersPath = `${apiBase}/api/admin/customers`;
 
@@ -35,7 +33,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    notifyUnauthorized(response.status);
     let message = `请求失败（HTTP ${response.status}）`;
     try {
       const payload = (await response.json()) as ApiErrorPayload;
@@ -50,17 +47,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(response.status, message);
   }
 
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
-export function listCustomers(search = ""): Promise<CustomerListResponse> {
+export function listCustomers(search = "", includeArchived = false): Promise<CustomerListResponse> {
   if (search) {
     return request<CustomerListResponse>(`${customersPath}/search`, {
       method: "POST",
-      body: JSON.stringify({ search }),
+      body: JSON.stringify({ search, include_archived: includeArchived }),
     });
   }
-  return request<CustomerListResponse>(customersPath);
+  return request<CustomerListResponse>(includeArchived ? `${customersPath}?include_archived=true` : customersPath);
 }
 
 export function getCustomer(customerId: number): Promise<CustomerDetail> {
@@ -100,4 +98,15 @@ export function updateCat(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function archiveCustomer(customerId: number, archived: boolean): Promise<CustomerDetail> {
+  return request<CustomerDetail>(`${customersPath}/${customerId}/archive`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived }),
+  });
+}
+
+export function deleteCustomer(customerId: number): Promise<void> {
+  return request<void>(`${customersPath}/${customerId}`, { method: "DELETE" });
 }

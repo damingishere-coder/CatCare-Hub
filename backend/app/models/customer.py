@@ -1,7 +1,8 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -28,6 +29,7 @@ class Customer(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    system_key: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     wechat_name: Mapped[str | None] = mapped_column(String(100))
     phone: Mapped[str | None] = mapped_column(String(32), index=True)
@@ -50,6 +52,7 @@ class Customer(TimestampMixin, Base):
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     geocode_status: Mapped[str | None] = mapped_column(String(32), index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     cats: Mapped[list["Cat"]] = relationship(
         back_populates="customer",
@@ -58,17 +61,14 @@ class Customer(TimestampMixin, Base):
     )
     orders: Mapped[list["Order"]] = relationship(
         back_populates="customer",
-        cascade="all, delete-orphan",
         passive_deletes=True,
     )
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="customer",
-        cascade="all, delete-orphan",
         passive_deletes=True,
     )
     payments: Mapped[list["Payment"]] = relationship(
         back_populates="customer",
-        cascade="all, delete-orphan",
         passive_deletes=True,
     )
 

@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { serviceItemOptions } from "../orders/constants";
+import { customerAddress } from "../../lib/customerDisplay";
 import type { ServiceItem } from "../orders/types";
 import {
   getDayPlan,
@@ -64,15 +65,7 @@ function timeValue(value: string | null): string {
 }
 
 function addressLine(detail: PlanTaskDetail): string {
-  return [
-    detail.customer.community,
-    detail.customer.address,
-    detail.customer.building,
-    detail.customer.unit,
-    detail.customer.room,
-  ]
-    .filter(Boolean)
-    .join(" · ") || "未填写地址";
+  return customerAddress(detail.customer) || "未填写地址";
 }
 
 function statusStyle(status: PlanTaskStatus): string {
@@ -405,12 +398,12 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                 <button
                   key={day.service_date}
                   type="button"
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${selectedDate === day.service_date ? "bg-indigo-600 text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
+                  className={`flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${selectedDate === day.service_date ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
                   onClick={() => selectDate(day.service_date)}
                   disabled={dirty || routeBusy}
                 >
                   <span className="font-medium">{displayDate(day.service_date)}</span>
-                  <span className={selectedDate === day.service_date ? "text-indigo-100" : "text-slate-500"}>
+                  <span className={selectedDate === day.service_date ? "text-orange-950/70" : "text-slate-500"}>
                     {day.order_count} 单 / {day.cat_count} 只猫
                   </span>
                 </button>
@@ -439,14 +432,14 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
             ) : (
               <ol className="space-y-2">
                 {draftTasks.map((task, index) => (
-                  <li key={task.id} className={`rounded-lg border p-3 transition-all ${selectedTaskId === task.id ? "border-indigo-200 bg-indigo-50/60 shadow-sm" : "border-transparent bg-slate-50/70 hover:border-slate-200 hover:bg-white"}`}>
+                  <li key={task.id} className={`rounded-xl border p-3 transition-all ${selectedTaskId === task.id ? "border-orange-200 bg-orange-50/70 shadow-sm" : "border-transparent bg-slate-50/70 hover:border-slate-200 hover:bg-white"}`}>
                     <div className="flex items-start gap-2">
                       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => selectTask(task.id)}>
                         <div className="flex items-center gap-2">
-                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white">{index + 1}</span>
+                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#FF9500] text-xs font-semibold text-[#1D1D1F]">{index + 1}</span>
                           <span className="truncate text-sm font-semibold text-slate-900">{task.customer.name}</span>
                         </div>
-                        <p className="mt-1.5 truncate text-xs text-slate-500">{task.customer.community || "未填写小区"} · {task.cats.length} 只猫</p>
+                        <p className="mt-1.5 truncate text-xs text-slate-500">{task.customer.address || "地址待查看"} · {task.cat_count} 只猫</p>
                       </button>
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusStyle(task.status)}`}>{planTaskStatusLabels[task.status]}</span>
                     </div>
@@ -546,8 +539,8 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                 <section>
                   <h3 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">猫咪</h3>
                   <div className="mt-2 space-y-2">
-                    {taskDetail.cats.map((cat) => (
-                      <article key={cat.id} className="rounded-lg bg-slate-50/80 p-3">
+                    {taskDetail.cats.map((cat, index) => (
+                      <article key={cat.id ?? `${cat.name}-${index}`} className="rounded-lg bg-slate-50/80 p-3">
                         <p className="text-sm font-semibold text-slate-900">{cat.name}{cat.is_active ? "" : "（已停用）"}</p>
                         {cat.medication_required ? <p className="mt-1 text-xs leading-5 text-red-700">用药：{cat.medication_notes || "需要用药，请核对档案"}</p> : null}
                         {cat.service_notes ? <p className="mt-1 text-xs leading-5 text-slate-600">服务：{cat.service_notes}</p> : null}

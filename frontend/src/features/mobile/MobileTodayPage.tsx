@@ -13,7 +13,6 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { SessionControls } from "../auth/SessionControls";
 import type { TaskStatus } from "../orders/types";
 import { planTaskStatusLabels } from "../plans/constants";
 import { getMobileToday } from "./api";
@@ -84,17 +83,17 @@ export function MobileTodayPage() {
   }, []);
 
   return (
-    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-[#f3f5f8] text-slate-950">
+    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-[#F5F5F7] text-[#1D1D1F]">
       <div className="mx-auto max-w-xl px-4 py-6 sm:px-5 sm:py-8">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold tracking-[0.14em] text-indigo-600 uppercase">移动执行端</p>
+            <p className="text-xs font-semibold tracking-[0.14em] text-orange-600 uppercase">移动执行端</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">今天的喂猫任务</h1>
             <p className="mt-2 text-sm text-slate-600">
               {today ? `${displayBusinessDate(today.business_date)} · 上海业务时间` : "按上海业务时间读取"}
             </p>
           </div>
-          <div className="flex items-center gap-2"><SessionControls compact /><button
+          <div className="flex items-center gap-2"><button
             type="button"
             className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm disabled:opacity-50"
             aria-label="刷新今日任务"
@@ -107,7 +106,7 @@ export function MobileTodayPage() {
 
         <div className="mt-5 flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-3 text-xs leading-5 text-slate-600 shadow-sm">
           <ShieldAlert className="mt-0.5 shrink-0" size={16} />
-          已启用执行端登录与权限隔离；仍仅建议在本机或已配置的可信私网中使用。
+          当前为免登录本地模式，仅允许从运行 CatCare-Hub 的这台电脑访问。
         </div>
 
         <PwaInstallPrompt />
@@ -125,8 +124,8 @@ export function MobileTodayPage() {
         ) : today ? (
           <>
             <section className="mt-6 grid grid-cols-3 gap-2" aria-label="今日任务概览">
-              <div className="rounded-xl bg-indigo-600 p-3 text-white shadow-sm">
-                <p className="text-xs text-indigo-100">全部</p>
+              <div className="rounded-2xl bg-[#FF9500] p-3 text-[#1D1D1F] shadow-sm">
+                <p className="text-xs text-orange-950/70">全部</p>
                 <p className="mt-1 text-2xl font-bold">{today.task_count}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -151,7 +150,7 @@ export function MobileTodayPage() {
                   {today.tasks.map((task) => (
                     <li key={task.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                       <div className="flex items-start gap-3">
-                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#FF9500] text-sm font-bold text-[#1D1D1F]">
                           {task.sequence}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -163,7 +162,7 @@ export function MobileTodayPage() {
                           </div>
                           <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600">
                             <MapPin size={14} className="shrink-0" />
-                            <span className="truncate">{task.community || "小区未填写"}</span>
+                            <span className="truncate">{task.address || task.community || "地址未填写"}</span>
                           </p>
                           <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
                             <PawPrint size={13} />计划 {task.planned_time?.slice(0, 5) || "待设置"} · {task.cat_count} 只猫
@@ -187,7 +186,7 @@ export function MobileTodayPage() {
                           </span>
                         )}
                         <Link
-                          className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+                          className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-[#FF9500] px-3 text-sm font-semibold text-[#1D1D1F] shadow-sm hover:bg-orange-500"
                           to={`/mobile/tasks/${task.id}`}
                         >
                           查看任务<ChevronRight size={16} />

@@ -47,12 +47,14 @@ class PaymentReceivable(BaseModel):
     order_id: int
     customer_name: str
     community: str | None
+    address: str | None
     start_date: date
     end_date: date
     cat_count: int = Field(ge=0)
     total_amount: Decimal = Field(ge=0)
     paid_amount: Decimal = Field(ge=0)
     due_amount: Decimal = Field(ge=0)
+    overpaid_amount: Decimal = Field(ge=0)
     payment_status: OrderPaymentStatus
     order_status: OrderStatus
     revision: str = Field(pattern=r"^[0-9a-f]{64}$")

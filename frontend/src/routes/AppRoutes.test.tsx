@@ -3,27 +3,6 @@ import { MemoryRouter } from "react-router-dom";
 
 import { AppRoutes } from "./AppRoutes";
 
-const authMocks = vi.hoisted(() => ({
-  logout: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../features/auth/authContext", () => ({
-  useAuth: () => ({
-    session: { role: "admin", expires_at: "2035-01-01T00:00:00Z" },
-    loading: false,
-    error: null,
-    login: vi.fn(),
-    logout: authMocks.logout,
-  }),
-  useOptionalAuth: () => ({
-    session: { role: "admin", expires_at: "2035-01-01T00:00:00Z" },
-    loading: false,
-    error: null,
-    login: vi.fn(),
-    logout: authMocks.logout,
-  }),
-}));
-
 vi.mock("../features/tasks/TaskExecutionPage", () => ({
   TaskExecutionPage: () => <h1>单次服务执行</h1>,
 }));
@@ -48,6 +27,22 @@ vi.mock("../features/intake/AdminIntakePage", () => ({
   AdminIntakePage: () => <h1>客户填写</h1>,
 }));
 
+vi.mock("../features/plans/PlansPage", () => ({
+  PlansPage: () => <h1>路线图</h1>,
+}));
+
+vi.mock("../features/orders/OrdersPage", () => ({
+  OrdersPage: () => <h1>订单管理</h1>,
+}));
+
+vi.mock("../features/customers/CustomersPage", () => ({
+  CustomersPage: () => <h1>客户档案</h1>,
+}));
+
+vi.mock("../pages/admin/AdminPages", () => ({
+  SettingsPage: () => <h1>设置</h1>,
+}));
+
 function renderRoute(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -57,7 +52,7 @@ function renderRoute(path: string) {
 }
 
 describe("P0 application routes", () => {
-  it("renders the dashboard and all five admin navigation items", () => {
+  it("renders the dashboard and the six admin navigation items in business order", () => {
     renderRoute("/admin");
 
     expect(
@@ -67,29 +62,41 @@ describe("P0 application routes", () => {
       screen.getByRole("navigation", { name: "后台主导航" }),
     ).toBeInTheDocument();
 
-    for (const label of [
+    const expectedLabels = [
       "工作台",
-      "订单计划",
-      "客户档案",
+      "订单管理",
+      "路线图",
       "收款记录",
+      "客户档案",
       "设置",
-    ]) {
+    ];
+    for (const label of expectedLabels) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
+    expect(
+      screen.getAllByRole("link").map((link) => link.textContent?.trim()),
+    ).toEqual(expectedLabels);
+  });
+
+  it("redirects the retired login route directly to the dashboard", async () => {
+    renderRoute("/login");
+
+    expect(await screen.findByRole("heading", { name: "工作台" })).toBeInTheDocument();
   });
 
   it.each([
-    ["/admin/plans", "订单计划"],
+    ["/admin/routes", "路线图"],
+    ["/admin/plans", "路线图"],
     ["/admin/tasks/7", "单次服务执行"],
-    ["/admin/orders", "订单计划"],
+    ["/admin/orders", "订单管理"],
     ["/admin/customers", "客户档案"],
     ["/admin/intake", "客户填写"],
     ["/admin/payments", "收款记录"],
     ["/admin/settings", "设置"],
-  ])("renders admin route %s", (path, heading) => {
+  ])("renders admin route %s", async (path, heading) => {
     renderRoute(path);
 
-    expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
   });
 
   it("keeps the orders alias focused on the combined order-management view", async () => {

@@ -11,6 +11,7 @@ from app.models.intake import CustomerFormSubmission, CustomerFormToken
 from app.schemas.intake import (
     IntakeConversionRead,
     IntakeDraftPayload,
+    IntakeReviewDraftUpdate,
     IntakeSubmissionDetail,
     IntakeSubmissionList,
     IntakeSubmissionPayload,
@@ -29,6 +30,7 @@ from app.services.intake import (
     mark_reviewed,
     public_read,
     save_draft,
+    save_review_draft,
     submit_form,
     to_submission_detail,
     to_submission_summary,
@@ -188,6 +190,26 @@ def get_submission(
     submission_id: int,
     session: DatabaseSession,
 ) -> IntakeSubmissionDetail:
+    return to_submission_detail(_load_submission(session, submission_id))
+
+
+@admin_router.put(
+    "/submissions/{submission_id}/review-draft",
+    response_model=IntakeSubmissionDetail,
+)
+def put_review_draft(
+    submission_id: int,
+    payload: IntakeReviewDraftUpdate,
+    session: DatabaseSession,
+) -> IntakeSubmissionDetail:
+    submission = _load_submission(session, submission_id)
+    save_review_draft(
+        submission,
+        review_payload=payload.review_payload,
+        unit_price=payload.unit_price,
+        expected_revision=payload.expected_revision,
+    )
+    session.commit()
     return to_submission_detail(_load_submission(session, submission_id))
 
 

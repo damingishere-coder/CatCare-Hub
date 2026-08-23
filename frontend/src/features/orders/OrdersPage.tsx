@@ -8,11 +8,13 @@ import {
   Pencil,
   Plus,
   ReceiptText,
+  Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createOrder,
+  deleteOrder,
   getOrder,
   getOrderFormOptions,
   listOrders,
@@ -23,8 +25,9 @@ import { serviceItemOptions } from "./constants";
 import { OrderForm } from "./OrderForm";
 import type {
   OrderDetail,
+  OrderCreateInput,
   OrderFormOptions,
-  OrderInput,
+  OrderPatchInput,
   OrderPaymentStatus,
   OrderStatus,
   OrderSummary,
@@ -104,6 +107,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
     initialCreate ? "create" : null,
   );
   const [statusSaving, setStatusSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const listRequestId = useRef(0);
 
   const applyOrders = useCallback((items: OrderSummary[], preferredId?: number) => {
@@ -174,11 +178,11 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
     };
   }, [selectedOrderId]);
 
-  async function handleSave(payload: OrderInput) {
+  async function handleSave(payload: OrderCreateInput | OrderPatchInput) {
     const saved =
       formMode === "edit" && orderDetail
-        ? await updateOrder(orderDetail.id, payload)
-        : await createOrder(payload);
+        ? await updateOrder(orderDetail.id, payload as OrderPatchInput)
+        : await createOrder(payload as OrderCreateInput);
     setOrderDetail(saved);
     setSelectedOrderId(saved.id);
     setFormMode(null);
@@ -202,6 +206,23 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
     }
   }
 
+  async function handleDelete() {
+    if (!orderDetail?.deletable) return;
+    if (!window.confirm(`确认永久删除订单 #${orderDetail.id} 吗？此操作不能撤销。`)) return;
+    setDeleting(true);
+    setPageError(null);
+    try {
+      await deleteOrder(orderDetail.id);
+      setOrderDetail(null);
+      setSelectedOrderId(null);
+      await refreshOrders();
+    } catch (cause) {
+      setPageError(cause instanceof Error ? cause.message : "订单删除失败，请重试。");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const tasksByDate = orderDetail?.tasks.reduce<Record<string, OrderDetail["tasks"]>>(
     (groups, task) => {
       (groups[task.service_date] ??= []).push(task);
@@ -222,7 +243,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
           type="button"
           className="cc-button cc-button--primary"
           onClick={() => setFormMode("create")}
-          disabled={!formOptions || formOptions.customers.length === 0}
+          disabled={!formOptions}
         >
           <Plus size={17} />
           新建订单
@@ -234,10 +255,6 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
           <AlertCircle className="mt-0.5 shrink-0" size={17} />
           <span>{pageError}</span>
         </div>
-      ) : null}
-
-      {!listLoading && formOptions?.customers.length === 0 ? (
-        <p className="cc-alert cc-alert--warning mt-5">请先在“客户档案”中新增客户和猫咪，再创建订单。</p>
       ) : null}
 
       <div className="cc-surface mt-6 grid min-h-[680px] overflow-hidden p-0 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -261,7 +278,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                   <li key={order.id}>
                     <button
                       type="button"
-                      className={`w-full rounded-lg px-3 py-3 text-left transition-colors ${selectedOrderId === order.id ? "bg-indigo-600 text-white shadow-sm" : "hover:bg-slate-100"}`}
+                      className={`w-full rounded-xl px-3 py-3 text-left transition-colors ${selectedOrderId === order.id ? "bg-orange-50 text-slate-950 shadow-sm ring-1 ring-orange-200" : "hover:bg-slate-100"}`}
                       onClick={() => setSelectedOrderId(order.id)}
                       aria-pressed={selectedOrderId === order.id}
                     >
@@ -269,11 +286,11 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                         <span className="truncate text-sm font-semibold">{order.customer.name}</span>
                         <StatusBadge status={order.order_status} />
                       </div>
-                      <p className={`mt-1 text-xs ${selectedOrderId === order.id ? "text-slate-300" : "text-slate-500"}`}>
+                      <p className={`mt-1 text-xs ${selectedOrderId === order.id ? "text-orange-800" : "text-slate-500"}`}>
                         {shortDate(order.start_date)} – {shortDate(order.end_date)} · {order.total_visits} 次
                       </p>
-                      <div className={`mt-2 flex items-center justify-between text-xs ${selectedOrderId === order.id ? "text-slate-300" : "text-slate-500"}`}>
-                        <span>{order.cats.map((cat) => cat.name).join("、")}</span>
+                      <div className={`mt-2 flex items-center justify-between text-xs ${selectedOrderId === order.id ? "text-orange-800" : "text-slate-500"}`}>
+                        <span>{order.cats.length ? order.cats.map((cat) => cat.name).join("、") : `${order.cat_count} 只猫`}</span>
                         <span className="font-medium">{currency(order.total_amount)}</span>
                       </div>
                     </button>
@@ -301,18 +318,11 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                     <h2 className="text-xl font-semibold text-slate-950">订单 #{orderDetail.id}</h2>
                     <StatusBadge status={orderDetail.order_status} />
                   </div>
-                  <p className="mt-1 text-sm text-slate-500">{orderDetail.customer.name}{orderDetail.customer.community ? ` · ${orderDetail.customer.community}` : ""}</p>
+                  <p className="mt-1 text-sm text-slate-500">{orderDetail.customer.name}{orderDetail.customer.address ? ` · ${orderDetail.customer.address}` : ""}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <select
-                    className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-                    value={orderDetail.order_status}
-                    onChange={(event) => void handleStatusChange(event.target.value as OrderStatus)}
-                    disabled={statusSaving}
-                    aria-label="更新订单状态"
-                  >
-                    {Object.entries(orderStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
+                  {!(["cancelled", "completed"] as OrderStatus[]).includes(orderDetail.order_status) ? <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700" onClick={() => void handleStatusChange("cancelled")} disabled={statusSaving}>{statusSaving ? <LoaderCircle className="animate-spin" size={15} /> : null}取消订单</button> : null}
+                  <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700 disabled:cursor-not-allowed disabled:opacity-45" onClick={() => void handleDelete()} disabled={!orderDetail.deletable || deleting} title={orderDetail.delete_block_reason ?? "永久删除订单"}>{deleting ? <LoaderCircle className="animate-spin" size={15} /> : <Trash2 size={15} />}删除订单</button>
                   <button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={() => setFormMode("edit")}>
                     <Pencil size={15} />编辑订单
                   </button>
@@ -322,26 +332,39 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
               <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="order-overview-title">
                 <h3 id="order-overview-title" className="flex items-center gap-2 text-sm font-semibold text-slate-950"><CalendarDays size={16} />服务概览</h3>
                 <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <DetailItem label="日期范围" value={`${orderDetail.start_date} 至 ${orderDetail.end_date}`} />
-                  <DetailItem label="服务次数" value={`${orderDetail.service_days} 天 × ${orderDetail.visits_per_day} 次/天 = ${orderDetail.total_visits} 次`} />
+                  <DetailItem label="服务日期" value={orderDetail.service_schedule.map((entry) => `${entry.service_date}${entry.visit_count > 1 ? `（${entry.visit_count} 次）` : ""}`).join("、")} />
+                  <DetailItem label="服务次数" value={`${orderDetail.service_days} 个日期 · ${orderDetail.total_visits} 次`} />
                   <DetailItem label="客户" value={orderDetail.customer.name} />
-                  <DetailItem label="猫咪" value={orderDetail.cats.map((cat) => `${cat.name}${cat.is_active ? "" : "（已停用）"}`).join("、")} />
+                  <DetailItem label="猫咪" value={orderDetail.cats.length ? `${orderDetail.cat_count} 只（${orderDetail.cats.map((cat) => `${cat.name}${cat.is_active ? "" : "（已停用）"}`).join("、")}）` : `${orderDetail.cat_count} 只`} />
                   <div className="sm:col-span-2 xl:col-span-4"><DetailItem label="服务内容" value={orderDetail.service_items.map((item) => serviceLabels[item]).join("、")} /></div>
                 </dl>
+              </section>
+
+              <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="order-contact-title">
+                <h3 id="order-contact-title" className="text-sm font-semibold text-slate-950">订单联系人与入户快照</h3>
+                <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <DetailItem label="联系人" value={orderDetail.service_contact.name} />
+                  <DetailItem label="电话 / 微信" value={[orderDetail.service_contact.phone, orderDetail.service_contact.wechat_name].filter(Boolean).join(" / ") || "未填写"} />
+                  <DetailItem label="上门地址" value={orderDetail.customer.address || "未填写（无法自动规划路线）"} />
+                  <DetailItem label="入户方式" value={orderDetail.service_contact.access_method || "未填写"} />
+                  <div className="sm:col-span-2 xl:col-span-4"><DetailItem label="门禁 / 钥匙 / 客户备注" value={[orderDetail.service_contact.access_info, orderDetail.service_contact.key_status, orderDetail.service_contact.key_code, orderDetail.service_contact.notes].filter(Boolean).join("；") || "未填写"} /></div>
+                </dl>
+                {!orderDetail.deletable && orderDetail.delete_block_reason ? <p className="mt-4 text-xs text-slate-500">删除限制：{orderDetail.delete_block_reason}</p> : null}
               </section>
 
               <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="order-price-title">
                 <h3 id="order-price-title" className="flex items-center gap-2 text-sm font-semibold text-slate-950"><CircleDollarSign size={16} />费用与收款</h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-md bg-slate-50 p-3"><p className="text-xs text-slate-500">每次费用</p><p className="mt-1 font-semibold">{currency(String(Number(orderDetail.base_price) + Number(orderDetail.extra_cat_fee) + Number(orderDetail.stairs_fee)))}</p><p className="mt-1 text-xs text-slate-500">基础 {currency(orderDetail.base_price)} + 猫咪 {currency(orderDetail.extra_cat_fee)} + 爬楼 {currency(orderDetail.stairs_fee)}</p></div>
-                  <div className="rounded-md bg-slate-50 p-3"><p className="text-xs text-slate-500">其他费用</p><p className="mt-1 font-semibold">{currency(orderDetail.other_fee)}</p></div>
-                  <div className="rounded-lg bg-indigo-600 p-3 text-white"><p className="text-xs text-indigo-100">应收</p><p className="mt-1 text-lg font-semibold">{currency(orderDetail.total_amount)}</p></div>
+                  <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">每次价格</p><p className="mt-1 font-semibold">{currency(orderDetail.unit_price)}</p><p className="mt-1 text-xs text-slate-500">{orderDetail.pricing_mode === "per_visit" ? "最终单次价格" : "历史订单折算单价"}</p></div>
+                  <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">已收</p><p className="mt-1 font-semibold">{currency(orderDetail.paid_amount)}</p></div>
+                  <div className="rounded-xl bg-[#FF9500] p-3 text-[#1D1D1F]"><p className="text-xs text-orange-950">应收</p><p className="mt-1 text-lg font-semibold">{currency(orderDetail.total_amount)}</p></div>
                   <div className="rounded-md bg-amber-50 p-3"><p className="text-xs text-amber-700">待收 · {paymentStatusLabels[orderDetail.payment_status]}</p><p className="mt-1 text-lg font-semibold text-amber-900">{currency(orderDetail.due_amount)}</p></div>
                 </div>
+                {Number(orderDetail.overpaid_amount) > 0 ? <div className="cc-alert cc-alert--warning mt-3">当前超收 {currency(orderDetail.overpaid_amount)}，待收金额保持为 0；请按实际情况退款或保留为客户余额。</div> : null}
               </section>
 
               <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="order-notes-title">
-                <h3 id="order-notes-title" className="text-sm font-semibold text-slate-950">订单备注</h3>
+                <h3 id="order-notes-title" className="text-sm font-semibold text-slate-950">服务备注</h3>
                 <p className={`mt-2 whitespace-pre-wrap text-sm leading-6 ${orderDetail.notes ? "text-slate-700" : "text-slate-400"}`}>{orderDetail.notes || "未填写"}</p>
               </section>
 

@@ -1,12 +1,11 @@
 import type {
+  OrderCreateInput,
   OrderDetail,
   OrderFormOptions,
-  OrderInput,
   OrderListResponse,
+  OrderPatchInput,
   OrderStatus,
 } from "./types";
-import { notifyUnauthorized } from "../../lib/authEvents";
-
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const ordersPath = `${apiBase}/api/admin/orders`;
 
@@ -34,7 +33,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
-    notifyUnauthorized(response.status);
     let message = `请求失败（HTTP ${response.status}）`;
     try {
       const payload = (await response.json()) as ApiErrorPayload;
@@ -48,6 +46,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(response.status, message);
   }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
@@ -63,16 +62,16 @@ export function getOrderFormOptions(): Promise<OrderFormOptions> {
   return request<OrderFormOptions>(`${ordersPath}/form-options`);
 }
 
-export function createOrder(payload: OrderInput): Promise<OrderDetail> {
+export function createOrder(payload: OrderCreateInput): Promise<OrderDetail> {
   return request<OrderDetail>(ordersPath, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-export function updateOrder(orderId: number, payload: OrderInput): Promise<OrderDetail> {
+export function updateOrder(orderId: number, payload: OrderPatchInput): Promise<OrderDetail> {
   return request<OrderDetail>(`${ordersPath}/${orderId}`, {
-    method: "PUT",
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
@@ -85,4 +84,8 @@ export function updateOrderStatus(
     method: "PATCH",
     body: JSON.stringify({ order_status: orderStatus }),
   });
+}
+
+export function deleteOrder(orderId: number): Promise<void> {
+  return request<void>(`${ordersPath}/${orderId}`, { method: "DELETE" });
 }

@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Date, ForeignKey, Index, JSON, Numeric, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Index, JSON, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -39,15 +39,43 @@ class Order(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    customer_id: Mapped[int] = mapped_column(
-        ForeignKey("customers.id", ondelete="CASCADE"),
-        nullable=False,
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
+    )
+    contact_name: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="", server_default="", index=True
+    )
+    contact_wechat_name: Mapped[str | None] = mapped_column(String(100))
+    contact_phone: Mapped[str | None] = mapped_column(String(32))
+    contact_community: Mapped[str | None] = mapped_column(String(200))
+    contact_address: Mapped[str | None] = mapped_column(Text)
+    contact_building: Mapped[str | None] = mapped_column(String(50))
+    contact_unit: Mapped[str | None] = mapped_column(String(50))
+    contact_room: Mapped[str | None] = mapped_column(String(50))
+    contact_access_method: Mapped[str | None] = mapped_column(String(100))
+    contact_access_info: Mapped[str | None] = mapped_column(Text)
+    contact_key_status: Mapped[str | None] = mapped_column(String(50))
+    contact_key_code: Mapped[str | None] = mapped_column(String(100))
+    contact_notes: Mapped[str | None] = mapped_column(Text)
+    contact_is_repeat_customer: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    route_latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    route_longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    route_geocode_status: Mapped[str | None] = mapped_column(String(32), index=True)
+    cat_snapshot: Mapped[list[dict[str, object]]] = mapped_column(
+        JSON, nullable=False, default=list
     )
     start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     end_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     visits_per_day: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+    cat_count: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
     service_items: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    pricing_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="legacy_components", server_default="legacy_components"
+    )
     base_price: Mapped[Decimal] = mapped_column(
         Numeric(10, 2), nullable=False, default=Decimal("0.00"), server_default="0"
     )
@@ -82,11 +110,17 @@ class Order(TimestampMixin, Base):
     )
     notes: Mapped[str | None] = mapped_column(Text)
 
-    customer: Mapped["Customer"] = relationship(back_populates="orders")
+    customer: Mapped["Customer | None"] = relationship(back_populates="orders")
     cat_links: Mapped[list["OrderCat"]] = relationship(
         back_populates="order",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+    service_dates: Mapped[list["OrderServiceDate"]] = relationship(
+        back_populates="order",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="OrderServiceDate.service_date",
     )
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="order",
@@ -95,7 +129,6 @@ class Order(TimestampMixin, Base):
     )
     payments: Mapped[list["Payment"]] = relationship(
         back_populates="order",
-        cascade="all, delete-orphan",
         passive_deletes=True,
     )
 
@@ -114,3 +147,20 @@ class OrderCat(Base):
 
     order: Mapped[Order] = relationship(back_populates="cat_links")
     cat: Mapped["Cat"] = relationship(back_populates="order_links")
+
+
+class OrderServiceDate(Base):
+    __tablename__ = "order_service_dates"
+    __table_args__ = (
+        CheckConstraint("visit_count > 0 AND visit_count <= 10", name="visit_count_range"),
+        Index("ix_order_service_dates_date", "service_date"),
+    )
+
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    service_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    visit_count: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+
+    order: Mapped[Order] = relationship(back_populates="service_dates")

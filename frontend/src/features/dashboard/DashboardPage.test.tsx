@@ -29,6 +29,7 @@ const dashboard: DashboardResponse = {
       status: "in_progress",
       customer_name: "P7 工作台客户（虚构）",
       community: "P7 虚构小区",
+      address: "P7 不对应真实地点的地址",
       cat_count: 2,
     },
   ],
@@ -80,7 +81,7 @@ it("shows real metrics, schedule, reminders, and working quick links", async () 
   renderPage();
 
   expect(await screen.findByRole("heading", { name: "工作台" })).toBeInTheDocument();
-  const todayCard = screen.getByText("今日订单").closest("article");
+  const todayCard = (await screen.findByText("今日订单", {}, { timeout: 5000 })).closest("article");
   const incomeCard = screen.getByText("本月收入").closest("article");
   expect(todayCard).not.toBeNull();
   expect(incomeCard).not.toBeNull();
@@ -94,7 +95,7 @@ it("shows real metrics, schedule, reminders, and working quick links", async () 
   expect(screen.getAllByText("待收款").length).toBeGreaterThanOrEqual(2);
   expect(screen.getByRole("link", { name: "新增订单" })).toHaveAttribute(
     "href",
-    "/admin/plans?view=orders&action=create",
+    "/admin/orders?action=create",
   );
   expect(screen.getByRole("link", { name: "新增客户" })).toHaveAttribute(
     "href",

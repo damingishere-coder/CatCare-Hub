@@ -27,15 +27,53 @@ export type ServiceItem =
   | "other";
 
 export interface OrderCustomerSummary {
-  id: number;
+  id: number | null;
   name: string;
   community: string | null;
+  address: string | null;
 }
 
 export interface OrderCatSummary {
-  id: number;
+  id: number | null;
   name: string;
   is_active: boolean;
+}
+
+export interface OrderServiceContact {
+  name: string;
+  wechat_name: string | null;
+  phone: string | null;
+  community: string | null;
+  address: string | null;
+  building: string | null;
+  unit: string | null;
+  room: string | null;
+  access_method: string | null;
+  access_info: string | null;
+  key_status: string | null;
+  key_code: string | null;
+  notes: string | null;
+  is_repeat_customer: boolean;
+  latitude: string | null;
+  longitude: string | null;
+  geocode_status: string | null;
+}
+
+export interface OrderCatSnapshot {
+  source_cat_id: number | null;
+  name: string;
+  photo_url: string | null;
+  gender: string | null;
+  age: string | null;
+  breed: string | null;
+  personality: string | null;
+  food: string | null;
+  food_preference: string | null;
+  litter_type: string | null;
+  medication_required: boolean;
+  medication_notes: string | null;
+  special_notes: string | null;
+  service_notes: string | null;
 }
 
 export interface OrderTaskItem {
@@ -55,6 +93,9 @@ export interface OrderTask {
 
 export interface OrderSummary {
   id: number;
+  source_customer_id: number | null;
+  service_contact: OrderServiceContact;
+  cat_snapshot: OrderCatSnapshot[];
   customer: OrderCustomerSummary;
   cats: OrderCatSummary[];
   start_date: string;
@@ -62,7 +103,11 @@ export interface OrderSummary {
   visits_per_day: number;
   service_days: number;
   total_visits: number;
+  cat_count: number;
+  service_schedule: Array<{ service_date: string; visit_count: number }>;
   service_items: ServiceItem[];
+  pricing_mode: "legacy_components" | "per_visit";
+  unit_price: string;
   base_price: string;
   extra_cat_fee: string;
   stairs_fee: string;
@@ -70,9 +115,12 @@ export interface OrderSummary {
   total_amount: string;
   paid_amount: string;
   due_amount: string;
+  overpaid_amount: string;
   payment_status: OrderPaymentStatus;
   order_status: OrderStatus;
   task_count: number;
+  deletable: boolean;
+  delete_block_reason: string | null;
   updated_at: string;
 }
 
@@ -87,15 +135,29 @@ export interface OrderListResponse {
   total: number;
 }
 
-export interface OrderCatOption {
+export interface OrderCatOption extends Omit<OrderCatSnapshot, "source_cat_id"> {
   id: number;
-  name: string;
 }
 
 export interface OrderCustomerOption {
   id: number;
   name: string;
+  wechat_name: string | null;
+  phone: string | null;
   community: string | null;
+  address: string | null;
+  building: string | null;
+  unit: string | null;
+  room: string | null;
+  access_method: string | null;
+  access_info: string | null;
+  key_status: string | null;
+  key_code: string | null;
+  notes: string | null;
+  is_repeat_customer: boolean;
+  latitude: string | null;
+  longitude: string | null;
+  geocode_status: string | null;
   cats: OrderCatOption[];
 }
 
@@ -106,16 +168,27 @@ export interface OrderFormOptions {
   stairs_unit_price: string;
 }
 
-export interface OrderInput {
-  customer_id: number;
-  cat_ids: number[];
-  start_date: string;
-  end_date: string;
-  visits_per_day: number;
+export interface OrderCreateInput {
+  source_customer_id?: number;
+  service_contact: OrderServiceContact;
+  cat_snapshot: OrderCatSnapshot[];
+  cat_count: number;
+  service_dates: string[];
   service_items: ServiceItem[];
-  base_price: string;
-  stairs_fee: string;
-  other_fee: string;
-  order_status: OrderStatus;
+  unit_price: string;
   notes: string | null;
 }
+
+export interface OrderPatchInput {
+  source_customer_id?: number | null;
+  service_contact?: OrderServiceContact;
+  cat_snapshot?: OrderCatSnapshot[];
+  cat_count?: number;
+  service_dates?: string[];
+  service_items?: ServiceItem[];
+  unit_price?: string;
+  notes?: string | null;
+}
+
+export type OrderSaveInput = OrderCreateInput | OrderPatchInput;
+export type OrderInput = OrderCreateInput;

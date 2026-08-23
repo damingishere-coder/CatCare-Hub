@@ -174,11 +174,14 @@ def test_plan_days_and_task_detail_follow_privacy_boundaries(
     assert len(day["revision"]) == 64
     assert day["schedule_locked"] is False
     assert [task["sort_order"] for task in day["tasks"]] == [0, 0, 1]
-    assert all(set(task["customer"]) == {"id", "name", "community"} for task in day["tasks"])
+    assert all(
+        set(task["customer"]) == {"id", "name", "community", "address"}
+        for task in day["tasks"]
+    )
+    assert all(task["customer"]["address"] for task in day["tasks"])
     serialized_day = day_response.text
     for forbidden in (
         "000-PLAN-TEST",
-        "虚构路 100 号",
         "虚构门禁方式",
         "FAKE-KEY-CODE",
         "不应出现在 P4 任务响应中的虚构客户备注",

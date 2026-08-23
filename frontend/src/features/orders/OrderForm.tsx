@@ -1,19 +1,21 @@
-import { Calculator, LoaderCircle, X } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { BookUser, Calculator, ChevronLeft, ChevronRight, LoaderCircle, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
+import { serviceItemOptions } from "./constants";
 import type {
-  OrderCatOption,
+  OrderCreateInput,
   OrderDetail,
   OrderFormOptions,
-  OrderInput,
-  OrderStatus,
+  OrderPatchInput,
+  OrderSaveInput,
+  OrderServiceContact,
   ServiceItem,
 } from "./types";
-import { serviceItemOptions } from "./constants";
 
-const inputClass =
-  "mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950";
+const inputClass = "mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100";
 const labelClass = "block text-sm font-medium text-slate-700";
+const defaultServices: ServiceItem[] = ["feed", "water", "litter", "photo"];
+const weekDays = ["一", "二", "三", "四", "五", "六", "日"];
 
 function localDateValue(date = new Date()): string {
   const year = date.getFullYear();
@@ -22,128 +24,223 @@ function localDateValue(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
-function optionalValue(value: string): string | null {
-  const normalized = value.trim();
-  return normalized || null;
+function parseLocalDate(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
-function serviceDays(startDate: string, endDate: string): number {
-  if (!startDate || !endDate || endDate < startDate) return 0;
-  const start = Date.parse(`${startDate}T00:00:00Z`);
-  const end = Date.parse(`${endDate}T00:00:00Z`);
-  return Math.floor((end - start) / 86_400_000) + 1;
+function monthGrid(month: Date): Array<Date | null> {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const offset = (first.getDay() + 6) % 7;
+  const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = index - offset + 1;
+    return day >= 1 && day <= days ? new Date(month.getFullYear(), month.getMonth(), day) : null;
+  });
+}
+
+function optionalValue(value: string): string | null {
+  return value.trim() || null;
+}
+
+function sameItems(left: ServiceItem[], right: ServiceItem[]): boolean {
+  return [...left].sort().join("|") === [...right].sort().join("|");
 }
 
 function money(value: number): string {
   return Number.isFinite(value) ? value.toFixed(2) : "0.00";
 }
 
+function emptyContact(name = ""): OrderServiceContact {
+  return {
+    name,
+    wechat_name: null,
+    phone: null,
+    community: null,
+    address: null,
+    building: null,
+    unit: null,
+    room: null,
+    access_method: null,
+    access_info: null,
+    key_status: null,
+    key_code: null,
+    notes: null,
+    is_repeat_customer: false,
+    latitude: null,
+    longitude: null,
+    geocode_status: null,
+  };
+}
+
 interface OrderFormProps {
   options: OrderFormOptions;
   initial?: OrderDetail;
   onCancel: () => void;
-  onSave: (payload: OrderInput) => Promise<void>;
+  onSave: (payload: OrderSaveInput) => Promise<void>;
 }
 
 export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps) {
-  const defaultDate = localDateValue();
-  const [customerId, setCustomerId] = useState(initial?.customer.id ?? options.customers[0]?.id ?? 0);
-  const [catIds, setCatIds] = useState<number[]>(initial?.cats.map((cat) => cat.id) ?? []);
-  const [startDate, setStartDate] = useState(initial?.start_date ?? defaultDate);
-  const [endDate, setEndDate] = useState(initial?.end_date ?? defaultDate);
-  const [visitsPerDay, setVisitsPerDay] = useState(initial?.visits_per_day ?? 1);
-  const [serviceItems, setServiceItems] = useState<ServiceItem[]>(
-    initial?.service_items ?? ["feed", "water", "litter", "photo"],
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const firstInputRef = useRef<HTMLInputElement>(null);
+  const initialDates = initial?.service_schedule.map((entry) => entry.service_date) ?? [];
+  const firstDate = initialDates[0] ?? localDateValue();
+  const [serviceContact, setServiceContact] = useState<OrderServiceContact>(
+    initial?.service_contact ?? emptyContact(),
   );
-  const [basePrice, setBasePrice] = useState(initial?.base_price ?? options.default_base_price);
-  const [hasStairsFee, setHasStairsFee] = useState(Number(initial?.stairs_fee ?? 0) > 0);
-  const [otherFee, setOtherFee] = useState(initial?.other_fee ?? "0.00");
-  const [orderStatus, setOrderStatus] = useState<OrderStatus>(
-    initial?.order_status ?? "pending_confirmation",
+  const [sourceCustomerId, setSourceCustomerId] = useState<number | null>(
+    initial?.source_customer_id ?? null,
   );
+  const [catSnapshot, setCatSnapshot] = useState(initial?.cat_snapshot ?? []);
+  const [profilePickerOpen, setProfilePickerOpen] = useState(false);
+  const [catCount, setCatCount] = useState(initial?.cat_count ?? 1);
+  const [selectedDates, setSelectedDates] = useState<string[]>(initialDates);
+  const [scheduleDirty, setScheduleDirty] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const date = parseLocalDate(firstDate);
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  });
+  const [serviceItems, setServiceItems] = useState<ServiceItem[]>(initial?.service_items ?? defaultServices);
+  const [unitPrice, setUnitPrice] = useState(initial?.unit_price ?? options.default_base_price);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const selectedCustomer = options.customers.find((customer) => customer.id === customerId);
-  const availableCats = useMemo(() => {
-    const cats = new Map<number, OrderCatOption>();
-    selectedCustomer?.cats.forEach((cat) => cats.set(cat.id, cat));
-    if (initial?.customer.id === customerId) {
-      initial.cats.forEach((cat) => cats.set(cat.id, { id: cat.id, name: cat.name }));
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    firstInputRef.current?.focus();
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !saving) onCancel();
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
-    return [...cats.values()];
-  }, [customerId, initial, selectedCustomer]);
-
-  const preview = useMemo(() => {
-    const days = serviceDays(startDate, endDate);
-    const totalVisits = days * visitsPerDay;
-    const base = Number(basePrice) || 0;
-    const extra = Math.max(catIds.length - 1, 0) * Number(options.extra_cat_unit_price);
-    const stairs = hasStairsFee ? Number(options.stairs_unit_price) : 0;
-    const other = Number(otherFee) || 0;
-    return {
-      days,
-      totalVisits,
-      extra,
-      stairs,
-      total: (base + extra + stairs) * totalVisits + other,
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
     };
-  }, [basePrice, catIds.length, endDate, hasStairsFee, options, otherFee, startDate, visitsPerDay]);
+  }, [onCancel, saving]);
 
-  function handleCustomerChange(nextCustomerId: number) {
-    setCustomerId(nextCustomerId);
-    if (nextCustomerId !== initial?.customer.id) {
-      setCatIds([]);
-    } else {
-      setCatIds(initial.cats.map((cat) => cat.id));
-    }
+  const selectedSet = useMemo(() => new Set(selectedDates), [selectedDates]);
+  const calendarDays = useMemo(() => monthGrid(visibleMonth), [visibleMonth]);
+  const total = selectedDates.length * (Number(unitPrice) || 0);
+
+  function selectCustomer(customerId: number) {
+    const customer = options.customers.find((entry) => entry.id === customerId);
+    if (!customer) return;
+    setSourceCustomerId(customer.id);
+    setServiceContact({
+      name: customer.name,
+      wechat_name: customer.wechat_name,
+      phone: customer.phone,
+      community: customer.community,
+      address: customer.address,
+      building: customer.building,
+      unit: customer.unit,
+      room: customer.room,
+      access_method: customer.access_method,
+      access_info: customer.access_info,
+      key_status: customer.key_status,
+      key_code: customer.key_code,
+      notes: customer.notes,
+      is_repeat_customer: customer.is_repeat_customer,
+      latitude: customer.latitude,
+      longitude: customer.longitude,
+      geocode_status: customer.geocode_status,
+    });
+    const snapshots = customer.cats.map((cat) => ({
+      ...cat,
+      source_cat_id: cat.id,
+    }));
+    setCatSnapshot(snapshots);
+    if (snapshots.length > 0) setCatCount(snapshots.length);
+    setProfilePickerOpen(false);
   }
 
-  function toggleCat(catId: number) {
-    setCatIds((current) =>
-      current.includes(catId) ? current.filter((id) => id !== catId) : [...current, catId],
-    );
+  function updateContact(
+    field: keyof OrderServiceContact,
+    value: string | boolean | null,
+  ) {
+    setServiceContact((current) => ({
+      ...current,
+      [field]: value,
+      ...(
+        ["community", "address", "building", "unit", "room"].includes(field)
+          ? { latitude: null, longitude: null, geocode_status: null }
+          : {}
+      ),
+    }));
+  }
+
+  function toggleDate(date: Date) {
+    const value = localDateValue(date);
+    setSelectedDates((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value].sort());
+    setScheduleDirty(true);
   }
 
   function toggleService(item: ServiceItem) {
-    setServiceItems((current) =>
-      current.includes(item) ? current.filter((entry) => entry !== item) : [...current, item],
-    );
+    setServiceItems((current) => current.includes(item) ? current.filter((entry) => entry !== item) : [...current, item]);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!customerId) {
-      setError("请先选择客户。");
+    const name = serviceContact.name.trim();
+    if (!name) {
+      setError("请填写联系人名称。");
       return;
     }
-    if (catIds.length === 0) {
-      setError("请至少选择一只猫咪。");
+    if (!initial && selectedDates.length === 0) {
+      setError("请在日历中至少选择一个服务日期。");
+      return;
+    }
+    if (scheduleDirty && selectedDates.length === 0) {
+      setError("服务日期不能为空。");
       return;
     }
     if (serviceItems.length === 0) {
       setError("请至少选择一个服务事项。");
       return;
     }
-    if (preview.days <= 0 || preview.days > 366) {
-      setError("日期范围必须有效且不能超过 366 天。");
+    if (!Number.isFinite(Number(unitPrice)) || Number(unitPrice) < 0) {
+      setError("每次价格必须是大于或等于 0 的数字。");
       return;
     }
 
-    const payload: OrderInput = {
-      customer_id: customerId,
-      cat_ids: catIds,
-      start_date: startDate,
-      end_date: endDate,
-      visits_per_day: visitsPerDay,
-      service_items: serviceItems,
-      base_price: Number(basePrice).toFixed(2),
-      stairs_fee: hasStairsFee ? options.stairs_unit_price : "0.00",
-      other_fee: Number(otherFee).toFixed(2),
-      order_status: orderStatus,
-      notes: optionalValue(notes),
-    };
+    let payload: OrderCreateInput | OrderPatchInput;
+    if (!initial) {
+      payload = {
+        ...(sourceCustomerId ? { source_customer_id: sourceCustomerId } : {}),
+        service_contact: { ...serviceContact, name },
+        cat_snapshot: catSnapshot,
+        cat_count: catCount,
+        service_dates: selectedDates,
+        service_items: serviceItems,
+        unit_price: Number(unitPrice).toFixed(2),
+        notes: optionalValue(notes),
+      } satisfies OrderCreateInput;
+    } else {
+      const patch: OrderPatchInput = {};
+      if (sourceCustomerId !== initial.source_customer_id) patch.source_customer_id = sourceCustomerId;
+      const nextContact = { ...serviceContact, name };
+      if (JSON.stringify(nextContact) !== JSON.stringify(initial.service_contact)) patch.service_contact = nextContact;
+      if (JSON.stringify(catSnapshot) !== JSON.stringify(initial.cat_snapshot)) patch.cat_snapshot = catSnapshot;
+      if (catCount !== initial.cat_count) patch.cat_count = catCount;
+      if (scheduleDirty) patch.service_dates = selectedDates;
+      if (!sameItems(serviceItems, initial.service_items)) patch.service_items = serviceItems;
+      if (Number(unitPrice).toFixed(2) !== Number(initial.unit_price).toFixed(2)) patch.unit_price = Number(unitPrice).toFixed(2);
+      if (optionalValue(notes) !== initial.notes) patch.notes = optionalValue(notes);
+      payload = patch;
+    }
 
     setSaving(true);
     setError(null);
@@ -155,168 +252,80 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
     }
   }
 
+  const historicalMultipleVisits = initial?.service_schedule.some((entry) => entry.visit_count > 1);
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-[2px] sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="order-form-title"
-    >
-      <form className="w-full max-w-4xl rounded-xl border border-slate-200 bg-white shadow-2xl" onSubmit={handleSubmit}>
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div>
-            <h2 id="order-form-title" className="text-lg font-semibold text-slate-950">
-              {initial ? `编辑订单 #${initial.id}` : "新建订单"}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">保存后系统会按日期和每日次数自动生成任务。</p>
-          </div>
-          <button type="button" className="cc-icon-button" onClick={onCancel} disabled={saving} aria-label="关闭订单表单">
-            <X size={18} />
-          </button>
-        </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-3 backdrop-blur-md sm:p-6" role="dialog" aria-modal="true" aria-labelledby="order-form-title">
+      <div ref={dialogRef} className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_28px_90px_rgba(15,23,42,0.22)] sm:max-h-[calc(100dvh-3rem)]">
+        <form className="contents" onSubmit={handleSubmit}>
+          <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200/80 px-5 py-4 sm:px-7 sm:py-5">
+            <div><h2 id="order-form-title" className="text-xl font-semibold tracking-tight text-[#1D1D1F]">{initial ? `编辑订单 #${initial.id}` : "新建订单"}</h2><p className="mt-1 text-sm text-slate-500">选择具体上门日期，每个日期生成一次服务任务。</p></div>
+            <button type="button" className="cc-icon-button" onClick={onCancel} disabled={saving} aria-label="关闭订单表单"><X size={18} /></button>
+          </header>
 
-        <div className="cc-scrollbar max-h-[calc(100vh-13rem)] overflow-y-auto px-5 py-5 sm:px-6">
-          {error ? <p className="cc-alert cc-alert--danger mb-5" role="alert">{error}</p> : null}
-          {initial ? (
-            <p className="mb-5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-              修改日期、每日次数、客户、猫咪或服务事项会重建尚未执行的任务；已有执行记录时系统会拒绝修改并保留历史。
-            </p>
-          ) : null}
+          <div className="cc-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+            {error ? <p className="cc-alert cc-alert--danger mb-5" role="alert">{error}</p> : null}
+            {historicalMultipleVisits && !scheduleDirty ? <p className="cc-alert cc-alert--warning mb-5">这是历史多次服务订单。只要不重新点选日历，原有每日多次安排就会完整保留。</p> : null}
+            <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_260px]">
+              <div className="space-y-7">
+                <section aria-labelledby="order-customer-fields">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div><h3 id="order-customer-fields" className="text-sm font-semibold text-slate-950">订单联系人与上门信息</h3><p className="mt-1 text-xs text-slate-500">这些内容会固定保存在订单中，不受客户档案后续修改影响。</p></div>
+                    <button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={() => setProfilePickerOpen((open) => !open)}><BookUser size={15} />从客户档案带入</button>
+                  </div>
+                  {profilePickerOpen ? <div className="mt-3 rounded-2xl border border-orange-200 bg-orange-50/60 p-3"><label className={labelClass}>选择档案（可选）<select className={inputClass} defaultValue="" onChange={(event) => { if (event.target.value) selectCustomer(Number(event.target.value)); }}><option value="" disabled>请选择客户档案</option>{options.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.address ? ` · ${customer.address}` : ""}</option>)}</select></label><p className="mt-2 text-xs text-orange-800">带入后仍可修改本订单内容；不会反向修改客户档案。</p></div> : null}
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <label className={labelClass}>联系人名称 <span className="text-red-600">*</span><input ref={firstInputRef} className={inputClass} value={serviceContact.name} placeholder="直接输入名称，不需要下拉确认" onChange={(event) => updateContact("name", event.target.value)} required /></label>
+                    <label className={labelClass}>联系电话<input className={inputClass} value={serviceContact.phone ?? ""} onChange={(event) => updateContact("phone", optionalValue(event.target.value))} /></label>
+                    <label className={labelClass}>微信名<input className={inputClass} value={serviceContact.wechat_name ?? ""} onChange={(event) => updateContact("wechat_name", optionalValue(event.target.value))} /></label>
+                    <label className={labelClass}>小区<input className={inputClass} value={serviceContact.community ?? ""} onChange={(event) => updateContact("community", optionalValue(event.target.value))} /></label>
+                    <label className={`${labelClass} sm:col-span-2`}>详细地址<input className={inputClass} value={serviceContact.address ?? ""} placeholder="未填写时订单仍可保存，但不能自动规划路线" onChange={(event) => updateContact("address", optionalValue(event.target.value))} /></label>
+                    <label className={labelClass}>楼栋<input className={inputClass} value={serviceContact.building ?? ""} onChange={(event) => updateContact("building", optionalValue(event.target.value))} /></label>
+                    <label className={labelClass}>单元 / 房间<input className={inputClass} value={[serviceContact.unit, serviceContact.room].filter(Boolean).join(" / ")} placeholder="例如 2 单元 / 1201" onChange={(event) => { const [unit, room] = event.target.value.split("/"); updateContact("unit", optionalValue(unit ?? "")); updateContact("room", optionalValue(room ?? "")); }} /></label>
+                    <label className={labelClass}>入户方式<input className={inputClass} value={serviceContact.access_method ?? ""} onChange={(event) => updateContact("access_method", optionalValue(event.target.value))} /></label>
+                    <label className={labelClass}>钥匙状态 / 编号<input className={inputClass} value={[serviceContact.key_status, serviceContact.key_code].filter(Boolean).join(" / ")} onChange={(event) => { const [keyStatus, keyCode] = event.target.value.split("/"); updateContact("key_status", optionalValue(keyStatus ?? "")); updateContact("key_code", optionalValue(keyCode ?? "")); }} /></label>
+                    <label className={`${labelClass} sm:col-span-2`}>门禁与入户说明<textarea className={`${inputClass} min-h-20 resize-y`} value={serviceContact.access_info ?? ""} onChange={(event) => updateContact("access_info", optionalValue(event.target.value))} /></label>
+                    <label className={`${labelClass} sm:col-span-2`}>客户备注<textarea className={`${inputClass} min-h-20 resize-y`} value={serviceContact.notes ?? ""} onChange={(event) => updateContact("notes", optionalValue(event.target.value))} /></label>
+                  </div>
+                  {!serviceContact.address && !serviceContact.community ? <p className="cc-alert cc-alert--warning mt-4">尚未填写地址：订单可以保存，但路线图无法自动定位或规划该任务。</p> : null}
+                  <label className={`${labelClass} mt-4 max-w-48`}>猫咪数量
+                    <input className={inputClass} type="number" min={1} max={50} value={catCount} onChange={(event) => { const next = Math.min(50, Math.max(1, Number(event.target.value) || 1)); setCatCount(next); if (catSnapshot.length > 0 && catSnapshot.length !== next) setCatSnapshot([]); }} required />
+                  </label>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">未从档案带入时只记录数量；带入的猫咪详情会作为订单执行快照保存。</p>
+                </section>
 
-          <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="space-y-7">
-              <section aria-labelledby="order-customer-fields">
-                <h3 id="order-customer-fields" className="text-sm font-semibold text-slate-950">客户与猫咪</h3>
-                <label className={`${labelClass} mt-3`}>
-                  客户
-                  <select className={inputClass} value={customerId} onChange={(event) => handleCustomerChange(Number(event.target.value))} required>
-                    {options.customers.length === 0 ? <option value={0}>暂无可选客户</option> : null}
-                    {options.customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}{customer.community ? ` · ${customer.community}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <fieldset className="mt-4">
-                  <legend className={labelClass}>猫咪（至少一只）</legend>
-                  {availableCats.length === 0 ? (
-                    <p className="mt-2 rounded-md border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">该客户没有在档猫咪，请先到客户档案添加或恢复猫咪。</p>
-                  ) : (
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      {availableCats.map((cat) => {
-                        const inactive = initial?.cats.some((entry) => entry.id === cat.id && !entry.is_active);
-                        return (
-                          <label key={cat.id} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2.5 text-sm text-slate-700">
-                            <input type="checkbox" checked={catIds.includes(cat.id)} onChange={() => toggleCat(cat.id)} />
-                            {cat.name}{inactive ? "（已停用，历史保留）" : ""}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
+                <section aria-labelledby="order-schedule-fields">
+                  <div className="flex items-center justify-between gap-3"><div><h3 id="order-schedule-fields" className="text-sm font-semibold text-slate-950">服务日期</h3><p className="mt-1 text-xs text-slate-500">点击日期添加，再次点击取消；可以选择不连续日期。</p></div><span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">已选 {selectedDates.length} 天</span></div>
+                  <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+                    <div className="flex items-center justify-between"><button type="button" className="cc-icon-button" aria-label="上个月" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))}><ChevronLeft size={17} /></button><p className="text-sm font-semibold">{visibleMonth.getFullYear()} 年 {visibleMonth.getMonth() + 1} 月</p><button type="button" className="cc-icon-button" aria-label="下个月" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))}><ChevronRight size={17} /></button></div>
+                    <div className="mt-3 grid grid-cols-7 gap-1 text-center">{weekDays.map((day) => <span key={day} className="py-2 text-xs font-medium text-slate-400">{day}</span>)}{calendarDays.map((date, index) => date ? <button key={localDateValue(date)} type="button" aria-pressed={selectedSet.has(localDateValue(date))} className={`aspect-square min-h-10 rounded-xl text-sm font-medium transition ${selectedSet.has(localDateValue(date)) ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "text-slate-700 hover:bg-orange-50 hover:text-orange-700"}`} onClick={() => toggleDate(date)}>{date.getDate()}</button> : <span key={`empty-${index}`} />)}</div>
+                  </div>
+                </section>
+
+                <fieldset aria-labelledby="order-service-fields">
+                  <legend id="order-service-fields" className="text-sm font-semibold text-slate-950">服务内容</legend>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">{serviceItemOptions.map((item) => <label key={item.value} className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm transition ${serviceItems.includes(item.value) ? "border-orange-200 bg-orange-50 text-orange-900" : "border-slate-200 text-slate-700"}`}><input type="checkbox" checked={serviceItems.includes(item.value)} onChange={() => toggleService(item.value)} />{item.label}</label>)}</div>
+                  <label className={`${labelClass} mt-4`}>服务备注<textarea className={`${inputClass} min-h-24 resize-y`} rows={3} maxLength={4000} value={notes} placeholder="例如喂食用量、猫咪习惯或需要特别留意的事项" onChange={(event) => setNotes(event.target.value)} /></label>
                 </fieldset>
-              </section>
 
-              <section aria-labelledby="order-schedule-fields">
-                <h3 id="order-schedule-fields" className="text-sm font-semibold text-slate-950">服务日期与次数</h3>
-                <div className="mt-3 grid gap-4 sm:grid-cols-3">
-                  <label className={labelClass}>
-                    开始日期
-                    <input className={inputClass} type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required />
-                  </label>
-                  <label className={labelClass}>
-                    结束日期
-                    <input className={inputClass} type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} required />
-                  </label>
-                  <label className={labelClass}>
-                    每日次数
-                    <input className={inputClass} type="number" min={1} max={10} value={visitsPerDay} onChange={(event) => setVisitsPerDay(Number(event.target.value))} required />
-                  </label>
-                </div>
-              </section>
-
-              <fieldset aria-labelledby="order-service-fields">
-                <legend id="order-service-fields" className="text-sm font-semibold text-slate-950">服务内容</legend>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {serviceItemOptions.map((item) => (
-                    <label key={item.value} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2.5 text-sm text-slate-700">
-                      <input type="checkbox" checked={serviceItems.includes(item.value)} onChange={() => toggleService(item.value)} />
-                      {item.label}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
-              <section aria-labelledby="order-price-fields">
-                <h3 id="order-price-fields" className="text-sm font-semibold text-slate-950">价格</h3>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <label className={labelClass}>
-                    基础单价（元/次）
-                    <input className={inputClass} type="number" min="0" step="0.01" value={basePrice} onChange={(event) => setBasePrice(event.target.value)} required />
-                  </label>
-                  <label className={labelClass}>
-                    其他费用（整单）
-                    <input className={inputClass} type="number" min="0" step="0.01" value={otherFee} onChange={(event) => setOtherFee(event.target.value)} required />
-                  </label>
-                  <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2.5 text-sm text-slate-700 sm:col-span-2">
-                    <input type="checkbox" checked={hasStairsFee} onChange={(event) => setHasStairsFee(event.target.checked)} />
-                    四层及以上爬楼（+{options.stairs_unit_price} 元/次）
-                  </label>
-                </div>
-              </section>
-
-              <section aria-labelledby="order-status-fields">
-                <h3 id="order-status-fields" className="text-sm font-semibold text-slate-950">状态与备注</h3>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <label className={labelClass}>
-                    订单状态
-                    <select className={inputClass} value={orderStatus} onChange={(event) => setOrderStatus(event.target.value as OrderStatus)}>
-                      <option value="pending_confirmation">待确认</option>
-                      <option value="confirmed">已确认</option>
-                      {initial ? <option value="in_progress">进行中</option> : null}
-                      {initial ? <option value="completed">已完成</option> : null}
-                      {initial ? <option value="cancelled">已取消</option> : null}
-                    </select>
-                  </label>
-                  <label className={`${labelClass} sm:col-span-2`}>
-                    订单备注
-                    <textarea className={inputClass} rows={4} maxLength={4000} value={notes} onChange={(event) => setNotes(event.target.value)} />
-                  </label>
-                </div>
-              </section>
-            </div>
-
-            <aside className="h-fit rounded-lg border border-slate-200 bg-slate-50 p-4 lg:sticky lg:top-0" aria-label="费用预览">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-                <Calculator size={16} />
-                自动计算
-              </h3>
-              <dl className="mt-4 space-y-3 text-sm">
-                <div className="flex justify-between gap-4"><dt className="text-slate-500">服务天数</dt><dd>{preview.days} 天</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-slate-500">总服务次数</dt><dd className="font-medium">{preview.totalVisits} 次</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-slate-500">基础单价</dt><dd>¥{money(Number(basePrice) || 0)}/次</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-slate-500">额外猫咪</dt><dd>¥{money(preview.extra)}/次</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-slate-500">爬楼费</dt><dd>¥{money(preview.stairs)}/次</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-slate-500">其他费用</dt><dd>¥{money(Number(otherFee) || 0)}</dd></div>
-              </dl>
-              <div className="mt-4 border-t border-slate-200 pt-4">
-                <p className="text-xs text-slate-500">预计应收</p>
-                <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">¥{money(preview.total)}</p>
-                <p className="mt-2 text-xs leading-5 text-slate-500">最终金额由后端按同一规则重新计算，浏览器不能直接提交应收总额。</p>
+                <section aria-labelledby="order-price-fields">
+                  <h3 id="order-price-fields" className="text-sm font-semibold text-slate-950">价格</h3>
+                  <label className={`${labelClass} mt-3 max-w-xs`}>每次价格（元）<input className={inputClass} type="number" min="0" step="0.01" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} required /></label>
+                  {initial && Number(initial.paid_amount) > 0 ? <p className="mt-2 text-xs leading-5 text-slate-500">已收 {money(Number(initial.paid_amount))} 元。改价不会修改已收金额；如产生超收，保存后会明确显示。</p> : null}
+                </section>
               </div>
-            </aside>
-          </div>
-        </div>
 
-        <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4 sm:px-6">
-          <button type="button" className="cc-button cc-button--secondary" onClick={onCancel} disabled={saving}>取消</button>
-          <button type="submit" className="cc-button cc-button--primary" disabled={saving || options.customers.length === 0}>
-            {saving ? <LoaderCircle className="animate-spin" size={16} /> : null}
-            {saving ? "保存中…" : initial ? "保存并同步任务" : "创建订单并生成任务"}
-          </button>
-        </div>
-      </form>
+              <aside className="h-fit rounded-2xl border border-orange-100 bg-orange-50/60 p-4 lg:sticky lg:top-0" aria-label="金额预览">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-950"><Calculator size={16} />自动计算</h3>
+                <dl className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><dt className="text-slate-500">服务日期</dt><dd>{selectedDates.length} 天</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">每次价格</dt><dd>¥{money(Number(unitPrice) || 0)}</dd></div></dl>
+                <div className="mt-4 border-t border-orange-200 pt-4"><p className="text-xs text-slate-500">预计应收</p><p className="mt-1 text-3xl font-semibold tracking-tight text-[#1D1D1F]">¥{money(total)}</p><p className="mt-2 text-xs leading-5 text-slate-500">选中日期数 × 每次价格，不叠加猫咪、爬楼或其他费用。</p></div>
+              </aside>
+            </div>
+          </div>
+
+          <footer className="flex shrink-0 justify-end gap-3 border-t border-slate-200/80 bg-white/90 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-7"><button type="button" className="cc-button cc-button--secondary" onClick={onCancel} disabled={saving}>取消</button><button type="submit" className="cc-button cc-button--primary" disabled={saving}>{saving ? <LoaderCircle className="animate-spin" size={16} /> : null}{saving ? "保存中…" : initial ? "保存订单" : "创建订单"}</button></footer>
+        </form>
+      </div>
     </div>
   );
 }

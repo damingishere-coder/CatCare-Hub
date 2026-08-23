@@ -143,7 +143,7 @@ export class AmapMapProvider implements MapProvider {
     for (const [index, item] of model.markers.entries()) {
       const marker = new AMap.Marker({
         position: position(item.position),
-        title: item.community || item.customer_name,
+        title: item.address || item.community || item.customer_name,
         anchor: "center",
         content: markerContent(
           String(item.sequence),
@@ -177,4 +177,8 @@ export class AmapMapProvider implements MapProvider {
 
 export function hasAmapBrowserKey(): boolean {
   return Boolean(import.meta.env.VITE_AMAP_JS_API_KEY?.trim());
+}
+
+export function hasAmapBrowserSecurityCode(): boolean {
+  return Boolean(import.meta.env.VITE_AMAP_JS_API_SECURITY_CODE?.trim());
 }

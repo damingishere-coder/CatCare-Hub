@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 
 export function NotFoundPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f3f5f8] px-5 text-slate-950">
+    <main className="flex min-h-screen items-center justify-center bg-[#F5F5F7] px-5 text-[#1D1D1F]">
       <section className="cc-surface max-w-md p-8 text-center sm:p-10" aria-labelledby="not-found-title">
-        <p className="text-sm font-semibold text-indigo-600">404</p>
+        <p className="text-sm font-semibold text-orange-600">404</p>
         <h1 id="not-found-title" className="mt-2 text-2xl font-semibold">
           页面不存在
         </h1>

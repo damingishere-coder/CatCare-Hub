@@ -1,7 +1,7 @@
 import type { OrderStatus, ServiceItem, TaskStatus } from "../orders/types";
 
 export interface TaskExecutionCustomer {
-  id: number;
+  id: number | null;
   name: string;
   phone: string | null;
   community: string | null;
@@ -16,7 +16,7 @@ export interface TaskExecutionCustomer {
 }
 
 export interface TaskExecutionCat {
-  id: number;
+  id: number | null;
   name: string;
   food: string | null;
   food_preference: string | null;

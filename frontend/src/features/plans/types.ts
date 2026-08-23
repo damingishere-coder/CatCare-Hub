@@ -8,20 +8,20 @@ import type {
 export type PlanTaskStatus = TaskStatus;
 
 export interface PlanCustomerSummary {
-  id: number;
+  id: number | null;
   name: string;
   community: string | null;
+  address: string | null;
 }
 
 export interface PlanCustomerDetail extends PlanCustomerSummary {
-  address: string | null;
   building: string | null;
   unit: string | null;
   room: string | null;
 }
 
 export interface PlanCatSummary {
-  id: number;
+  id: number | null;
   name: string;
 }
 
@@ -47,6 +47,7 @@ export interface PlanTaskSummary {
   sort_order: number;
   status: PlanTaskStatus;
   customer: PlanCustomerSummary;
+  cat_count: number;
   cats: PlanCatSummary[];
   items: PlanTaskItem[];
   has_execution_history: boolean;
@@ -112,6 +113,12 @@ export interface PlanMapProvider {
   message: string | null;
 }
 
+export interface PlanRecommendationProvider {
+  name: string;
+  configured: boolean;
+  message: string | null;
+}
+
 export interface PlanRouteStart {
   label: string;
   position: PlanGeoPoint;
@@ -122,6 +129,7 @@ export interface PlanRouteMarker {
   sequence: number;
   customer_name: string;
   community: string | null;
+  address: string | null;
   position: PlanGeoPoint;
   navigation_url: string | null;
 }
@@ -136,6 +144,7 @@ export interface PlanRouteIssue {
   task_id: number;
   customer_name: string;
   community: string | null;
+  address: string | null;
   reason: PlanRouteIssueReason;
 }
 
@@ -151,12 +160,15 @@ export interface PlanRouteWorkspace {
   revision: string;
   schedule_locked: boolean;
   provider: PlanMapProvider;
+  recommendation_provider: PlanRecommendationProvider;
   start: PlanRouteStart | null;
   markers: PlanRouteMarker[];
   unresolved_tasks: PlanRouteIssue[];
   current_route: PlanRoutePath | null;
   recommended_route: PlanRoutePath | null;
   recommended_task_ids: number[];
+  recommendation_source: "none" | "openai" | "local";
+  recommendation_message: string | null;
   can_adopt_recommendation: boolean;
 }
 

@@ -105,10 +105,11 @@ it("shows the single-task field context and starts a confirmed task", async () =
 
   expect(await screen.findByText("P6 虚构客户")).toBeInTheDocument();
   expect(screen.getByText(/P6 虚构路 6 号/)).toBeInTheDocument();
-  expect(screen.getByText("000-P6-TEST")).toBeInTheDocument();
-  expect(screen.getByText(/虚构门禁说明/)).toBeInTheDocument();
+  expect(screen.queryByText("000-P6-TEST")).not.toBeInTheDocument();
+  expect(screen.getByText(/虚构门禁方式/)).toBeInTheDocument();
+  expect(screen.queryByText(/虚构门禁说明/)).not.toBeInTheDocument();
   expect(screen.getByText(/虚构用药说明/)).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "返回订单计划" })).toHaveAttribute("href", "/admin/plans");
+  expect(screen.getByRole("link", { name: "返回路线图" })).toHaveAttribute("href", "/admin/routes");
 
   fireEvent.click(screen.getByRole("button", { name: "开始本次服务" }));
   await waitFor(() => expect(apiMocks.startTaskExecution).toHaveBeenCalledWith(7, {

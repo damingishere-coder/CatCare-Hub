@@ -14,12 +14,14 @@ export interface PaymentReceivable {
   order_id: number;
   customer_name: string;
   community: string | null;
+  address: string | null;
   start_date: string;
   end_date: string;
   cat_count: number;
   total_amount: string;
   paid_amount: string;
   due_amount: string;
+  overpaid_amount: string;
   payment_status: OrderPaymentStatus;
   order_status: OrderStatus;
   revision: string;

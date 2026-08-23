@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -7,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     JSON,
+    Numeric,
     String,
     UniqueConstraint,
 )
@@ -68,6 +70,8 @@ class CustomerFormSubmission(TimestampMixin, Base):
         index=True,
     )
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    review_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    review_unit_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     status: Mapped[FormSubmissionStatus] = mapped_column(
         portable_enum(FormSubmissionStatus, name="form_submission_status", length=16),
         nullable=False,

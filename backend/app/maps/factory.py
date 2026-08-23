@@ -8,6 +8,7 @@ from app.maps.contracts import (
     GeoPoint,
     MapProviderError,
     MapServices,
+    MatrixEntry,
     ProviderState,
     RouteResult,
     RouteStop,
@@ -51,6 +52,14 @@ class UnavailableMapProvider:
         origin: GeoPoint,
         stops: list[RouteStop],
     ) -> list[RouteStop]:
+        del origin, stops
+        raise MapProviderError(self._message)
+
+    def distance_matrix(
+        self,
+        origin: GeoPoint,
+        stops: list[RouteStop],
+    ) -> list[MatrixEntry]:
         del origin, stops
         raise MapProviderError(self._message)
 

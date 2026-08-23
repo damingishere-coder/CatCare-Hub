@@ -1,14 +1,13 @@
 import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 
 import { AdminLayout } from "../layouts/AdminLayout";
-import { LoginPage } from "../features/auth/LoginPage";
-import { RequireRole } from "../features/auth/RequireRole";
 import { CustomersPage } from "../features/customers/CustomersPage";
 import { AdminIntakePage } from "../features/intake/AdminIntakePage";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
 import { PaymentsPage } from "../features/payments/PaymentsPage";
 import { MobileTaskPage } from "../features/mobile/MobileTaskPage";
 import { PlansPage } from "../features/plans/PlansPage";
+import { OrdersPage } from "../features/orders/OrdersPage";
 import { TaskExecutionPage } from "../features/tasks/TaskExecutionPage";
 import { SettingsPage } from "../pages/admin/AdminPages";
 import { FillPage } from "../pages/FillPage";
@@ -31,29 +30,37 @@ function PaymentsRoute() {
   );
 }
 
+function OrdersRoute() {
+  const [searchParams] = useSearchParams();
+  return <OrdersPage initialCreate={searchParams.get("action") === "create"} />;
+}
+
+function LegacyPlansRedirect() {
+  const [searchParams] = useSearchParams();
+  const destination = searchParams.get("view") === "orders" ? "/admin/orders" : "/admin/routes";
+  return <Navigate to={destination} replace />;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/admin" replace />} />
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/login" element={<Navigate to="/admin" replace />} />
 
-      <Route element={<RequireRole allowed={["admin"]} />}>
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="plans" element={<PlansPage />} />
-          <Route path="tasks/:id" element={<TaskExecutionPage />} />
-          <Route path="orders" element={<Navigate to="/admin/plans?view=orders" replace />} />
-          <Route path="customers" element={<CustomersRoute />} />
-          <Route path="intake" element={<AdminIntakePage />} />
-          <Route path="payments" element={<PaymentsRoute />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
+      <Route path="/admin" element={<AdminLayout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="routes" element={<PlansPage />} />
+        <Route path="plans" element={<LegacyPlansRedirect />} />
+        <Route path="tasks/:id" element={<TaskExecutionPage />} />
+        <Route path="orders" element={<OrdersRoute />} />
+        <Route path="customers" element={<CustomersRoute />} />
+        <Route path="intake" element={<AdminIntakePage />} />
+        <Route path="payments" element={<PaymentsRoute />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
 
-      <Route element={<RequireRole allowed={["admin", "mobile"]} />}>
-        <Route path="/mobile" element={<MobilePage />} />
-        <Route path="/mobile/tasks/:id" element={<MobileTaskPage />} />
-      </Route>
+      <Route path="/mobile" element={<MobilePage />} />
+      <Route path="/mobile/tasks/:id" element={<MobileTaskPage />} />
       <Route path="/fill" element={<FillPage />} />
       <Route path="/fill/:token" element={<FillPage />} />
       <Route path="*" element={<NotFoundPage />} />

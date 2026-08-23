@@ -42,6 +42,21 @@ def test_amap_adapter_parses_geocode_route_and_builds_keyless_navigation() -> No
                     },
                 },
             )
+        if request.url.path == "/v3/distance":
+            origin_count = len(request.url.params["origins"].split("|"))
+            return httpx.Response(
+                200,
+                json={
+                    "status": "1",
+                    "results": [
+                        {
+                            "distance": str((index + 1) * 1000),
+                            "duration": str((index + 1) * 300),
+                        }
+                        for index in range(origin_count)
+                    ],
+                },
+            )
         raise AssertionError(f"unexpected provider path: {request.url.path}")
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -72,6 +87,26 @@ def test_amap_adapter_parses_geocode_route_and_builds_keyless_navigation() -> No
     assert requests[0].url.params["address"] == "虚构小区 虚构路 1 号"
     assert requests[0].url.params["city"] == "虚构城市"
     assert requests[1].url.params["strategy"] == "10"
+
+    matrix_stops = [
+        RouteStop(1, "虚构站点一", geocoded, 0),
+        RouteStop(2, "虚构站点二", GeoPoint(30.2, 120.2), 1),
+    ]
+    matrix = provider.distance_matrix(provider.home_point(), matrix_stops)  # type: ignore[arg-type]
+    assert len(matrix) == 6
+    assert {(entry.origin_id, entry.destination_id) for entry in matrix} == {
+        ("1", "HOME"),
+        ("2", "HOME"),
+        ("HOME", "1"),
+        ("2", "1"),
+        ("HOME", "2"),
+        ("1", "2"),
+    }
+    distance_requests = [
+        request for request in requests if request.url.path == "/v3/distance"
+    ]
+    assert len(distance_requests) == 3
+    assert all(request.url.params["type"] == "1" for request in distance_requests)
 
     navigation_url = provider.navigation_url(
         provider.home_point(),
@@ -109,6 +144,9 @@ def test_amap_adapter_recommendation_is_stable_and_errors_are_sanitized() -> Non
 
     with pytest.raises(MapProviderError) as captured:
         provider.geocode("虚构地址")
-    assert "do-not-leak-this-key" not in str(captured.value)
-    assert "INVALID_USER_KEY" not in str(captured.value)
+    message = str(captured.value)
+    assert "do-not-leak-this-key" not in message
+    assert "Web 服务 Key 无效" in message
+    assert "INVALID_USER_KEY" in message
+    assert "10001" in message
     client.close()

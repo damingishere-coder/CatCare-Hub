@@ -139,15 +139,16 @@ def test_mobile_today_is_ordered_privacy_minimized_and_uses_cached_navigation(
     assert "key=" not in payload["tasks"][0]["navigation_url"]
     assert payload["tasks"][1]["navigation_state"] == "missing_coordinates"
     assert payload["tasks"][1]["navigation_url"] is None
+    assert all(
+        task["address"] == "P6 虚构路 6 号 6 栋 6 单元 606"
+        for task in payload["tasks"]
+    )
     assert mobile_map_provider.geocode_calls == 0
     assert mobile_map_provider.navigation_calls == 1
 
     serialized = response.text
     for forbidden in (
         "000-P6-TEST",
-        "P6 虚构路 6 号",
-        "6 单元",
-        "606",
         "虚构门禁说明",
         "FAKE-P6-KEY",
         "虚构用药说明",

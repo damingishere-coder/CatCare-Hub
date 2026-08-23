@@ -8,8 +8,6 @@ import type {
   IntakeTokenRead,
   PublicIntakeRead,
 } from "./types";
-import { notifyUnauthorized } from "../../lib/authEvents";
-
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const adminPath = `${apiBase}/api/admin/intake`;
 
@@ -37,7 +35,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
-    notifyUnauthorized(response.status);
     let message = `请求失败（HTTP ${response.status}）`;
     try {
       const payload = (await response.json()) as ApiErrorPayload;
@@ -119,6 +116,22 @@ export function reviewIntakeSubmission(
   return request<IntakeSubmissionDetail>(`${adminPath}/submissions/${submissionId}/review`, {
     method: "POST",
     body: JSON.stringify({ expected_revision: expectedRevision }),
+  });
+}
+
+export function saveIntakeReviewDraft(
+  submissionId: number,
+  reviewPayload: IntakeDraftPayload,
+  unitPrice: string,
+  expectedRevision: string,
+): Promise<IntakeSubmissionDetail> {
+  return request<IntakeSubmissionDetail>(`${adminPath}/submissions/${submissionId}/review-draft`, {
+    method: "PUT",
+    body: JSON.stringify({
+      review_payload: reviewPayload,
+      unit_price: unitPrice,
+      expected_revision: expectedRevision,
+    }),
   });
 }
 

@@ -2,10 +2,12 @@ from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.session import build_engine, get_db
 from app.main import app
+from app.models import Cat, Customer
 
 
 @pytest.fixture
@@ -141,6 +143,7 @@ def test_customer_and_multiple_cats_complete_workflow(
         "is_repeat_customer",
         "active_cat_count",
         "inactive_cat_count",
+        "archived_at",
         "updated_at",
     }
     assert "access_info" not in summary
@@ -213,6 +216,47 @@ def test_customer_search_term_is_not_accepted_in_list_url(
     assert response.json()["total"] == 2
 
 
+def test_simplified_customer_patch_preserves_hidden_legacy_fields(
+    customer_api_client: TestClient,
+) -> None:
+    client = customer_api_client
+    created = client.post(
+        "/api/admin/customers",
+        json={
+            "name": "保留旧字段客户（虚构）",
+            "wechat_name": "旧微信",
+            "phone": "OLD-PHONE",
+            "community": "旧小区",
+            "building": "旧楼栋",
+            "unit": "旧单元",
+            "room": "旧房号",
+            "access_info": "旧入户信息",
+            "address": None,
+        },
+    ).json()
+
+    response = client.patch(
+        f"/api/admin/customers/{created['id']}",
+        json={
+            "name": "保留旧字段客户已编辑（虚构）",
+            "address": "新的单一完整地址",
+            "access_method": "门卡",
+            "key_status": "待取",
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["address"] == "新的单一完整地址"
+    assert updated["wechat_name"] == "旧微信"
+    assert updated["phone"] == "OLD-PHONE"
+    assert updated["community"] == "旧小区"
+    assert updated["building"] == "旧楼栋"
+    assert updated["unit"] == "旧单元"
+    assert updated["room"] == "旧房号"
+    assert updated["access_info"] == "旧入户信息"
+
+
 def test_customer_api_validation_not_found_and_cat_ownership(
     customer_api_client: TestClient,
 ) -> None:
@@ -263,3 +307,97 @@ def test_customer_api_validation_not_found_and_cat_ownership(
         ).status_code
         == 422
     )
+
+
+def test_pure_customer_profile_delete_removes_its_unused_cats(
+    customer_api_client: TestClient,
+    migrated_database_url: str,
+) -> None:
+    client = customer_api_client
+    customer = create_customer(client, name="可永久删除的纯档案（虚构）")
+    cat = client.post(
+        f"/api/admin/customers/{customer['id']}/cats",
+        json={"name": "未被订单使用的虚构猫咪"},
+    ).json()
+
+    response = client.delete(f"/api/admin/customers/{customer['id']}")
+
+    assert response.status_code == 204
+    assert client.get(f"/api/admin/customers/{customer['id']}").status_code == 404
+    verification_engine = build_engine(migrated_database_url)
+    try:
+        with Session(verification_engine) as session:
+            assert session.scalar(select(func.count(Customer.id))) == 0
+            assert session.scalar(select(func.count(Cat.id)).where(Cat.id == cat["id"])) == 0
+    finally:
+        verification_engine.dispose()
+
+
+def test_customer_with_business_history_must_archive_and_order_snapshot_is_stable(
+    customer_api_client: TestClient,
+) -> None:
+    client = customer_api_client
+    customer = client.post(
+        "/api/admin/customers",
+        json={
+            "name": "历史客户原名（虚构）",
+            "phone": "TEST-HISTORY-PHONE",
+            "address": "虚构路 88 号",
+            "unit": "2 单元",
+            "room": "1203",
+        },
+    ).json()
+    cat = client.post(
+        f"/api/admin/customers/{customer['id']}/cats",
+        json={"name": "历史猫原名（虚构）", "service_notes": "旧订单照护说明"},
+    ).json()
+    order = client.post(
+        "/api/admin/orders",
+        json={
+            "source_customer_id": customer["id"],
+            "cat_count": 1,
+            "service_dates": ["2033-01-02"],
+            "service_items": ["feed", "photo"],
+            "unit_price": "58.00",
+        },
+    ).json()
+    assert order["service_contact"]["name"] == "历史客户原名（虚构）"
+    assert order["cat_snapshot"][0]["name"] == "历史猫原名（虚构）"
+
+    client.patch(
+        f"/api/admin/customers/{customer['id']}",
+        json={"name": "历史客户新名字（虚构）", "phone": "CHANGED-PHONE"},
+    )
+    client.patch(
+        f"/api/admin/customers/{customer['id']}/cats/{cat['id']}",
+        json={"name": "历史猫新名字（虚构）"},
+    )
+    delete_response = client.delete(f"/api/admin/customers/{customer['id']}")
+    assert delete_response.status_code == 409
+    assert "请改用归档" in delete_response.json()["detail"]
+
+    archived = client.patch(
+        f"/api/admin/customers/{customer['id']}/archive",
+        json={"archived": True},
+    )
+    assert archived.status_code == 200
+    assert archived.json()["archived_at"] is not None
+    assert client.get("/api/admin/customers").json()["total"] == 0
+    archived_list = client.get(
+        "/api/admin/customers", params={"include_archived": "true"}
+    ).json()
+    assert archived_list["total"] == 1
+    assert archived_list["items"][0]["id"] == customer["id"]
+
+    preserved = client.get(f"/api/admin/orders/{order['id']}").json()
+    assert preserved["service_contact"]["name"] == "历史客户原名（虚构）"
+    assert preserved["service_contact"]["phone"] == "TEST-HISTORY-PHONE"
+    assert preserved["cat_snapshot"][0]["name"] == "历史猫原名（虚构）"
+
+    restored = client.patch(
+        f"/api/admin/customers/{customer['id']}/archive",
+        json={"archived": False},
+    )
+    assert restored.status_code == 200
+    assert restored.json()["archived_at"] is None
+    assert client.get("/api/admin/customers").json()["total"] == 1

@@ -1,39 +1,45 @@
-import type { LucideIcon } from "lucide-react";
-import { Settings } from "lucide-react";
+import { CheckCircle2, LoaderCircle, MapPinned, Sparkles, SquareActivity } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { PageHeader } from "../../components/ui/PageHeader";
+import { hasAmapBrowserKey, hasAmapBrowserSecurityCode } from "../../features/plans/mapProvider";
+import { getIntegrationSettings, testIntegration, type IntegrationSettings } from "../../features/settings/api";
 
-interface PagePlaceholderProps {
-  title: string;
-  description: string;
-  phase: string;
-  icon: LucideIcon;
-}
-
-function PagePlaceholder({
-  title,
-  description,
-  phase,
-  icon: Icon,
-}: PagePlaceholderProps) {
-  return (
-    <section className="cc-page" aria-labelledby="page-title">
-      <PageHeader eyebrow={phase} title={title} headingId="page-title" description={description} />
-      <div className="cc-surface mt-7 flex items-start gap-4 p-5 sm:p-6">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600" aria-hidden="true"><Icon size={20} /></span>
-        <div><h2 className="font-semibold text-slate-950">本地配置优先</h2><p className="mt-2 text-sm leading-6 text-slate-600">运行参数继续通过环境变量与配置模板维护，避免将访问码、地图密钥或业务数据写入仓库。</p></div>
-      </div>
-    </section>
-  );
+function StatusPill({ configured }: { configured: boolean }) {
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>{configured ? "已配置（未测试）" : "未配置"}</span>;
 }
 
 export function SettingsPage() {
-  return (
-    <PagePlaceholder
-      title="设置"
-      description="这里将放置本地运行、服务价格和后续地图服务等配置。"
-      phase="按需要逐步实现"
-      icon={Settings}
-    />
-  );
+  const [settings, setSettings] = useState<IntegrationSettings | null>(null);
+  const [testing, setTesting] = useState<"amap" | "openai" | null>(null);
+  const [results, setResults] = useState<Partial<Record<"amap" | "openai", string>>>({});
+  const [error, setError] = useState<string | null>(null);
+  const browserConfigured = hasAmapBrowserKey() && hasAmapBrowserSecurityCode();
+
+  useEffect(() => {
+    getIntegrationSettings().then(setSettings).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "配置状态加载失败"));
+  }, []);
+
+  async function runTest(target: "amap" | "openai") {
+    setTesting(target);
+    setError(null);
+    try {
+      const result = await testIntegration(target);
+      setResults((current) => ({ ...current, [target]: result.message }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "连接测试失败");
+    } finally {
+      setTesting(null);
+    }
+  }
+
+  return <section className="cc-page" aria-labelledby="settings-title">
+    <PageHeader eyebrow="本地集成" title="设置" headingId="settings-title" description="只显示配置状态和测试结果；网页不会保存或回显任何 Key。" />
+    {error ? <div className="cc-alert cc-alert--danger mt-5" role="alert">{error}</div> : null}
+    <div className="mt-6 grid gap-4 lg:grid-cols-3">
+      <article className="cc-surface p-5"><div className="flex items-start justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-orange-50 text-orange-700"><MapPinned size={20} /></span><StatusPill configured={Boolean(settings?.amap_backend.configured)} /></div><h2 className="mt-4 font-semibold">高德后端路线服务</h2><p className="mt-2 text-sm leading-6 text-slate-600">负责地址解析、真实道路、距离、时间和路线折线。配置存在不代表已连接。</p>{settings?.amap_backend.message ? <p className="mt-3 text-xs text-amber-700">{settings.amap_backend.message}</p> : null}<button type="button" className="cc-button cc-button--secondary mt-4" disabled={!settings?.amap_backend.configured || testing !== null} onClick={() => void runTest("amap")}>{testing === "amap" ? <LoaderCircle className="animate-spin" size={15} /> : <SquareActivity size={15} />}测试连接</button>{results.amap ? <p className="mt-3 flex items-center gap-1.5 text-xs text-emerald-700"><CheckCircle2 size={14} />{results.amap}</p> : null}</article>
+      <article className="cc-surface p-5"><div className="flex items-start justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-orange-50 text-orange-700"><MapPinned size={20} /></span><StatusPill configured={browserConfigured} /></div><h2 className="mt-4 font-semibold">浏览器街道底图</h2><p className="mt-2 text-sm leading-6 text-slate-600">需要 VITE_AMAP_JS_API_KEY 和安全密钥。缺少任一项时会显示坐标网格。</p><p className="mt-3 text-xs font-medium text-amber-700">修改 Vite 环境变量后必须重启前端，当前页面不会保存 Key。</p></article>
+      <article className="cc-surface p-5"><div className="flex items-start justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-orange-50 text-orange-700"><Sparkles size={20} /></span><StatusPill configured={Boolean(settings?.gpt_recommendation.configured)} /></div><h2 className="mt-4 font-semibold">GPT 路线建议</h2><p className="mt-2 text-sm leading-6 text-slate-600">通过 OpenAI Responses API 使用 GPT-5.6 Sol，只接收匿名任务编号和高德行车矩阵。</p><p className="mt-3 text-xs text-slate-500">Codex 登录不能替代独立 OPENAI_API_KEY。</p><button type="button" className="cc-button cc-button--secondary mt-4" disabled={!settings?.gpt_recommendation.configured || testing !== null} onClick={() => void runTest("openai")}>{testing === "openai" ? <LoaderCircle className="animate-spin" size={15} /> : <SquareActivity size={15} />}测试连接</button>{results.openai ? <p className="mt-3 flex items-center gap-1.5 text-xs text-emerald-700"><CheckCircle2 size={14} />{results.openai}</p> : null}</article>
+    </div>
+  </section>;
 }

@@ -13,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   getOrder: vi.fn(),
   getOrderFormOptions: vi.fn(),
   createOrder: vi.fn(),
+  deleteOrder: vi.fn(),
   updateOrder: vi.fn(),
   updateOrderStatus: vi.fn(),
 }));
@@ -32,9 +33,50 @@ const tasks: OrderTask[] = Array.from({ length: 7 }, (_, index) => ({
   ],
 }));
 
+const serviceContact = {
+  name: "订单页面客户（虚构）",
+  wechat_name: null,
+  phone: "TEST-PHONE",
+  community: "虚构小区",
+  address: "虚构小区 1 号楼",
+  building: null,
+  unit: null,
+  room: null,
+  access_method: null,
+  access_info: null,
+  key_status: null,
+  key_code: null,
+  notes: null,
+  is_repeat_customer: false,
+  latitude: null,
+  longitude: null,
+  geocode_status: null,
+};
+
+const catDefaults = {
+  photo_url: null,
+  gender: null,
+  age: null,
+  breed: null,
+  personality: null,
+  food: null,
+  food_preference: null,
+  litter_type: null,
+  medication_required: false,
+  medication_notes: null,
+  special_notes: null,
+  service_notes: null,
+};
+
 const summary: OrderSummary = {
   id: 1,
-  customer: { id: 1, name: "订单页面客户（虚构）", community: "虚构小区" },
+  source_customer_id: 1,
+  service_contact: serviceContact,
+  cat_snapshot: [
+    { ...catDefaults, source_cat_id: 1, name: "奶糖" },
+    { ...catDefaults, source_cat_id: 2, name: "芝麻" },
+  ],
+  customer: { id: 1, name: "订单页面客户（虚构）", community: "虚构小区", address: "虚构小区 1 号楼" },
   cats: [
     { id: 1, name: "奶糖", is_active: true },
     { id: 2, name: "芝麻", is_active: true },
@@ -44,7 +86,11 @@ const summary: OrderSummary = {
   visits_per_day: 1,
   service_days: 7,
   total_visits: 7,
+  cat_count: 2,
+  service_schedule: Array.from({ length: 7 }, (_, index) => ({ service_date: `2030-10-${String(index + 1).padStart(2, "0")}`, visit_count: 1 })),
   service_items: ["feed", "water"],
+  pricing_mode: "legacy_components",
+  unit_price: "35.00",
   base_price: "30.00",
   extra_cat_fee: "5.00",
   stairs_fee: "0.00",
@@ -52,9 +98,12 @@ const summary: OrderSummary = {
   total_amount: "245.00",
   paid_amount: "0.00",
   due_amount: "245.00",
+  overpaid_amount: "0.00",
   payment_status: "unpaid",
   order_status: "pending_confirmation",
   task_count: 7,
+  deletable: true,
+  delete_block_reason: null,
   updated_at: timestamp,
 };
 
@@ -70,10 +119,25 @@ const options: OrderFormOptions = {
     {
       id: 1,
       name: "订单页面客户（虚构）",
+      wechat_name: null,
+      phone: "TEST-PHONE",
       community: "虚构小区",
+      address: "虚构小区 1 号楼",
+      building: null,
+      unit: null,
+      room: null,
+      access_method: null,
+      access_info: null,
+      key_status: null,
+      key_code: null,
+      notes: null,
+      is_repeat_customer: false,
+      latitude: null,
+      longitude: null,
+      geocode_status: null,
       cats: [
-        { id: 1, name: "奶糖" },
-        { id: 2, name: "芝麻" },
+        { ...catDefaults, id: 1, name: "奶糖" },
+        { ...catDefaults, id: 2, name: "芝麻" },
       ],
     },
   ],
@@ -90,13 +154,20 @@ beforeEach(() => {
   apiMocks.createOrder.mockResolvedValue(detail);
   apiMocks.updateOrder.mockResolvedValue(detail);
   apiMocks.updateOrderStatus.mockResolvedValue(detail);
+  apiMocks.deleteOrder.mockResolvedValue(undefined);
 });
 
 it("shows an order, authoritative pricing, and seven generated tasks", async () => {
   render(<OrdersPage />);
 
-  expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
-  expect(screen.getByText("7 天 × 1 次/天 = 7 次")).toBeInTheDocument();
+  expect(
+    await screen.findByRole(
+      "heading",
+      { name: "订单 #1", level: 2 },
+      { timeout: 5000 },
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByText("7 个日期 · 7 次")).toBeInTheDocument();
   expect(screen.getAllByText("¥245.00").length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText("共 7 个任务；具体时间与排序请在“按天计划”中设置。")).toBeInTheDocument();
   expect(screen.getByText("2030-10-01")).toBeInTheDocument();
@@ -104,7 +175,7 @@ it("shows an order, authoritative pricing, and seven generated tasks", async () 
   expect(apiMocks.getOrder).toHaveBeenCalledWith(1);
 });
 
-it("creates a seven-day two-cat order without submitting a total amount", async () => {
+it("creates an order from plain contact text without creating or selecting a profile", async () => {
   apiMocks.listOrders
     .mockResolvedValueOnce({ items: [], total: 0 })
     .mockResolvedValue({ items: [summary], total: 1 });
@@ -113,33 +184,30 @@ it("creates a seven-day two-cat order without submitting a total amount", async 
 
   fireEvent.click(screen.getByRole("button", { name: "新建订单" }));
   const dialog = screen.getByRole("dialog", { name: "新建订单" });
-  fireEvent.click(within(dialog).getByRole("checkbox", { name: "奶糖" }));
-  fireEvent.click(within(dialog).getByRole("checkbox", { name: "芝麻" }));
-  fireEvent.change(within(dialog).getByLabelText("开始日期"), {
-    target: { value: "2030-10-01" },
-  });
-  fireEvent.change(within(dialog).getByLabelText("结束日期"), {
-    target: { value: "2030-10-07" },
-  });
+  fireEvent.change(within(dialog).getByLabelText(/^联系人名称/), { target: { value: "直接输入的订单联系人" } });
+  fireEvent.change(within(dialog).getByLabelText("详细地址"), { target: { value: "虚构订单地址 8 号" } });
+  fireEvent.change(within(dialog).getByLabelText("猫咪数量"), { target: { value: "2" } });
+  const today = new Date();
+  fireEvent.click(within(dialog).getByRole("button", { name: String(today.getDate()) }));
 
-  expect(within(dialog).getByText("7 次")).toBeInTheDocument();
-  expect(within(dialog).getByText("¥245.00")).toBeInTheDocument();
-  fireEvent.click(
-    within(dialog).getByRole("button", { name: "创建订单并生成任务" }),
-  );
+  expect(within(dialog).getAllByText("¥30.00")).toHaveLength(2);
+  fireEvent.click(within(dialog).getByRole("button", { name: "创建订单" }));
 
   await waitFor(() => expect(apiMocks.createOrder).toHaveBeenCalledTimes(1));
   const payload = apiMocks.createOrder.mock.calls[0]?.[0] as Record<string, unknown>;
   expect(payload).toEqual(
     expect.objectContaining({
-      customer_id: 1,
-      cat_ids: [1, 2],
-      start_date: "2030-10-01",
-      end_date: "2030-10-07",
-      visits_per_day: 1,
-      base_price: "30.00",
+      service_contact: expect.objectContaining({
+        name: "直接输入的订单联系人",
+        address: "虚构订单地址 8 号",
+      }),
+      cat_count: 2,
+      service_dates: [expect.any(String)],
+      unit_price: "30.00",
     }),
   );
+  expect(payload).not.toHaveProperty("customer_id");
+  expect(payload).not.toHaveProperty("source_customer_id");
   expect(payload).not.toHaveProperty("total_amount");
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });
@@ -152,21 +220,20 @@ it("opens the create form from the dashboard quick-entry flag", async () => {
   );
 });
 
-it("edits an order and updates status through separate protected actions", async () => {
+it("edits an order and keeps cancellation as a separate protected action", async () => {
   render(<OrdersPage />);
   expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "编辑订单" }));
   const dialog = screen.getByRole("dialog", { name: "编辑订单 #1" });
-  expect(within(dialog).getByText(/已有执行记录时系统会拒绝修改/)).toBeInTheDocument();
-  fireEvent.change(within(dialog).getByRole("spinbutton", { name: "每日次数" }), {
-    target: { value: "2" },
+  fireEvent.change(within(dialog).getByRole("spinbutton", { name: "猫咪数量" }), {
+    target: { value: "3" },
   });
-  fireEvent.click(within(dialog).getByRole("button", { name: "保存并同步任务" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "保存订单" }));
   await waitFor(() =>
     expect(apiMocks.updateOrder).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ visits_per_day: 2 }),
+      expect.objectContaining({ cat_count: 3 }),
     ),
   );
 
@@ -177,9 +244,7 @@ it("edits an order and updates status through separate protected actions", async
   };
   apiMocks.updateOrderStatus.mockResolvedValue(cancelled);
   vi.spyOn(window, "confirm").mockReturnValue(true);
-  fireEvent.change(screen.getByRole("combobox", { name: "更新订单状态" }), {
-    target: { value: "cancelled" },
-  });
+  fireEvent.click(screen.getByRole("button", { name: "取消订单" }));
 
   await waitFor(() =>
     expect(apiMocks.updateOrderStatus).toHaveBeenCalledWith(1, "cancelled"),

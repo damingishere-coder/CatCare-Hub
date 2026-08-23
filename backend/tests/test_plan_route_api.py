@@ -12,7 +12,7 @@ from app.db.session import build_engine, get_db
 from app.main import app
 from app.maps import GeoPoint, MapServices, ProviderState, RouteResult, RouteStop
 from app.maps.factory import UnavailableMapProvider, get_map_services
-from app.models import Customer, Task
+from app.models import Customer, Order, Task
 from tests.test_plan_api import PlanApiContext, create_three_task_plan
 
 
@@ -132,9 +132,10 @@ def test_route_workspace_is_local_until_explicit_preview_and_adopts_recommendati
     preview = preview_response.json()
     assert len(fake_map_provider.geocode_calls) == 2
     assert all("P4" not in address for address in fake_map_provider.geocode_calls)
-    assert all("2 单元" not in address for address in fake_map_provider.geocode_calls)
-    assert all("1602" not in address for address in fake_map_provider.geocode_calls)
+    assert all("2 单元" in address for address in fake_map_provider.geocode_calls)
+    assert all("1602" in address for address in fake_map_provider.geocode_calls)
     assert len(preview["markers"]) == 3
+    assert all("1602" in marker["address"] for marker in preview["markers"])
     assert preview["unresolved_tasks"] == []
     assert preview["current_route"]["distance_meters"] == 12600
     assert preview["current_route"]["duration_seconds"] == 2880
@@ -149,9 +150,6 @@ def test_route_workspace_is_local_until_explicit_preview_and_adopts_recommendati
     serialized = preview_response.text
     for forbidden in (
         "000-PLAN-TEST",
-        "虚构路 100 号",
-        "2 单元",
-        "1602",
         "虚构门禁方式",
         "FAKE-KEY-CODE",
         "不应出现在 P4 任务响应中的虚构客户备注",
@@ -185,7 +183,7 @@ def test_route_workspace_is_local_until_explicit_preview_and_adopts_recommendati
     assert [task["sort_order"] for task in adopted["tasks"]] == [0, 1, 2]
 
 
-def test_route_preview_caches_coordinates_and_address_change_invalidates_customer_only(
+def test_route_preview_caches_order_coordinates_and_ignores_later_profile_changes(
     plan_api_context: PlanApiContext,
     fake_map_provider: FakeMapProvider,
 ) -> None:
@@ -206,8 +204,18 @@ def test_route_preview_caches_coordinates_and_address_change_invalidates_custome
     with plan_api_context.session_factory() as session:
         customer = session.get(Customer, customer_id)
         assert customer is not None
-        assert customer.geocode_status == "resolved"
-        assert customer.latitude == Decimal("30.1000000")
+        assert customer.geocode_status == "pending"
+        order_ids = {
+            task.order_id
+            for task in session.scalars(
+                select(Task).where(Task.id.in_(customer_task_ids))
+            ).all()
+        }
+        assert len(order_ids) == 1
+        order = session.get(Order, next(iter(order_ids)))
+        assert order is not None
+        assert order.route_geocode_status == "resolved"
+        assert order.route_latitude == Decimal("30.1000000")
         snapshots = session.scalars(
             select(Task).where(Task.id.in_(customer_task_ids)).order_by(Task.id)
         ).all()
@@ -221,8 +229,7 @@ def test_route_preview_caches_coordinates_and_address_change_invalidates_custome
     with plan_api_context.session_factory() as session:
         customer = session.get(Customer, customer_id)
         assert customer is not None
-        assert customer.geocode_status == "resolved"
-        assert customer.latitude == Decimal("30.1000000")
+        assert customer.geocode_status == "pending"
 
     changed = client.patch(
         f"/api/admin/customers/{customer_id}",
@@ -234,23 +241,30 @@ def test_route_preview_caches_coordinates_and_address_change_invalidates_custome
         assert customer is not None
         assert customer.geocode_status == "pending"
         assert customer.latitude is None
+        order = session.scalar(select(Order).where(Order.customer_id == customer_id))
+        assert order is not None
+        assert order.contact_address == "虚构路 100 号"
+        assert order.route_geocode_status == "resolved"
+        assert order.route_latitude == Decimal("30.1000000")
         snapshots = session.scalars(
             select(Task).where(Task.id.in_(customer_task_ids)).order_by(Task.id)
         ).all()
         assert all(task.planned_lat == Decimal("30.1000000") for task in snapshots)
 
     workspace = client.get("/api/admin/plans/2033-10-01/route").json()
-    unresolved_ids = {item["task_id"] for item in workspace["unresolved_tasks"]}
-    assert unresolved_ids.issuperset(customer_task_ids)
+    assert workspace["unresolved_tasks"] == []
+    assert {marker["task_id"] for marker in workspace["markers"]}.issuperset(
+        customer_task_ids
+    )
     refreshed_day = client.get("/api/admin/plans/2033-10-01").json()
+    assert refreshed_day["revision"] == preview["revision"]
     refreshed = client.post(
         "/api/admin/plans/2033-10-01/route/preview",
         json={"expected_revision": refreshed_day["revision"]},
     )
     assert refreshed.status_code == 200
-    assert len(fake_map_provider.geocode_calls) == 3
-    assert "另一条虚构道路 200 号" in fake_map_provider.geocode_calls[-1]
-    assert refreshed.json()["revision"] != preview["revision"]
+    assert len(fake_map_provider.geocode_calls) == 2
+    assert refreshed.json()["revision"] == preview["revision"]
 
 
 def test_partial_geocode_failure_disables_recommendation_and_disabled_provider_is_safe(
@@ -342,10 +356,11 @@ def test_route_refresh_preserves_executed_snapshot_and_obeys_day_lock(
         f"/api/admin/customers/{customer_id}",
         json={"address": "执行后变更的虚构道路 300 号"},
     ).status_code == 200
-    assert client.post(
+    unchanged_preview = client.post(
         "/api/admin/plans/2033-10-01/route/preview",
         json={"expected_revision": before_address_change["revision"]},
-    ).status_code == 409
+    )
+    assert unchanged_preview.status_code == 200
 
     current = client.get("/api/admin/plans/2033-10-01").json()
     refreshed_response = client.post(
@@ -368,7 +383,8 @@ def test_route_refresh_preserves_executed_snapshot_and_obeys_day_lock(
         other_task_id = next(
             task_id for task_id in same_customer_task_ids if task_id != first_task["id"]
         )
-        assert snapshots[other_task_id].planned_lat == Decimal("30.3000000")
+        assert snapshots[other_task_id].planned_lat == Decimal("30.1000000")
+    assert len(fake_map_provider.geocode_calls) == 2
 
 
 def test_cancelled_tasks_are_excluded_and_missing_address_is_not_guessed(
@@ -384,10 +400,22 @@ def test_cancelled_tasks_are_excluded_and_missing_address_is_not_guessed(
     day = client.get("/api/admin/plans/2033-10-01").json()
     active_tasks = [task for task in day["tasks"] if task["status"] != "cancelled"]
     assert len(active_tasks) == 1
-    customer_id = active_tasks[0]["customer"]["id"]
+    order_id = active_tasks[0]["order_id"]
+    order = client.get(f"/api/admin/orders/{order_id}").json()
+    contact = {
+        **order["service_contact"],
+        "community": None,
+        "address": None,
+        "building": None,
+        "unit": None,
+        "room": None,
+        "latitude": None,
+        "longitude": None,
+        "geocode_status": None,
+    }
     assert client.patch(
-        f"/api/admin/customers/{customer_id}",
-        json={"community": None, "address": None, "building": None},
+        f"/api/admin/orders/{order_id}",
+        json={"service_contact": contact},
     ).status_code == 200
 
     current = client.get("/api/admin/plans/2033-10-01").json()
@@ -405,6 +433,7 @@ def test_cancelled_tasks_are_excluded_and_missing_address_is_not_guessed(
             "task_id": active_tasks[0]["id"],
             "customer_name": active_tasks[0]["customer"]["name"],
             "community": None,
+            "address": None,
             "reason": "missing_address",
         }
     ]

@@ -33,6 +33,7 @@ class IntakeCustomerDraft(IntakeModel):
     key_status: str | None = Field(default=None, max_length=50)
     key_code: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=4000)
+    is_repeat_customer: bool = False
 
 
 class IntakeCatDraft(IntakeModel):
@@ -83,14 +84,7 @@ class IntakeDraftPayload(IntakeModel):
 
 class IntakeCustomerSubmit(IntakeCustomerDraft):
     name: str = Field(min_length=1, max_length=100)
-    community: str = Field(min_length=1, max_length=200)
     address: str = Field(min_length=1, max_length=1000)
-
-    @model_validator(mode="after")
-    def require_contact(self) -> Self:
-        if not self.phone and not self.wechat_name:
-            raise ValueError("手机号和微信昵称至少填写一项")
-        return self
 
 
 class IntakeCatSubmit(IntakeCatDraft):
@@ -168,6 +162,8 @@ class IntakeSubmissionList(BaseModel):
 
 class IntakeSubmissionDetail(IntakeSubmissionSummary):
     payload: IntakeDraftPayload
+    review_payload: IntakeSubmissionPayload | None
+    review_unit_price: Decimal | None
     reviewed_at: datetime | None
     converted_at: datetime | None
     converted_customer_id: int | None
@@ -180,3 +176,8 @@ class IntakeConversionRead(BaseModel):
     customer_id: int
     order_id: int
     revision: str
+
+
+class IntakeReviewDraftUpdate(RevisionCommand):
+    review_payload: IntakeSubmissionPayload
+    unit_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)

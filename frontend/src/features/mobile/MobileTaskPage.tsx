@@ -8,7 +8,6 @@ import {
   MapPin,
   Navigation,
   PawPrint,
-  Phone,
   Play,
   RefreshCw,
   Save,
@@ -18,8 +17,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { SessionControls } from "../auth/SessionControls";
 import { serviceItemOptions } from "../orders/constants";
+import { customerAddress } from "../../lib/customerDisplay";
 import type { ServiceItem, TaskStatus } from "../orders/types";
 import { planTaskStatusLabels } from "../plans/constants";
 import {
@@ -56,13 +55,7 @@ function statusStyle(status: TaskStatus): string {
 }
 
 function addressLine(detail: MobileTaskExecutionDetail): string {
-  return [
-    detail.customer.community,
-    detail.customer.address,
-    detail.customer.building,
-    detail.customer.unit,
-    detail.customer.room,
-  ].filter(Boolean).join(" · ") || "未填写地址";
+  return customerAddress(detail.customer) || "未填写地址";
 }
 
 function navigationMessage(state: NavigationState): string {
@@ -246,14 +239,14 @@ export function MobileTaskPage() {
   const controlsDisabled = Boolean(busy) || stale;
 
   return (
-    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-[#f3f5f8] text-slate-950">
+    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-[#F5F5F7] text-[#1D1D1F]">
       <div className="mx-auto max-w-xl px-4 py-5 sm:px-5 sm:py-7">
         <header>
           <div className="flex items-center justify-between gap-3">
             <Link className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-slate-700" to="/mobile">
               <ArrowLeft size={17} />今日任务
             </Link>
-            <div className="flex items-center gap-2"><SessionControls compact /><button
+            <div className="flex items-center gap-2"><button
               type="button"
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm disabled:opacity-50"
               aria-label="刷新任务"
@@ -265,7 +258,7 @@ export function MobileTaskPage() {
           </div>
           <div className="mt-3 flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold tracking-[0.14em] text-indigo-600 uppercase">现场执行</p>
+              <p className="text-xs font-semibold tracking-[0.14em] text-orange-600 uppercase">现场执行</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight">单次喂猫任务</h1>
             </div>
             {detail ? (
@@ -278,7 +271,7 @@ export function MobileTaskPage() {
 
         <div className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-3 text-xs leading-5 text-slate-600 shadow-sm">
           <ShieldAlert className="mt-0.5 shrink-0" size={16} />
-          本页含地址、电话和门禁信息，已受执行端会话保护；仍禁止直接暴露到公网。
+          本页含地址、门禁和钥匙信息；当前无密码保护，仅允许在运行 CatCare-Hub 的这台电脑上使用。
         </div>
 
         {error ? (
@@ -306,26 +299,18 @@ export function MobileTaskPage() {
 
               <dl className="mt-4 space-y-4 border-t border-slate-100 pt-4">
                 <div className="flex gap-2"><MapPin className="mt-0.5 shrink-0 text-slate-400" size={17} /><FieldValue label="完整地址" value={addressLine(detail)} /></div>
-                <div className="flex gap-2"><Phone className="mt-0.5 shrink-0 text-slate-400" size={17} /><FieldValue label="联系电话" value={detail.customer.phone} /></div>
-                <FieldValue label="入户与门禁" value={[detail.customer.access_method, detail.customer.access_info].filter(Boolean).join(" · ") || null} />
+                <FieldValue label="门禁方式" value={detail.customer.access_method} />
                 <div className="flex gap-2"><KeyRound className="mt-0.5 shrink-0 text-slate-400" size={17} /><FieldValue label="钥匙信息" value={[detail.customer.key_status, detail.customer.key_code].filter(Boolean).join(" · ") || null} /></div>
                 <FieldValue label="订单服务备注" value={detail.order_notes} />
               </dl>
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                {detail.customer.phone ? (
-                  <a className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold" href={`tel:${detail.customer.phone}`}>
-                    <Phone size={16} />联系客户
-                  </a>
-                ) : (
-                  <span className="inline-flex min-h-11 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-500">未填写电话</span>
-                )}
+              <div className="mt-4">
                 {detail.navigation_url ? (
-                  <a className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 text-sm font-semibold text-white shadow-sm" href={detail.navigation_url} target="_blank" rel="noreferrer">
+                  <a className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-[#FF9500] text-sm font-semibold text-[#1D1D1F] shadow-sm" href={detail.navigation_url} target="_blank" rel="noreferrer">
                     <Navigation size={16} />一键导航
                   </a>
                 ) : (
-                  <span className="inline-flex min-h-11 items-center justify-center rounded-lg bg-slate-100 px-2 text-center text-xs leading-4 text-slate-500">暂不可导航</span>
+                  <span className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-slate-100 px-2 text-center text-xs leading-4 text-slate-500">暂不可导航</span>
                 )}
               </div>
               {!detail.navigation_url ? <p className="mt-2 text-xs leading-5 text-amber-700">{navigationMessage(detail.navigation_state)}</p> : null}
@@ -334,8 +319,8 @@ export function MobileTaskPage() {
             <section className="cc-surface p-4">
               <h2 className="font-bold">猫咪与服务要求</h2>
               <div className="mt-3 space-y-3">
-                {detail.cats.map((cat) => (
-                  <article key={cat.id} className="rounded-lg border border-slate-200 p-3">
+                {detail.cats.map((cat, index) => (
+                  <article key={cat.id ?? `${cat.name}-${index}`} className="rounded-lg border border-slate-200 p-3">
                     <p className="font-bold">{cat.name}{cat.is_active ? "" : "（已停用）"}</p>
                     <dl className="mt-3 grid grid-cols-2 gap-3">
                       <FieldValue label="主粮" value={cat.food} />
@@ -357,7 +342,7 @@ export function MobileTaskPage() {
                   <p className="mt-1 text-xs text-slate-500">先开始任务，再记录现场情况。</p>
                 </div>
                 {startable ? (
-                  <button type="button" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm disabled:opacity-40" onClick={() => void handleStart()} disabled={controlsDisabled}>
+                  <button type="button" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-[#FF9500] px-3 text-sm font-semibold text-[#1D1D1F] shadow-sm disabled:opacity-40" onClick={() => void handleStart()} disabled={controlsDisabled}>
                     {busy === "start" ? <LoaderCircle className="animate-spin" size={16} /> : <Play size={16} />}开始任务
                   </button>
                 ) : null}
@@ -379,7 +364,7 @@ export function MobileTaskPage() {
                     <label key={item.id} className={`flex min-h-12 items-center gap-3 rounded-lg border px-3 ${item.completed ? "border-emerald-200 bg-emerald-50" : "border-slate-200"}`}>
                       <input
                         type="checkbox"
-                        className="size-5 accent-indigo-600"
+                        className="size-5 accent-orange-500"
                         checked={item.completed}
                         onChange={(event) => void handleChecklist(item.id, event.target.checked)}
                         disabled={!editing || photoItem || controlsDisabled}
@@ -415,7 +400,7 @@ export function MobileTaskPage() {
                   onChange={(event) => setSelectedPhoto(event.target.files?.[0] ?? null)}
                   className="block w-full text-sm text-slate-600 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold"
                 />
-                <button type="button" className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-indigo-600 text-sm font-semibold text-white shadow-sm disabled:opacity-40" onClick={() => void handleUpload()} disabled={!editing || !selectedPhoto || controlsDisabled}>
+                <button type="button" className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-[#FF9500] text-sm font-semibold text-[#1D1D1F] shadow-sm disabled:opacity-40" onClick={() => void handleUpload()} disabled={!editing || !selectedPhoto || controlsDisabled}>
                   {busy === "photo" ? <LoaderCircle className="animate-spin" size={16} /> : <Upload size={16} />}上传图片
                 </button>
                 <p className="mt-2 text-xs text-slate-500">JPEG / PNG / WebP，单张不超过 10 MiB</p>
@@ -436,10 +421,10 @@ export function MobileTaskPage() {
             </section>
 
             {editing ? (
-              <section className="rounded-xl bg-indigo-700 p-4 text-white shadow-sm">
+              <section className="rounded-2xl bg-orange-700 p-4 text-white shadow-sm">
                 <h2 className="font-bold">完成本次服务</h2>
-                <p className="mt-1 text-sm leading-6 text-indigo-100">{textDirty ? "现场记录尚未保存" : missingRequired.length ? `仍有 ${missingRequired.length} 项必做事项未完成` : "必做事项已完成，请最后核对现场记录"}</p>
-                <button type="button" className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-white text-sm font-bold text-indigo-700 disabled:opacity-40" onClick={() => void handleComplete()} disabled={missingRequired.length > 0 || textDirty || controlsDisabled}>
+                <p className="mt-1 text-sm leading-6 text-orange-50">{textDirty ? "现场记录尚未保存" : missingRequired.length ? `仍有 ${missingRequired.length} 项必做事项未完成` : "必做事项已完成，请最后核对现场记录"}</p>
+                <button type="button" className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-bold text-orange-700 disabled:opacity-40" onClick={() => void handleComplete()} disabled={missingRequired.length > 0 || textDirty || controlsDisabled}>
                   {busy === "complete" ? <LoaderCircle className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}完成本次服务
                 </button>
               </section>

@@ -25,6 +25,7 @@ from app.models import (
 
 
 DEMO_MARKER = "[catcare-demo-seed-v1]"
+DEMO_SYSTEM_KEY = "catcare-demo-seed-v1"
 
 
 def seed_database(database_url: str | None = None) -> bool:
@@ -35,7 +36,12 @@ def seed_database(database_url: str | None = None) -> bool:
 
     try:
         with session_factory.begin() as session:
-            if session.scalar(select(Customer.id).where(Customer.notes == DEMO_MARKER)):
+            if session.scalar(
+                select(Customer.id).where(
+                    (Customer.system_key == DEMO_SYSTEM_KEY)
+                    | (Customer.notes == DEMO_MARKER)
+                )
+            ):
                 return False
 
             _insert_demo_records(session)
@@ -48,11 +54,12 @@ def _insert_demo_records(session: Session) -> None:
     today = date.today()
     customer = Customer(
         name="演示客户（虚构）",
+        system_key=DEMO_SYSTEM_KEY,
         wechat_name="演示账号（虚构）",
         community="虚构演示小区",
         address="仅用于开发演示，不对应任何真实地址",
         is_repeat_customer=False,
-        notes=DEMO_MARKER,
+        notes=None,
     )
     cat_one = Cat(
         name="演示猫咪一号",
@@ -68,9 +75,19 @@ def _insert_demo_records(session: Session) -> None:
 
     order = Order(
         customer=customer,
+        contact_name=customer.name,
+        contact_wechat_name=customer.wechat_name,
+        contact_community=customer.community,
+        contact_address=customer.address,
+        contact_notes=customer.notes,
+        cat_snapshot=[
+            {"source_cat_id": cat_one.id, "name": cat_one.name},
+            {"source_cat_id": cat_two.id, "name": cat_two.name},
+        ],
         start_date=today,
         end_date=today + timedelta(days=2),
         visits_per_day=1,
+        cat_count=2,
         service_items=["feed", "water", "litter", "photo"],
         base_price=Decimal("30.00"),
         extra_cat_fee=Decimal("5.00"),

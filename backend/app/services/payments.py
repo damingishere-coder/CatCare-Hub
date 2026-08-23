@@ -28,7 +28,13 @@ from app.services.business_time import (
     business_month_bounds_utc,
     current_business_date,
 )
-from app.services.orders import due_amount, money, payment_status_for_amounts
+from app.services.orders import (
+    due_amount,
+    money,
+    order_display_address,
+    overpaid_amount,
+    payment_status_for_amounts,
+)
 
 
 def _datetime_value(value: datetime | None) -> str | None:
@@ -93,14 +99,16 @@ def _require_payment_revision(order: Order, expected_revision: str) -> None:
 def _receivable(order: Order) -> PaymentReceivable:
     return PaymentReceivable(
         order_id=order.id,
-        customer_name=order.customer.name,
-        community=order.customer.community,
+        customer_name=order.contact_name,
+        community=order.contact_community,
+        address=order_display_address(order),
         start_date=order.start_date,
         end_date=order.end_date,
-        cat_count=len(order.cat_links),
+        cat_count=order.cat_count,
         total_amount=money(order.total_amount),
         paid_amount=money(order.paid_amount),
         due_amount=due_amount(order),
+        overpaid_amount=overpaid_amount(order),
         payment_status=order.payment_status,
         order_status=order.order_status,
         revision=payment_revision(order),
@@ -112,10 +120,10 @@ def _payment_record(payment: Payment) -> PaymentRecordRead:
     return PaymentRecordRead(
         id=payment.id,
         order_id=payment.order_id,
-        customer_name=order.customer.name,
+        customer_name=order.contact_name,
         start_date=order.start_date,
         end_date=order.end_date,
-        cat_count=len(order.cat_links),
+        cat_count=order.cat_count,
         amount=money(payment.amount),
         payment_method=payment.payment_method,
         payment_status=payment.payment_status,
@@ -259,3 +267,4 @@ def register_payment(
         payment=_payment_record(refreshed_payment),
         order=_receivable(refreshed_order),
     )
+    order_display_address,

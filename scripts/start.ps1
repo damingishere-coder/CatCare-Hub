@@ -115,12 +115,6 @@ function Wait-ForEndpoint {
 if (-not (Test-Path -LiteralPath $venvPython)) {
     throw "Python environment is missing. Run setup.bat first."
 }
-& $venvPython (Join-Path $projectRoot "backend\scripts\manage_access.py") `
-    --check `
-    --env-file (Join-Path $projectRoot ".env")
-if ($LASTEXITCODE -ne 0) {
-    throw "Local access codes are missing or invalid. Run setup.bat first."
-}
 if (-not (Test-Path -LiteralPath (Join-Path $frontendDir "node_modules"))) {
     throw "Frontend dependencies are missing. Run setup.bat first."
 }
@@ -149,7 +143,7 @@ try {
     Write-Host "Starting CatCare-Hub API..."
     $backendProcess = Start-Process `
         -FilePath $venvPython `
-        -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000") `
+        -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000") `
         -WorkingDirectory $backendDir `
         -WindowStyle Hidden `
         -RedirectStandardOutput $backendOutput `
@@ -160,7 +154,7 @@ try {
     Write-Host "Starting CatCare-Hub web app..."
     $frontendProcess = Start-Process `
         -FilePath $env:ComSpec `
-        -ArgumentList @("/d", "/s", "/c", "npm run dev -- --host 0.0.0.0 --port 5180 --strictPort") `
+        -ArgumentList @("/d", "/s", "/c", "npm run dev -- --host 127.0.0.1 --port 5180 --strictPort") `
         -WorkingDirectory $frontendDir `
         -WindowStyle Hidden `
         -RedirectStandardOutput $frontendOutput `

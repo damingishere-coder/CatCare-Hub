@@ -13,6 +13,7 @@ from app.schemas.mobile import (
 from app.schemas.task import TaskExecutionDetail
 from app.services.plan_routes import load_route_workspace
 from app.services.plans import load_day_tasks
+from app.services.orders import order_display_address
 
 
 MOBILE_TERMINAL_STATUSES = {TaskStatus.COMPLETED, TaskStatus.EXCEPTION}
@@ -65,9 +66,10 @@ def load_mobile_today(
                 sort_order=task.sort_order,
                 planned_time=task.planned_time,
                 status=task.status,
-                customer_name=task.customer.name,
-                community=task.customer.community,
-                cat_count=len(task.order.cat_links),
+                customer_name=task.order.contact_name,
+                community=task.order.contact_community,
+                address=order_display_address(task.order),
+                cat_count=task.order.cat_count,
                 navigation_url=navigation_url,
                 navigation_state=_navigation_state(
                     navigation_url,

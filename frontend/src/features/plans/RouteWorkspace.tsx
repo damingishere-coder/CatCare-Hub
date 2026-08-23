@@ -10,6 +10,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { RouteMap } from "./RouteMap";
+import { hasAmapBrowserKey, hasAmapBrowserSecurityCode } from "./mapProvider";
 import type {
   PlanRouteIssueReason,
   PlanRoutePath,
@@ -100,6 +101,7 @@ export function RouteWorkspace({
       .sort((left, right) => left.sequence - right.sequence);
   }, [selectedRoute?.task_ids, tasks, workspace]);
   const activeTaskCount = tasks.filter((task) => task.status !== "cancelled").length;
+  const browserMapConfigured = hasAmapBrowserKey() && hasAmapBrowserSecurityCode();
   const canPreview = Boolean(
     workspace?.provider.configured
     && activeTaskCount
@@ -115,17 +117,19 @@ export function RouteWorkspace({
           <div className="flex flex-wrap items-center gap-2">
             <MapPinned size={18} />
             <h2 id="route-map-title" className="text-sm font-semibold text-slate-950">路线地图</h2>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.provider.configured ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
-              {workspace?.provider.configured ? `${workspace.provider.name} 已连接` : "地图未配置"}
-            </span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.provider.configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>高德后端：{workspace?.provider.configured ? "已配置" : "未配置"}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${browserMapConfigured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>街道底图：{browserMapConfigured ? "已配置" : "未配置"}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.recommendation_provider?.configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>GPT 建议：{workspace?.recommendation_provider?.configured ? "已配置" : "未配置"}</span>
             {dirty ? <span className="ml-auto text-xs font-medium text-amber-700">顺序待保存</span> : null}
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            只有点击生成路线后，才会把小区、地址、楼栋和路线坐标发送给地图服务；不会发送姓名、房号、电话、门禁或钥匙信息。
+            只有点击生成路线后，才会把用于导航的完整地址和路线坐标发送给地图服务；不会发送姓名、电话、门禁、钥匙或备注信息。
           </p>
           {!workspace?.provider.configured && workspace?.provider.message ? (
             <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">{workspace.provider.message}</p>
           ) : null}
+          {!browserMapConfigured ? <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">街道底图缺少 JS API Key 或安全密钥；补充 Vite 环境变量后必须重启前端。</p> : null}
+          {workspace?.recommendation_message ? <p className={`mt-2 rounded-md px-3 py-2 text-xs leading-5 ${workspace.recommendation_source === "openai" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{workspace.recommendation_message}</p> : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -138,14 +142,14 @@ export function RouteWorkspace({
             </button>
             {workspace?.recommended_route ? (
               <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5" aria-label="路线视图">
-                <button type="button" className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${routeView === "current" ? "bg-indigo-600 text-white" : "text-slate-600"}`} onClick={() => selectRouteView("current")}>当前</button>
-                <button type="button" className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${routeView === "recommended" ? "bg-indigo-600 text-white" : "text-slate-600"}`} onClick={() => selectRouteView("recommended")}>推荐</button>
+                <button type="button" className={`min-h-10 rounded-xl px-2.5 py-1.5 text-xs font-medium ${routeView === "current" ? "bg-[#FF9500] text-[#1D1D1F]" : "text-slate-600"}`} onClick={() => selectRouteView("current")}>当前</button>
+                <button type="button" className={`min-h-10 rounded-xl px-2.5 py-1.5 text-xs font-medium ${routeView === "recommended" ? "bg-[#FF9500] text-[#1D1D1F]" : "text-slate-600"}`} onClick={() => selectRouteView("recommended")}>推荐</button>
               </div>
             ) : null}
             {workspace?.recommended_route ? (
               <button
                 type="button"
-                className="cc-button cc-button--secondary border-indigo-200 text-indigo-700"
+                className="cc-button cc-button--secondary border-orange-200 text-orange-700"
                 onClick={onAdopt}
                 disabled={!workspace.can_adopt_recommendation || dirty || adopting || previewing}
               >

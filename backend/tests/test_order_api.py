@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.session import build_engine, get_db
 from app.main import app
 from app.models import (
+    Customer,
     Order,
+    OrderPaymentStatus,
     Payment,
     PaymentMethod,
     Task,
@@ -89,6 +91,19 @@ def order_payload(
     return payload
 
 
+def simple_order_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "customer_name": "日历订单新客户（虚构）",
+        "cat_count": 3,
+        "service_dates": ["2032-03-02", "2032-03-05", "2032-03-09"],
+        "service_items": ["feed", "water", "litter", "photo"],
+        "unit_price": "42.00",
+        "notes": "不连续日期测试",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_create_seven_day_order_generates_tasks_and_private_summary(
     order_api_context: OrderApiContext,
 ) -> None:
@@ -116,9 +131,9 @@ def test_create_seven_day_order_generates_tasks_and_private_summary(
     list_response = client.get("/api/admin/orders")
     assert list_response.status_code == 200
     summary = list_response.json()["items"][0]
-    assert set(summary["customer"]) == {"id", "name", "community"}
+    assert set(summary["customer"]) == {"id", "name", "community", "address"}
     assert "phone" not in summary["customer"]
-    assert "address" not in summary["customer"]
+    assert summary["customer"]["address"] is None
     assert "access_info" not in summary["customer"]
     assert "key_code" not in summary["customer"]
     assert "notes" not in summary
@@ -316,7 +331,7 @@ def test_form_options_exclude_inactive_cats_and_customer_change_with_payment(
         if option["id"] == first_customer["id"]
     )
     assert [cat["id"] for cat in first_option["cats"]] == [first_cats[0]["id"]]
-    assert set(first_option) == {"id", "name", "community", "cats"}
+    assert {"id", "name", "community", "address", "phone", "cats"} <= set(first_option)
 
     payload = order_payload(first_customer["id"], [first_cats[0]["id"]])
     created = client.post("/api/admin/orders", json=payload).json()
@@ -340,3 +355,191 @@ def test_form_options_exclude_inactive_cats_and_customer_change_with_payment(
     )
     assert response.status_code == 409
     assert response.json()["detail"] == "订单已有收款记录，不能更换客户"
+
+
+def test_simple_order_keeps_customer_as_snapshot_and_creates_non_contiguous_tasks(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+
+    response = client.post("/api/admin/orders", json=simple_order_payload())
+
+    assert response.status_code == 201
+    order = response.json()
+    assert order["customer"]["name"] == "日历订单新客户（虚构）"
+    assert order["cat_count"] == 3
+    assert order["cats"] == []
+    assert order["pricing_mode"] == "per_visit"
+    assert order["unit_price"] == "42.00"
+    assert order["total_amount"] == "126.00"
+    assert order["order_status"] == "confirmed"
+    assert [entry["service_date"] for entry in order["service_schedule"]] == [
+        "2032-03-02",
+        "2032-03-05",
+        "2032-03-09",
+    ]
+    assert [task["service_date"] for task in order["tasks"]] == [
+        "2032-03-02",
+        "2032-03-05",
+        "2032-03-09",
+    ]
+    assert all(task["status"] == "confirmed" for task in order["tasks"])
+
+    reused = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(service_dates=["2032-04-01"]),
+    )
+    assert reused.status_code == 201
+    assert reused.json()["customer"]["id"] is None
+    assert order["customer"]["id"] is None
+    with order_api_context.session_factory() as session:
+        assert session.scalar(select(func.count(Customer.id))) == 0
+
+
+def test_simple_order_accepts_duplicate_profile_name_and_rejects_invalid_schedule(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+    create_customer_with_cats(client, name="同名客户（虚构）", cat_names=("甲",))
+    create_customer_with_cats(client, name="同名客户（虚构）", cat_names=("乙",))
+
+    ambiguous = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(customer_name="同名客户（虚构）"),
+    )
+    assert ambiguous.status_code == 201
+    assert ambiguous.json()["source_customer_id"] is None
+
+    invalid_payloads = [
+        simple_order_payload(service_dates=[]),
+        simple_order_payload(service_dates=["2032-03-02", "2032-03-02"]),
+        simple_order_payload(cat_count=51),
+        simple_order_payload(service_items=[]),
+    ]
+    for payload in invalid_payloads:
+        assert client.post("/api/admin/orders", json=payload).status_code == 422
+
+
+def test_paid_simple_order_can_be_repriced_and_reports_overpayment(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+    customer, _ = create_customer_with_cats(client, cat_names=("历史猫",))
+    created = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(
+            customer_name=None,
+            customer_id=customer["id"],
+            service_dates=["2032-05-01", "2032-05-03"],
+            unit_price="50.00",
+        ),
+    ).json()
+    with order_api_context.session_factory.begin() as session:
+        order = session.get(Order, created["id"])
+        assert order is not None
+        order.paid_amount = 100
+        order.payment_status = OrderPaymentStatus.PAID
+        session.add(
+            Payment(
+                order_id=order.id,
+                customer_id=customer["id"],
+                amount=100,
+                payment_method=PaymentMethod.CASH,
+            )
+        )
+
+    response = client.patch(
+        f"/api/admin/orders/{created['id']}",
+        json={"unit_price": "20.00"},
+    )
+
+    assert response.status_code == 200
+    repriced = response.json()
+    assert repriced["unit_price"] == "20.00"
+    assert repriced["total_amount"] == "40.00"
+    assert repriced["paid_amount"] == "100.00"
+    assert repriced["due_amount"] == "0.00"
+    assert repriced["overpaid_amount"] == "60.00"
+    assert repriced["payment_status"] == "paid"
+
+
+def test_unstarted_unpaid_order_can_be_permanently_deleted(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+    created = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(service_dates=["2032-06-01"]),
+    ).json()
+
+    assert created["deletable"] is True
+    assert created["delete_block_reason"] is None
+    response = client.delete(f"/api/admin/orders/{created['id']}")
+
+    assert response.status_code == 204
+    assert client.get(f"/api/admin/orders/{created['id']}").status_code == 404
+    with order_api_context.session_factory() as session:
+        assert session.scalar(select(func.count(Task.id))) == 0
+        assert session.scalar(select(func.count(TaskItem.id))) == 0
+
+
+def test_payment_history_blocks_order_delete_and_explains_cancellation(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+    created = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(service_dates=["2032-07-01"]),
+    ).json()
+    with order_api_context.session_factory.begin() as session:
+        session.add(
+            Payment(
+                order_id=created["id"],
+                customer_id=None,
+                amount=10,
+                payment_method=PaymentMethod.CASH,
+            )
+        )
+
+    detail = client.get(f"/api/admin/orders/{created['id']}").json()
+    assert detail["deletable"] is False
+    assert "收款流水" in detail["delete_block_reason"]
+    response = client.delete(f"/api/admin/orders/{created['id']}")
+
+    assert response.status_code == 409
+    assert "只能取消" in response.json()["detail"]
+    assert client.get(f"/api/admin/orders/{created['id']}").status_code == 200
+
+
+@pytest.mark.parametrize(
+    "history_kind",
+    ["started_at", "completed_at", "completed_item", "photo", "in_progress"],
+)
+def test_each_execution_history_signal_blocks_order_delete(
+    order_api_context: OrderApiContext,
+    history_kind: str,
+) -> None:
+    client = order_api_context.client
+    created = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(service_dates=["2032-08-01"]),
+    ).json()
+    with order_api_context.session_factory.begin() as session:
+        task = session.scalar(select(Task).where(Task.order_id == created["id"]))
+        assert task is not None
+        if history_kind == "started_at":
+            task.started_at = datetime(2032, 8, 1, 9, 0, tzinfo=timezone.utc)
+        elif history_kind == "completed_at":
+            task.completed_at = datetime(2032, 8, 1, 10, 0, tzinfo=timezone.utc)
+        elif history_kind == "completed_item":
+            task.items[0].completed = True
+        elif history_kind == "photo":
+            task.photos.append(TaskPhoto(file_url="/uploads/tests/delete-block.jpg"))
+        else:
+            task.status = TaskStatus.IN_PROGRESS
+
+    response = client.delete(f"/api/admin/orders/{created['id']}")
+
+    assert response.status_code == 409
+    assert "只能取消" in response.json()["detail"]
+    assert client.get(f"/api/admin/orders/{created['id']}").json()["deletable"] is False

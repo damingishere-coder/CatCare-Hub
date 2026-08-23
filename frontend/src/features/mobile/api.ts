@@ -4,8 +4,6 @@ import type {
   TaskTextInput,
 } from "../tasks/types";
 import type { MobileTaskExecutionDetail, MobileTodayRead } from "./types";
-import { notifyUnauthorized } from "../../lib/authEvents";
-
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const mobilePath = `${apiBase}/api/mobile`;
 
@@ -39,7 +37,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new MobileApiError(0, "当前网络不可用，任务数据需要联网加载。");
   }
   if (!response.ok) {
-    notifyUnauthorized(response.status);
     let message = `请求失败（HTTP ${response.status}）`;
     try {
       const payload = (await response.json()) as ApiErrorPayload;

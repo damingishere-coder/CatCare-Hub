@@ -69,7 +69,7 @@ export function PwaInstallPrompt() {
   return (
     <section className="mt-4 rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm" aria-label="安装到手机">
       <div className="flex items-start gap-2.5">
-        <Smartphone className="mt-0.5 shrink-0 text-indigo-600" size={17} />
+        <Smartphone className="mt-0.5 shrink-0 text-orange-600" size={17} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-slate-800">添加到主屏幕</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -88,7 +88,7 @@ export function PwaInstallPrompt() {
         {promptEvent ? (
           <button
             type="button"
-            className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl bg-[#FF9500] px-3 text-xs font-semibold text-[#1D1D1F] shadow-sm disabled:opacity-50"
             onClick={() => void handleInstall()}
             disabled={installing}
           >

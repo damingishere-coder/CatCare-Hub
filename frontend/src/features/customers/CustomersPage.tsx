@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  Archive,
   Cat,
   ClipboardPenLine,
   KeyRound,
@@ -10,14 +11,18 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { PageHeader } from "../../components/ui/PageHeader";
+import { customerAddress } from "../../lib/customerDisplay";
 import {
+  archiveCustomer,
   createCat,
   createCustomer,
+  deleteCustomer,
   getCustomer,
   listCustomers,
   updateCat,
@@ -60,7 +65,7 @@ function CatCard({ cat, changingStatus, onEdit, onToggleStatus }: CatCardProps) 
     <article className={`rounded-lg border p-4 ${cat.is_active ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50 opacity-75"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-700">
             <Cat size={20} aria-hidden="true" />
           </div>
           <div className="min-w-0">
@@ -139,6 +144,8 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
   );
   const [catFormValue, setCatFormValue] = useState<CatDetail | "create" | null>(null);
   const [changingCatId, setChangingCatId] = useState<number | null>(null);
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [customerAction, setCustomerAction] = useState<"archive" | "delete" | null>(null);
   const listRequestId = useRef(0);
 
   const applyCustomerList = useCallback((items: CustomerSummary[], preferredId?: number) => {
@@ -159,7 +166,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
     setListLoading(true);
     setPageError(null);
     try {
-      const response = await listCustomers(query);
+      const response = await listCustomers(query, includeArchived);
       if (requestId !== listRequestId.current) return;
       applyCustomerList(response.items, preferredId);
     } catch (cause) {
@@ -171,7 +178,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
     } finally {
       if (requestId === listRequestId.current) setListLoading(false);
     }
-  }, [applyCustomerList]);
+  }, [applyCustomerList, includeArchived]);
 
   const refreshDetail = useCallback(async (customerId: number) => {
     const detail = await getCustomer(customerId);
@@ -182,7 +189,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
   useEffect(() => {
     let active = true;
     const requestId = ++listRequestId.current;
-    listCustomers()
+    listCustomers("", includeArchived)
       .then((response) => {
         if (active && requestId === listRequestId.current) {
           applyCustomerList(response.items);
@@ -203,7 +210,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
     return () => {
       active = false;
     };
-  }, [applyCustomerList]);
+  }, [applyCustomerList, includeArchived]);
 
   useEffect(() => {
     if (selectedCustomerId === null) {
@@ -282,13 +289,47 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
     }
   }
 
+  async function handleArchive() {
+    if (!customerDetail) return;
+    const archived = customerDetail.archived_at === null;
+    if (!window.confirm(`确认${archived ? "归档" : "恢复"}客户“${customerDetail.name}”吗？`)) return;
+    setCustomerAction("archive");
+    setPageError(null);
+    try {
+      const updated = await archiveCustomer(customerDetail.id, archived);
+      setCustomerDetail(updated);
+      await refreshList(searchQuery, includeArchived ? updated.id : undefined);
+    } catch (cause) {
+      setPageError(cause instanceof Error ? cause.message : "客户归档状态更新失败。");
+    } finally {
+      setCustomerAction(null);
+    }
+  }
+
+  async function handleDeleteCustomer() {
+    if (!customerDetail) return;
+    if (!window.confirm(`仅无业务历史的纯档案可以删除。确认永久删除“${customerDetail.name}”吗？`)) return;
+    setCustomerAction("delete");
+    setPageError(null);
+    try {
+      await deleteCustomer(customerDetail.id);
+      setCustomerDetail(null);
+      setSelectedCustomerId(null);
+      await refreshList(searchQuery);
+    } catch (cause) {
+      setPageError(cause instanceof Error ? cause.message : "客户删除失败，请改用归档。");
+    } finally {
+      setCustomerAction(null);
+    }
+  }
+
   return (
     <section className="cc-page" aria-labelledby="page-title">
       <PageHeader
         eyebrow="客户与猫咪"
         title="客户档案"
         headingId="page-title"
-        description="集中维护客户地址、入户信息与每只猫咪的服务注意事项。"
+        description="用最少字段维护客户、上门地址和猫咪照护资料。"
         actions={<>
           <a href="/admin/intake" className="cc-button cc-button--secondary"><ClipboardPenLine size={17} />客户填写</a>
           <button
@@ -322,7 +363,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                   className="min-h-10 w-full rounded-lg border border-slate-300 py-2 pr-3 pl-9 text-sm"
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="姓名、手机号、小区或猫咪"
+                  placeholder="客户名称或猫咪"
                   maxLength={100}
                 />
               </div>
@@ -330,6 +371,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                 搜索
               </button>
             </div>
+            <label className="mt-3 flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} />查看已归档档案</label>
             {searchQuery ? (
               <button
                 type="button"
@@ -363,7 +405,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                   <li key={customer.id}>
                     <button
                       type="button"
-                      className={`w-full rounded-lg px-3 py-3 text-left transition-colors ${selectedCustomerId === customer.id ? "bg-indigo-600 text-white shadow-sm" : "hover:bg-slate-100"}`}
+                      className={`w-full rounded-xl px-3 py-3 text-left transition-colors ${selectedCustomerId === customer.id ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "hover:bg-slate-100"}`}
                       onClick={() => setSelectedCustomerId(customer.id)}
                       aria-pressed={selectedCustomerId === customer.id}
                     >
@@ -372,10 +414,8 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                         {customer.is_repeat_customer ? (
                           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${selectedCustomerId === customer.id ? "bg-white/15 text-white" : "bg-amber-50 text-amber-700"}`}>老客户</span>
                         ) : null}
+                        {customer.archived_at ? <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600">已归档</span> : null}
                       </div>
-                      <p className={`mt-1 truncate text-xs ${selectedCustomerId === customer.id ? "text-slate-300" : "text-slate-500"}`}>
-                        {customer.community || customer.phone || customer.wechat_name || "暂无联系方式与小区"}
-                      </p>
                       <p className={`mt-2 text-xs ${selectedCustomerId === customer.id ? "text-slate-300" : "text-slate-500"}`}>
                         在档猫咪 {customer.active_cat_count} 只
                         {customer.inactive_cat_count ? ` · 已停用 ${customer.inactive_cat_count} 只` : ""}
@@ -398,7 +438,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
             <div className="flex h-full min-h-96 flex-col items-center justify-center px-6 text-center">
               <UserRound className="text-slate-300" size={38} />
               <p className="mt-4 text-sm font-medium text-slate-700">选择一位客户查看完整档案</p>
-              <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">门禁、钥匙和详细地址只会在单个客户详情中显示。</p>
+              <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">选择客户后可查看地址、门禁与猫咪资料。</p>
             </div>
           ) : (
             <div className="p-5 sm:p-6">
@@ -407,10 +447,13 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-xl font-semibold text-slate-950">{customerDetail.name}</h2>
                     {customerDetail.is_repeat_customer ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">老客户</span> : null}
+                    {customerDetail.archived_at ? <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">已归档</span> : null}
                   </div>
                   <p className="mt-1 text-xs text-slate-500">档案编号 #{customerDetail.id}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={() => void handleArchive()} disabled={customerAction !== null}>{customerAction === "archive" ? <LoaderCircle className="animate-spin" size={15} /> : <Archive size={15} />}{customerDetail.archived_at ? "恢复档案" : "归档档案"}</button>
+                  <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700" onClick={() => void handleDeleteCustomer()} disabled={customerAction !== null}>{customerAction === "delete" ? <LoaderCircle className="animate-spin" size={15} /> : <Trash2 size={15} />}删除档案</button>
                   <button
                     type="button"
                     className="cc-button cc-button--secondary min-h-10 px-3"
@@ -433,16 +476,10 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
               <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="customer-basic-title">
                 <h3 id="customer-basic-title" className="flex items-center gap-2 text-sm font-semibold text-slate-950">
                   <UserRound size={16} />
-                  联系与地址
+                  地址
                 </h3>
-                <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
-                  <DetailItem label="微信昵称" value={customerDetail.wechat_name} />
-                  <DetailItem label="手机号" value={customerDetail.phone} />
-                  <DetailItem label="小区" value={customerDetail.community} />
-                  <DetailItem label="详细地址" value={customerDetail.address} />
-                  <DetailItem label="楼栋" value={customerDetail.building} />
-                  <DetailItem label="单元" value={customerDetail.unit} />
-                  <DetailItem label="房号" value={customerDetail.room} />
+                <dl className="mt-4">
+                  <DetailItem label="完整地址" value={customerAddress(customerDetail)} />
                 </dl>
               </section>
 
@@ -462,9 +499,6 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                   <div className="flex gap-3">
                     <KeyRound className="mt-0.5 shrink-0 text-amber-700" size={16} />
                     <DetailItem label="钥匙状态 / 编号" value={[customerDetail.key_status, customerDetail.key_code].filter(Boolean).join(" · ") || null} />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <DetailItem label="入户信息" value={customerDetail.access_info} />
                   </div>
                 </dl>
               </section>

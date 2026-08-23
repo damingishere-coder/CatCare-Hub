@@ -23,6 +23,7 @@ export interface DashboardTaskSummary {
   status: TaskStatus;
   customer_name: string;
   community: string | null;
+  address: string | null;
   cat_count: number;
 }
 

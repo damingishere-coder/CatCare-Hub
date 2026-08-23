@@ -5,8 +5,9 @@ import { useParams } from "react-router-dom";
 import { getPublicIntake, savePublicDraft, submitPublicIntake } from "../features/intake/api";
 import { editableDraft, emptyCat, serviceItemOptions } from "../features/intake/constants";
 import type { IntakeCatDraft, IntakeCustomerDraft, IntakeDraftPayload, PublicIntakeState, TaskItemType } from "../features/intake/types";
+import { accessMethodOptions, keyStatusOptions, optionsWithLegacy } from "../lib/customerDisplay";
 
-const inputClass = "mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 placeholder:text-slate-400";
+const inputClass = "mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 placeholder:text-slate-400";
 const textareaClass = `${inputClass} min-h-24 resize-y leading-6`;
 
 function valueOf(value: string | null): string {
@@ -68,6 +69,25 @@ function TextAreaField({ label, value, onChange, required, maxLength, placeholde
   );
 }
 
+function SelectField({ label, value, options, onChange }: {
+  label: string;
+  value: string | null;
+  options: readonly string[];
+  onChange: (value: string | null) => void;
+}) {
+  return (
+    <label className="block text-sm font-medium text-slate-700">
+      {label}
+      <select className={inputClass} value={valueOf(value)} onChange={(event) => onChange(event.target.value || null)}>
+        <option value="">未选择</option>
+        {optionsWithLegacy(options, value).map((option) => (
+          <option key={option} value={option}>{options.includes(option) ? option : `历史值：${option}`}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function FillPage() {
   const { token } = useParams<{ token: string }>();
   const [draft, setDraft] = useState<IntakeDraftPayload | null>(null);
@@ -99,7 +119,7 @@ export function FillPage() {
     };
   }, [token]);
 
-  function updateCustomer(field: keyof IntakeCustomerDraft, value: string | null) {
+  function updateCustomer<K extends keyof IntakeCustomerDraft>(field: K, value: IntakeCustomerDraft[K]) {
     setDraft((current) => current ? { ...current, customer: { ...current.customer, [field]: value } } : current);
   }
 
@@ -145,10 +165,6 @@ export function FillPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token || !draft) return;
-    if (!draft.customer.phone && !draft.customer.wechat_name) {
-      setError("手机号和微信昵称至少填写一项。");
-      return;
-    }
     if (draft.service.service_items.length === 0) {
       setError("请至少选择一个服务事项。");
       return;
@@ -169,11 +185,11 @@ export function FillPage() {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f3f5f8] px-4 py-7 text-slate-950 sm:px-6 sm:py-10">
+    <main className="min-h-screen overflow-x-hidden bg-[#F5F5F7] px-4 py-7 text-[#1D1D1F] sm:px-6 sm:py-10">
       <section className="mx-auto max-w-3xl" aria-labelledby="fill-title">
         <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"><ClipboardPenLine aria-hidden="true" size={20} /></span>
-          <p className="mt-5 text-xs font-semibold tracking-[0.14em] text-indigo-600 uppercase">CatCare-Hub · 客户填写</p>
+          <span className="flex size-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><ClipboardPenLine aria-hidden="true" size={20} /></span>
+          <p className="mt-5 text-xs font-semibold tracking-[0.14em] text-orange-600 uppercase">CatCare-Hub · 客户填写</p>
           <h1 id="fill-title" className="mt-1 text-2xl font-semibold tracking-tight">上门喂猫服务资料</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">请填写本次服务所需资料。提交后由后台人工审核，不会自动生成或确认正式订单。</p>
           {expiresAt ? <p className="mt-2 text-xs text-slate-500">链接有效期至：{new Date(expiresAt).toLocaleString("zh-CN")}</p> : null}
@@ -199,20 +215,17 @@ export function FillPage() {
             {message ? <div className="cc-alert border border-emerald-200 bg-emerald-50 text-emerald-800" role="status"><CheckCircle2 className="mt-0.5 shrink-0" size={17} />{message}</div> : null}
 
             <section className="cc-surface p-5 sm:p-6" aria-labelledby="contact-title">
-              <h2 id="contact-title" className="text-lg font-semibold">1. 联系与地址</h2>
-              <p className="mt-1 text-xs leading-5 text-slate-500">带 * 为提交必填；手机号和微信昵称至少填写一项。</p>
+              <h2 id="contact-title" className="text-lg font-semibold">1. 客户资料</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">只填写服务真正需要的信息，名称与地址为必填。</p>
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <Field label="联系人姓名" required maxLength={100} value={draft.customer.name} onChange={(value) => updateCustomer("name", value)} />
-                <Field label="微信昵称" maxLength={100} value={draft.customer.wechat_name} onChange={(value) => updateCustomer("wechat_name", value)} />
-                <Field label="手机号" type="tel" maxLength={32} value={draft.customer.phone} onChange={(value) => updateCustomer("phone", value)} />
-                <Field label="小区" required maxLength={200} value={draft.customer.community} onChange={(value) => updateCustomer("community", value)} />
-                <div className="sm:col-span-2"><Field label="详细地址" required maxLength={1000} value={draft.customer.address} onChange={(value) => updateCustomer("address", value)} /></div>
-                <Field label="楼栋" maxLength={50} value={draft.customer.building} onChange={(value) => updateCustomer("building", value)} />
-                <Field label="单元" maxLength={50} value={draft.customer.unit} onChange={(value) => updateCustomer("unit", value)} />
-                <Field label="房号" maxLength={50} value={draft.customer.room} onChange={(value) => updateCustomer("room", value)} />
-                <Field label="门禁方式" maxLength={100} value={draft.customer.access_method} onChange={(value) => updateCustomer("access_method", value)} />
-                <div className="sm:col-span-2"><TextAreaField label="入户 / 门禁说明" maxLength={4000} value={draft.customer.access_info} onChange={(value) => updateCustomer("access_info", value)} /></div>
-                <Field label="钥匙状态" maxLength={50} value={draft.customer.key_status} onChange={(value) => updateCustomer("key_status", value)} />
+                <Field label="名称" required maxLength={100} value={draft.customer.name} onChange={(value) => updateCustomer("name", value)} />
+                <label className="flex min-h-11 items-center gap-3 self-end rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700">
+                  <input type="checkbox" checked={draft.customer.is_repeat_customer} onChange={(event) => updateCustomer("is_repeat_customer", event.target.checked)} />
+                  我是老客户
+                </label>
+                <div className="sm:col-span-2"><TextAreaField label="地址" required maxLength={1000} value={draft.customer.address} onChange={(value) => updateCustomer("address", value)} rows={2} /></div>
+                <SelectField label="门禁方式" value={draft.customer.access_method} options={accessMethodOptions} onChange={(value) => updateCustomer("access_method", value)} />
+                <SelectField label="钥匙状态" value={draft.customer.key_status} options={keyStatusOptions} onChange={(value) => updateCustomer("key_status", value)} />
                 <Field label="钥匙编号" maxLength={100} value={draft.customer.key_code} onChange={(value) => updateCustomer("key_code", value)} />
                 <div className="sm:col-span-2"><TextAreaField label="客户备注" maxLength={4000} value={draft.customer.notes} onChange={(value) => updateCustomer("notes", value)} /></div>
               </div>
@@ -257,9 +270,9 @@ export function FillPage() {
               <div className="mt-5"><TextAreaField label="本次服务补充备注" maxLength={4000} value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} /></div>
             </section>
 
-            <section className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-5">
-              <h2 className="font-semibold text-indigo-950">4. 确认提交</h2>
-              <p className="mt-2 text-sm leading-6 text-indigo-900">提交后不能继续修改；后台仍会人工核对资料，订单不会自动确认。若还没填完，可以先保存草稿。</p>
+            <section className="rounded-2xl border border-orange-200 bg-orange-50/70 p-5">
+              <h2 className="font-semibold text-orange-950">4. 确认提交</h2>
+              <p className="mt-2 text-sm leading-6 text-orange-900">提交后不能继续修改；后台仍会人工核对资料，订单不会自动确认。若还没填完，可以先保存草稿。</p>
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
                 <button type="button" className="cc-button cc-button--secondary min-h-11" onClick={() => void handleSave()} disabled={action !== null}>{action === "save" ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}保存草稿</button>
                 <button type="submit" className="cc-button cc-button--primary min-h-11" disabled={action !== null}>{action === "submit" ? <LoaderCircle className="animate-spin" size={16} /> : <Send size={16} />}提交资料</button>

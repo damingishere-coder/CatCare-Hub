@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -6,10 +7,14 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import get_db
 from app.models.customer import Cat, Customer
+from app.models.order import Order, OrderCat
+from app.models.payment import Payment
+from app.models.task import Task
 from app.schemas.customer import (
     CatCreate,
     CatRead,
     CatUpdate,
+    CustomerArchiveUpdate,
     CustomerCreate,
     CustomerDetail,
     CustomerListResponse,
@@ -22,7 +27,7 @@ from app.services.customers import build_customer
 
 router = APIRouter(prefix="/api/admin/customers", tags=["admin-customers"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
-GEOCODE_ADDRESS_FIELDS = {"community", "address", "building"}
+GEOCODE_ADDRESS_FIELDS = {"community", "address", "building", "unit", "room"}
 
 
 def _escape_like(value: str) -> str:
@@ -46,7 +51,12 @@ def _load_customer(session: Session, customer_id: int) -> Customer:
     return customer
 
 
-def _list_customers(session: Session, search: str = "") -> CustomerListResponse:
+def _list_customers(
+    session: Session,
+    search: str = "",
+    *,
+    include_archived: bool = False,
+) -> CustomerListResponse:
     counts = (
         select(
             Cat.customer_id.label("customer_id"),
@@ -69,6 +79,8 @@ def _list_customers(session: Session, search: str = "") -> CustomerListResponse:
         .outerjoin(counts, counts.c.customer_id == Customer.id)
         .order_by(Customer.updated_at.desc(), Customer.id.desc())
     )
+    if not include_archived:
+        statement = statement.where(Customer.archived_at.is_(None))
 
     if search:
         pattern = f"%{_escape_like(search)}%"
@@ -93,6 +105,7 @@ def _list_customers(session: Session, search: str = "") -> CustomerListResponse:
             is_repeat_customer=customer.is_repeat_customer,
             active_cat_count=int(active_count),
             inactive_cat_count=int(inactive_count),
+            archived_at=customer.archived_at,
             updated_at=customer.updated_at,
         )
         for customer, active_count, inactive_count in rows
@@ -101,10 +114,13 @@ def _list_customers(session: Session, search: str = "") -> CustomerListResponse:
 
 
 @router.get("", response_model=CustomerListResponse)
-def list_customers(session: DatabaseSession) -> CustomerListResponse:
+def list_customers(
+    session: DatabaseSession,
+    include_archived: bool = False,
+) -> CustomerListResponse:
     """Return a privacy-minimized customer list for the local admin page."""
 
-    return _list_customers(session)
+    return _list_customers(session, include_archived=include_archived)
 
 
 @router.post("/search", response_model=CustomerListResponse)
@@ -114,7 +130,11 @@ def search_customers(
 ) -> CustomerListResponse:
     """Search without placing phone numbers or other terms in access-log URLs."""
 
-    return _list_customers(session, payload.search)
+    return _list_customers(
+        session,
+        payload.search,
+        include_archived=payload.include_archived,
+    )
 
 
 @router.post("", response_model=CustomerDetail, status_code=status.HTTP_201_CREATED)
@@ -159,6 +179,46 @@ def update_customer(
     return _customer_detail(_load_customer(session, customer_id))
 
 
+@router.patch("/{customer_id}/archive", response_model=CustomerDetail)
+def archive_customer(
+    customer_id: int,
+    payload: CustomerArchiveUpdate,
+    session: DatabaseSession,
+) -> CustomerDetail:
+    customer = _load_customer(session, customer_id)
+    customer.archived_at = datetime.now(timezone.utc) if payload.archived else None
+    session.commit()
+    return _customer_detail(_load_customer(session, customer_id))
+
+
+@router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_customer(customer_id: int, session: DatabaseSession) -> None:
+    customer = _load_customer(session, customer_id)
+    direct_history_count = sum(
+        int(session.scalar(statement) or 0)
+        for statement in (
+            select(func.count(Order.id)).where(Order.customer_id == customer_id),
+            select(func.count(Task.id)).where(Task.customer_id == customer_id),
+            select(func.count(Payment.id)).where(Payment.customer_id == customer_id),
+        )
+    )
+    linked_cat_count = int(
+        session.scalar(
+            select(func.count(OrderCat.order_id))
+            .join(Cat, Cat.id == OrderCat.cat_id)
+            .where(Cat.customer_id == customer_id)
+        )
+        or 0
+    )
+    if direct_history_count or linked_cat_count:
+        raise HTTPException(
+            status_code=409,
+            detail="客户已有订单、任务或收款历史，请改用归档",
+        )
+    session.delete(customer)
+    session.commit()
+
+
 @router.post(
     "/{customer_id}/cats",
     response_model=CatRead,
@@ -197,3 +257,4 @@ def update_cat(
     session.commit()
     session.refresh(cat)
     return CatRead.model_validate(cat)
+    CustomerArchiveUpdate,

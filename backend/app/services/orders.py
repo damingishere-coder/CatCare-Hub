@@ -4,11 +4,11 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException
 
-from app.models.customer import Cat
+from app.models.customer import Cat, Customer
 from app.models.enums import OrderPaymentStatus, OrderStatus, TaskItemType, TaskStatus
-from app.models.order import Order, OrderCat
+from app.models.order import Order, OrderCat, OrderServiceDate
 from app.models.task import Task, TaskItem
-from app.schemas.order import OrderWrite
+from app.schemas.order import OrderCreate, OrderServiceContact, OrderWrite
 
 
 MONEY = Decimal("0.01")
@@ -70,7 +70,173 @@ def calculate_order_pricing(
     )
 
 
-def build_order(payload: OrderWrite, *, cats: list[Cat]) -> Order:
+def calculate_per_visit_pricing(
+    *, service_days: int, total_visits: int, unit_price: Decimal
+) -> OrderPricing:
+    if service_days <= 0 or total_visits <= 0:
+        raise ValueError("订单至少需要一个服务日期")
+    normalized_unit = money(unit_price)
+    return OrderPricing(
+        service_days=service_days,
+        total_visits=total_visits,
+        base_price=normalized_unit,
+        extra_cat_fee=Decimal("0.00"),
+        stairs_fee=Decimal("0.00"),
+        other_fee=Decimal("0.00"),
+        total_amount=money(normalized_unit * total_visits),
+    )
+
+
+def order_schedule(order: Order) -> list[tuple[date, int]]:
+    if order.service_dates:
+        return [
+            (entry.service_date, entry.visit_count)
+            for entry in sorted(order.service_dates, key=lambda item: item.service_date)
+        ]
+    return [
+        (order.start_date + timedelta(days=offset), order.visits_per_day)
+        for offset in range((order.end_date - order.start_date).days + 1)
+    ]
+
+
+def order_service_days(order: Order) -> int:
+    return len(order_schedule(order))
+
+
+def order_total_visits(order: Order) -> int:
+    return sum(visit_count for _, visit_count in order_schedule(order))
+
+
+def replace_order_schedule(order: Order, schedule: list[tuple[date, int]]) -> None:
+    normalized = sorted(schedule, key=lambda entry: entry[0])
+    if not normalized:
+        raise ValueError("订单至少需要一个服务日期")
+    order.service_dates.clear()
+    order.service_dates.extend(
+        OrderServiceDate(service_date=service_date, visit_count=visit_count)
+        for service_date, visit_count in normalized
+    )
+    order.start_date = normalized[0][0]
+    order.end_date = normalized[-1][0]
+    order.visits_per_day = 1
+
+
+def customer_service_contact(customer: Customer) -> OrderServiceContact:
+    return OrderServiceContact(
+        name=customer.name,
+        wechat_name=customer.wechat_name,
+        phone=customer.phone,
+        community=customer.community,
+        address=customer.address,
+        building=customer.building,
+        unit=customer.unit,
+        room=customer.room,
+        access_method=customer.access_method,
+        access_info=customer.access_info,
+        key_status=customer.key_status,
+        key_code=customer.key_code,
+        notes=customer.notes,
+        is_repeat_customer=customer.is_repeat_customer,
+        latitude=customer.latitude,
+        longitude=customer.longitude,
+        geocode_status=customer.geocode_status,
+    )
+
+
+def cat_snapshot(cats: list[Cat]) -> list[dict[str, object]]:
+    return [
+        {
+            "source_cat_id": cat.id,
+            "name": cat.name,
+            "photo_url": cat.photo_url,
+            "gender": cat.gender,
+            "age": str(cat.age) if cat.age is not None else None,
+            "breed": cat.breed,
+            "personality": cat.personality,
+            "food": cat.food,
+            "food_preference": cat.food_preference,
+            "litter_type": cat.litter_type,
+            "medication_required": cat.medication_required,
+            "medication_notes": cat.medication_notes,
+            "special_notes": cat.special_notes,
+            "service_notes": cat.service_notes,
+        }
+        for cat in cats
+    ]
+
+
+def apply_service_contact(order: Order, contact: OrderServiceContact) -> None:
+    order.contact_name = contact.name
+    order.contact_wechat_name = contact.wechat_name
+    order.contact_phone = contact.phone
+    order.contact_community = contact.community
+    order.contact_address = contact.address
+    order.contact_building = contact.building
+    order.contact_unit = contact.unit
+    order.contact_room = contact.room
+    order.contact_access_method = contact.access_method
+    order.contact_access_info = contact.access_info
+    order.contact_key_status = contact.key_status
+    order.contact_key_code = contact.key_code
+    order.contact_notes = contact.notes
+    order.contact_is_repeat_customer = contact.is_repeat_customer
+    order.route_latitude = contact.latitude
+    order.route_longitude = contact.longitude
+    order.route_geocode_status = contact.geocode_status
+
+
+def order_service_contact(order: Order) -> OrderServiceContact:
+    return OrderServiceContact(
+        name=order.contact_name,
+        wechat_name=order.contact_wechat_name,
+        phone=order.contact_phone,
+        community=order.contact_community,
+        address=order.contact_address,
+        building=order.contact_building,
+        unit=order.contact_unit,
+        room=order.contact_room,
+        access_method=order.contact_access_method,
+        access_info=order.contact_access_info,
+        key_status=order.contact_key_status,
+        key_code=order.contact_key_code,
+        notes=order.contact_notes,
+        is_repeat_customer=order.contact_is_repeat_customer,
+        latitude=order.route_latitude,
+        longitude=order.route_longitude,
+        geocode_status=order.route_geocode_status,
+    )
+
+
+def order_display_address(order: Order) -> str | None:
+    parts = [
+        order.contact_address or order.contact_community,
+        order.contact_building,
+        order.contact_unit,
+        order.contact_room,
+    ]
+    value = " ".join(part.strip() for part in parts if part and part.strip())
+    return value or None
+
+
+def _resolved_contact(
+    payload: OrderCreate,
+    source_customer: Customer | None,
+) -> OrderServiceContact:
+    if payload.service_contact is not None:
+        return payload.service_contact
+    if payload.customer_name is not None:
+        return OrderServiceContact(name=payload.customer_name)
+    if source_customer is not None:
+        return customer_service_contact(source_customer)
+    raise ValueError("订单缺少联系人信息")
+
+
+def build_order(
+    payload: OrderWrite,
+    *,
+    cats: list[Cat],
+    customer: Customer,
+) -> Order:
     """Build an order and its tasks without committing the caller's transaction."""
 
     pricing = calculate_order_pricing(
@@ -84,10 +250,13 @@ def build_order(payload: OrderWrite, *, cats: list[Cat]) -> Order:
     )
     order = Order(
         customer_id=payload.customer_id,
+        contact_name=customer.name,
         start_date=payload.start_date,
         end_date=payload.end_date,
         visits_per_day=payload.visits_per_day,
+        cat_count=len(cats),
         service_items=[item.value for item in payload.service_items],
+        pricing_mode="legacy_components",
         base_price=pricing.base_price,
         extra_cat_fee=pricing.extra_cat_fee,
         stairs_fee=pricing.stairs_fee,
@@ -97,14 +266,75 @@ def build_order(payload: OrderWrite, *, cats: list[Cat]) -> Order:
         payment_status=OrderPaymentStatus.UNPAID,
         order_status=payload.order_status,
         notes=payload.notes,
+        cat_snapshot=cat_snapshot(cats),
     )
+    apply_service_contact(order, customer_service_contact(customer))
     order.cat_links.extend(OrderCat(cat=cat) for cat in cats)
+    replace_order_schedule(
+        order,
+        [
+            (payload.start_date + timedelta(days=offset), payload.visits_per_day)
+            for offset in range((payload.end_date - payload.start_date).days + 1)
+        ],
+    )
+    order.visits_per_day = payload.visits_per_day
+    generate_order_tasks(order)
+    return order
+
+
+def build_simple_order(
+    payload: OrderCreate,
+    *,
+    source_customer: Customer | None = None,
+) -> Order:
+    schedule = [(service_date, 1) for service_date in payload.service_dates]
+    pricing = calculate_per_visit_pricing(
+        service_days=len(schedule),
+        total_visits=len(schedule),
+        unit_price=payload.unit_price,
+    )
+    order = Order(
+        customer_id=source_customer.id if source_customer is not None else None,
+        contact_name="",
+        start_date=payload.service_dates[0],
+        end_date=payload.service_dates[-1],
+        visits_per_day=1,
+        cat_count=payload.cat_count,
+        service_items=[item.value for item in payload.service_items],
+        pricing_mode="per_visit",
+        base_price=pricing.base_price,
+        extra_cat_fee=pricing.extra_cat_fee,
+        stairs_fee=pricing.stairs_fee,
+        other_fee=pricing.other_fee,
+        total_amount=pricing.total_amount,
+        paid_amount=0,
+        payment_status=OrderPaymentStatus.UNPAID,
+        order_status=OrderStatus.CONFIRMED,
+        notes=payload.notes,
+        cat_snapshot=(
+            [item.model_dump(mode="json") for item in payload.cat_snapshot]
+            if payload.cat_snapshot
+            else cat_snapshot(
+                [cat for cat in source_customer.cats if cat.is_active][
+                    : payload.cat_count
+                ]
+                if source_customer is not None
+                else []
+            )
+        ),
+    )
+    apply_service_contact(order, _resolved_contact(payload, source_customer))
+    replace_order_schedule(order, schedule)
     generate_order_tasks(order)
     return order
 
 
 def due_amount(order: Order) -> Decimal:
     return money(max(order.total_amount - order.paid_amount, Decimal("0")))
+
+
+def overpaid_amount(order: Order) -> Decimal:
+    return money(max(order.paid_amount - order.total_amount, Decimal("0")))
 
 
 def payment_status_for_amounts(
@@ -122,6 +352,30 @@ def payment_status_for_amounts(
     return OrderPaymentStatus.PAID
 
 
+def reprice_order(order: Order, *, unit_price: Decimal | None = None) -> None:
+    total_visits = order_total_visits(order)
+    if unit_price is not None:
+        order.pricing_mode = "per_visit"
+        order.base_price = money(unit_price)
+        order.extra_cat_fee = Decimal("0.00")
+        order.stairs_fee = Decimal("0.00")
+        order.other_fee = Decimal("0.00")
+
+    if order.pricing_mode == "per_visit":
+        order.total_amount = money(order.base_price * total_visits)
+    else:
+        order.extra_cat_fee = money(EXTRA_CAT_UNIT_PRICE * max(order.cat_count - 1, 0))
+        order.total_amount = money(
+            (order.base_price + order.extra_cat_fee + order.stairs_fee) * total_visits
+            + order.other_fee
+        )
+    order.payment_status = payment_status_for_amounts(
+        total_amount=order.total_amount,
+        paid_amount=order.paid_amount,
+        current_status=order.payment_status,
+    )
+
+
 def initial_task_status(order_status: OrderStatus) -> TaskStatus:
     if order_status is OrderStatus.PENDING_CONFIRMATION:
         return TaskStatus.PENDING
@@ -135,11 +389,8 @@ def initial_task_status(order_status: OrderStatus) -> TaskStatus:
 def generate_order_tasks(order: Order) -> None:
     task_status = initial_task_status(order.order_status)
     service_items = [TaskItemType(item) for item in order.service_items]
-    service_days = (order.end_date - order.start_date).days + 1
-
-    for day_offset in range(service_days):
-        service_date = order.start_date + timedelta(days=day_offset)
-        for visit_index in range(order.visits_per_day):
+    for service_date, visit_count in order_schedule(order):
+        for visit_index in range(visit_count):
             task = Task(
                 customer_id=order.customer_id,
                 service_date=service_date,

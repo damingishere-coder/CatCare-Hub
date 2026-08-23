@@ -9,6 +9,7 @@ import httpx
 from app.maps.contracts import (
     GeoPoint,
     MapProviderError,
+    MatrixEntry,
     ProviderState,
     RouteResult,
     RouteStop,
@@ -18,6 +19,20 @@ from app.maps.contracts import (
 AMAP_API_BASE = "https://restapi.amap.com"
 AMAP_NAVIGATION_URL = "https://uri.amap.com/navigation"
 MAX_WAYPOINTS_PER_REQUEST = 16
+AMAP_ERROR_CATEGORIES = {
+    "10001": "Web 服务 Key 无效",
+    "10002": "Key 未开通当前服务",
+    "10003": "调用配额已用尽",
+    "10004": "调用过于频繁",
+    "10005": "IP 白名单不匹配",
+    "10006": "域名白名单不匹配",
+    "10007": "数字签名无效",
+    "10009": "Key 类型与服务平台不匹配",
+    "10010": "IP 调用超限",
+    "10012": "Key 权限不足",
+    "10016": "服务端繁忙",
+    "10020": "服务请求超时",
+}
 
 
 class AmapProvider:
@@ -74,8 +89,15 @@ class AmapProvider:
         except (httpx.HTTPError, ValueError) as cause:
             raise MapProviderError("地图服务暂时不可用，请稍后重试") from cause
 
-        if not isinstance(payload, dict) or str(payload.get("status")) != "1":
-            raise MapProviderError("地图服务返回失败，请检查本机配置或稍后重试")
+        if not isinstance(payload, dict):
+            raise MapProviderError("高德返回格式无效")
+        if str(payload.get("status")) != "1":
+            info = str(payload.get("info") or "UNKNOWN_ERROR")
+            infocode = str(payload.get("infocode") or "unknown")
+            category = AMAP_ERROR_CATEGORIES.get(infocode, "服务调用失败")
+            raise MapProviderError(
+                f"高德{category}（{info} / {infocode}）"
+            )
         return payload
 
     @staticmethod
@@ -223,6 +245,48 @@ class AmapProvider:
             remaining.remove(next_stop)
             current = next_stop.position
         return recommended
+
+    def distance_matrix(
+        self,
+        origin: GeoPoint,
+        stops: list[RouteStop],
+    ) -> list[MatrixEntry]:
+        nodes = [("HOME", origin), *[(str(stop.task_id), stop.position) for stop in stops]]
+        entries: list[MatrixEntry] = []
+        for destination_id, destination in nodes:
+            origins = [node for node in nodes if node[0] != destination_id]
+            if not origins:
+                continue
+            payload = self._request(
+                "/v3/distance",
+                {
+                    "origins": "|".join(
+                        self._point_value(point) for _, point in origins
+                    ),
+                    "destination": self._point_value(destination),
+                    "type": "1",
+                },
+            )
+            results = payload.get("results")
+            if not isinstance(results, list) or len(results) != len(origins):
+                raise MapProviderError("高德距离矩阵返回数量不完整")
+            for (origin_id, _), result in zip(origins, results, strict=True):
+                if not isinstance(result, dict):
+                    raise MapProviderError("高德距离矩阵返回格式无效")
+                try:
+                    distance = int(float(result["distance"]))
+                    duration = int(float(result["duration"]))
+                except (KeyError, TypeError, ValueError) as cause:
+                    raise MapProviderError("高德距离矩阵返回指标无效") from cause
+                entries.append(
+                    MatrixEntry(
+                        origin_id=origin_id,
+                        destination_id=destination_id,
+                        distance_meters=max(distance, 0),
+                        duration_seconds=max(duration, 0),
+                    )
+                )
+        return entries
 
     def navigation_url(
         self,

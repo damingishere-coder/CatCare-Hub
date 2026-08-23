@@ -63,9 +63,10 @@ beforeEach(() => {
 it("loads an isolated draft and saves edited customer information", async () => {
   renderPage();
 
-  const name = await screen.findByRole("textbox", { name: /联系人姓名/ });
+  const name = await screen.findByRole("textbox", { name: /^名称/ });
   expect(name).toHaveValue("P10 页面虚构客户");
-  expect(screen.getByRole("textbox", { name: "入户 / 门禁说明" })).toHaveValue("虚构门禁说明");
+  expect(screen.queryByRole("textbox", { name: /入户/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: /微信|手机号|小区|楼栋|单元|房号/ })).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "猫咪 1" })).toBeInTheDocument();
 
   fireEvent.change(name, { target: { value: "已修改的虚构客户" } });
@@ -82,7 +83,7 @@ it("loads an isolated draft and saves edited customer information", async () => 
 
 it("adds a cat and submits only after explicit confirmation action", async () => {
   renderPage();
-  await screen.findByRole("textbox", { name: /联系人姓名/ });
+  await screen.findByRole("textbox", { name: /^名称/ });
 
   fireEvent.click(screen.getByRole("button", { name: "添加猫咪" }));
   const secondCat = screen.getByRole("article", { name: "猫咪 2" });
@@ -104,5 +105,5 @@ it("shows a closed or expired link without rendering sensitive draft fields", as
   renderPage();
 
   expect(await screen.findByRole("alert")).toHaveTextContent("填写链接已过期");
-  expect(screen.queryByRole("textbox", { name: /联系人姓名/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: /^名称/ })).not.toBeInTheDocument();
 });

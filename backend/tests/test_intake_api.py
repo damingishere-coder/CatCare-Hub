@@ -253,7 +253,7 @@ def test_missing_expiry_is_closed_and_access_log_tokens_are_redacted(
 @pytest.mark.parametrize(
     "payload",
     [
-        complete_payload(customer={"name": "缺少联系方式", "community": "虚构小区", "address": "虚构地址"}),
+        complete_payload(customer={"name": "缺少地址"}),
         complete_payload(cats=[]),
         complete_payload(service={"start_date": "2031-04-03", "end_date": "2031-04-01", "visits_per_day": 1, "service_items": ["feed"]}),
         complete_payload(service={"start_date": "2031-04-01", "end_date": "2031-04-03", "visits_per_day": 11, "service_items": ["feed"]}),
@@ -352,14 +352,25 @@ def test_review_and_atomic_conversion_create_complete_business_records(
     client = intake_api_context.client
     _, summary = submit_for_review(client)
 
-    stale_review = client.post(
-        f"/api/admin/intake/submissions/{summary['id']}/review",
-        json={"expected_revision": "0" * 64},
+    detail = client.get(
+        f"/api/admin/intake/submissions/{summary['id']}"
+    ).json()
+    stale_review = client.put(
+        f"/api/admin/intake/submissions/{summary['id']}/review-draft",
+        json={
+            "review_payload": detail["payload"],
+            "unit_price": "40.00",
+            "expected_revision": "0" * 64,
+        },
     )
     assert stale_review.status_code == 409
-    reviewed = client.post(
-        f"/api/admin/intake/submissions/{summary['id']}/review",
-        json={"expected_revision": summary["revision"]},
+    reviewed = client.put(
+        f"/api/admin/intake/submissions/{summary['id']}/review-draft",
+        json={
+            "review_payload": detail["payload"],
+            "unit_price": "40.00",
+            "expected_revision": summary["revision"],
+        },
     )
     assert reviewed.status_code == 200
     assert reviewed.json()["status"] == "reviewed"
@@ -384,12 +395,13 @@ def test_review_and_atomic_conversion_create_complete_business_records(
         assert customer.geocode_status == "pending"
         assert order is not None
         assert order.customer_id == customer.id
-        assert order.order_status.value == "pending_confirmation"
-        assert order.base_price == 30
-        assert order.extra_cat_fee == 5
+        assert order.order_status.value == "confirmed"
+        assert order.pricing_mode == "per_visit"
+        assert order.base_price == 40
+        assert order.extra_cat_fee == 0
         assert order.stairs_fee == 0
         assert order.other_fee == 0
-        assert order.total_amount == 210
+        assert order.total_amount == 240
         assert session.scalar(select(func.count(Cat.id))) == 2
         assert session.scalar(select(func.count(Task.id))) == 6
 
@@ -412,6 +424,17 @@ def test_conversion_failure_rolls_back_every_business_record(
 ) -> None:
     client = intake_api_context.client
     _, summary = submit_for_review(client)
+    detail = client.get(
+        f"/api/admin/intake/submissions/{summary['id']}"
+    ).json()
+    reviewed = client.put(
+        f"/api/admin/intake/submissions/{summary['id']}/review-draft",
+        json={
+            "review_payload": detail["payload"],
+            "unit_price": "30.00",
+            "expected_revision": summary["revision"],
+        },
+    ).json()
 
     def fail_order_build(*args: object, **kwargs: object) -> None:
         raise RuntimeError("injected P10 rollback check")
@@ -420,13 +443,13 @@ def test_conversion_failure_rolls_back_every_business_record(
     with pytest.raises(RuntimeError, match="injected P10 rollback check"):
         client.post(
             f"/api/admin/intake/submissions/{summary['id']}/convert",
-            json={"expected_revision": summary["revision"]},
+            json={"expected_revision": reviewed["revision"]},
         )
 
     with intake_api_context.session_factory() as session:
         submission = session.get(CustomerFormSubmission, summary["id"])
         assert submission is not None
-        assert submission.status is FormSubmissionStatus.SUBMITTED
+        assert submission.status is FormSubmissionStatus.REVIEWED
         assert submission.converted_customer_id is None
         assert submission.converted_order_id is None
         assert session.scalar(select(func.count(Customer.id))) == 0

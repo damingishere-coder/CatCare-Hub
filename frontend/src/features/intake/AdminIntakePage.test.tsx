@@ -12,6 +12,7 @@ const apiMocks = vi.hoisted(() => ({
   listIntakeSubmissions: vi.fn(),
   getIntakeSubmission: vi.fn(),
   reviewIntakeSubmission: vi.fn(),
+  saveIntakeReviewDraft: vi.fn(),
   convertIntakeSubmission: vi.fn(),
 }));
 
@@ -63,6 +64,8 @@ const payload = {
 const detail: IntakeSubmissionDetail = {
   ...summary,
   payload,
+  review_payload: null,
+  review_unit_price: null,
   reviewed_at: null,
   converted_at: null,
   converted_customer_id: null,
@@ -81,6 +84,7 @@ beforeEach(() => {
   apiMocks.createIntakeToken.mockResolvedValue({ ...token, id: 8, fill_path: "/fill/P10-test-token", submitted_at: null, submission_status: null });
   apiMocks.updateIntakeToken.mockResolvedValue({ ...token, status: "disabled", submitted_at: null, submission_status: null });
   apiMocks.reviewIntakeSubmission.mockResolvedValue({ ...detail, status: "reviewed", reviewed_at: timestamp, revision: "b".repeat(64) });
+  apiMocks.saveIntakeReviewDraft.mockResolvedValue({ ...detail, status: "reviewed", review_payload: payload, review_unit_price: "30.00", reviewed_at: timestamp, revision: "b".repeat(64) });
   apiMocks.convertIntakeSubmission.mockResolvedValue({ submission_id: 9, status: "converted", customer_id: 3, order_id: 4, revision: "c".repeat(64) });
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
@@ -88,10 +92,13 @@ beforeEach(() => {
   });
 });
 
-it("keeps sensitive fields out of the summary list and shows them in selected detail", async () => {
+it("shows the full editable review while keeping the submission list privacy-minimized", async () => {
   renderPage();
 
-  expect(await screen.findByText("虚构敏感入户说明")).toBeInTheDocument();
+  expect(await screen.findByLabelText("详细地址")).toHaveValue("虚构后台测试地址");
+  expect(screen.getByLabelText("门禁说明")).toHaveValue("虚构敏感入户说明");
+  expect(screen.getByLabelText("钥匙编号")).toHaveValue("TEST-KEY");
+  expect(screen.getByText("查看客户原始提交（只读）")).toBeInTheDocument();
   const list = screen.getByLabelText("提交记录列表");
   expect(within(list).getByText("P10 后台虚构客户")).toBeInTheDocument();
   expect(within(list).queryByText("TEST-CONTACT")).not.toBeInTheDocument();
@@ -121,6 +128,8 @@ it("reviews and converts only through explicit admin actions", async () => {
   const convertedDetail: IntakeSubmissionDetail = {
     ...detail,
     status: "converted",
+    review_payload: payload,
+    review_unit_price: "30.00",
     reviewed_at: timestamp,
     converted_at: timestamp,
     converted_customer_id: 3,
@@ -128,20 +137,31 @@ it("reviews and converts only through explicit admin actions", async () => {
     revision: "c".repeat(64),
   };
   apiMocks.getIntakeSubmission
+    .mockReset()
     .mockResolvedValueOnce(detail)
-    .mockResolvedValueOnce(convertedDetail);
+    .mockResolvedValue(convertedDetail);
 
   renderPage();
-  await screen.findByText("虚构敏感入户说明");
-  fireEvent.click(screen.getByRole("button", { name: "标记已审核" }));
-  await waitFor(() => expect(apiMocks.reviewIntakeSubmission).toHaveBeenCalledWith(9, revision));
+  const nameInput = await screen.findByLabelText("联系人名称");
+  fireEvent.change(nameInput, { target: { value: "后台修订客户" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: "每次价格（元）" }), { target: { value: "30" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存审核稿" }));
+  await waitFor(() => expect(apiMocks.saveIntakeReviewDraft).toHaveBeenCalledWith(
+    9,
+    expect.objectContaining({
+      customer: expect.objectContaining({ name: "后台修订客户" }),
+    }),
+    "30.00",
+    revision,
+  ));
 
-  fireEvent.click(await screen.findByRole("button", { name: "确认并创建订单" }));
-  expect(screen.getByRole("alertdialog", { name: "确认创建正式记录" })).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: "确认落档并生成订单" }));
+  const confirmDialog = screen.getByRole("alertdialog", { name: "确认落档并生成订单" });
   expect(apiMocks.convertIntakeSubmission).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "再次确认创建" }));
+  fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认落档并生成订单" }));
   await waitFor(() => expect(apiMocks.convertIntakeSubmission).toHaveBeenCalledWith(9, "b".repeat(64)));
-  expect(await screen.findByText(/已完成转换/)).toBeInTheDocument();
+  await waitFor(() => expect(apiMocks.getIntakeSubmission).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText(/已完成落档和订单生成/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "查看客户 #3" })).toHaveAttribute("href", "/admin/customers");
-  expect(screen.getByRole("link", { name: "查看订单 #4" })).toHaveAttribute("href", "/admin/plans?view=orders");
+  expect(screen.getByRole("link", { name: "查看订单 #4" })).toHaveAttribute("href", "/admin/orders");
 });

@@ -32,6 +32,7 @@ class DashboardTaskSummary(BaseModel):
     status: TaskStatus
     customer_name: str
     community: str | None
+    address: str | None
     cat_count: int = Field(ge=0)
 
 

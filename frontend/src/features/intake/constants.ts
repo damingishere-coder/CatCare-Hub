@@ -13,6 +13,7 @@ export const serviceItemOptions: Array<{ value: TaskItemType; label: string }> =
 
 export const emptyCustomer: IntakeCustomerDraft = {
   name: null,
+  is_repeat_customer: false,
   wechat_name: null,
   phone: null,
   community: null,

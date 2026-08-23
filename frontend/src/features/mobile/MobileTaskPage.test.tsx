@@ -106,8 +106,9 @@ it("shows sensitive field context only on detail and starts a confirmed task", a
 
   expect(await screen.findByText("P9 虚构客户")).toBeInTheDocument();
   expect(screen.getByText(/P9 虚构路 9 号/)).toBeInTheDocument();
-  expect(screen.getByText("000-P9-TEST")).toBeInTheDocument();
-  expect(screen.getByText(/虚构门禁说明/)).toBeInTheDocument();
+  expect(screen.queryByText("000-P9-TEST")).not.toBeInTheDocument();
+  expect(screen.getByText(/虚构入户方式/)).toBeInTheDocument();
+  expect(screen.queryByText(/虚构门禁说明/)).not.toBeInTheDocument();
   expect(screen.getByText(/虚构用药说明/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "一键导航" })).toHaveAttribute("href", confirmed.navigation_url);
 

@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,6 +11,7 @@ from app.models.enums import OrderPaymentStatus, OrderStatus, TaskItemType
 from app.models.order import Order, OrderCat
 from app.models.task import Task
 from app.schemas.order import (
+    OrderCreate,
     OrderCatOption,
     OrderCatSummary,
     OrderCustomerOption,
@@ -17,6 +19,8 @@ from app.schemas.order import (
     OrderDetail,
     OrderFormOptions,
     OrderListResponse,
+    OrderPatch,
+    OrderServiceScheduleRead,
     OrderStatusUpdate,
     OrderSummary,
     OrderTaskItemRead,
@@ -27,12 +31,25 @@ from app.services.orders import (
     DEFAULT_BASE_PRICE,
     EXTRA_CAT_UNIT_PRICE,
     STAIRS_UNIT_PRICE,
+    apply_service_contact,
     build_order,
+    build_simple_order,
     calculate_order_pricing,
+    cat_snapshot,
+    customer_service_contact,
     due_amount,
     generate_order_tasks,
+    money,
+    order_has_execution_history,
+    order_schedule,
+    order_service_days,
+    order_service_contact,
+    order_total_visits,
+    overpaid_amount,
     payment_status_for_amounts,
     require_tasks_are_rebuildable,
+    replace_order_schedule,
+    reprice_order,
     synchronize_task_statuses,
 )
 
@@ -45,6 +62,7 @@ def _order_load_options() -> tuple:
     return (
         selectinload(Order.customer),
         selectinload(Order.cat_links).selectinload(OrderCat.cat),
+        selectinload(Order.service_dates),
         selectinload(Order.tasks).selectinload(Task.items),
         selectinload(Order.tasks).selectinload(Task.photos),
         selectinload(Order.payments),
@@ -61,28 +79,77 @@ def _load_order(session: Session, order_id: int) -> Order:
 
 
 def _cat_summaries(order: Order) -> list[OrderCatSummary]:
+    if order.cat_snapshot:
+        return [
+            OrderCatSummary(
+                id=item.get("source_cat_id"),
+                name=str(item.get("name") or f"猫咪 {index + 1}"),
+                is_active=True,
+            )
+            for index, item in enumerate(order.cat_snapshot)
+        ]
     return [
         OrderCatSummary(id=link.cat.id, name=link.cat.name, is_active=link.cat.is_active)
         for link in sorted(order.cat_links, key=lambda item: item.cat_id)
     ]
 
 
+def _snapshot_display_address(order: Order) -> str | None:
+    parts = [
+        order.contact_address or order.contact_community,
+        order.contact_building,
+        order.contact_unit,
+        order.contact_room,
+    ]
+    text = " ".join(part.strip() for part in parts if part and part.strip())
+    return text or None
+
+
+def _delete_block_reason(order: Order) -> str | None:
+    if order.payments:
+        return "订单已有收款流水，只能取消，不能永久删除"
+    if order.order_status in {OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED}:
+        return "执行中或已完成订单只能保留历史记录"
+    if order_has_execution_history(order):
+        return "订单已有签到、完成事项、照片或执行时间记录，只能取消"
+    return None
+
+
 def _order_summary(order: Order) -> OrderSummary:
-    service_days = (order.end_date - order.start_date).days + 1
+    schedule = order_schedule(order)
+    total_visits = order_total_visits(order)
+    unit_price = (
+        order.base_price
+        if order.pricing_mode == "per_visit" or total_visits == 0
+        else money(order.total_amount / total_visits)
+    )
+    service_contact = order_service_contact(order)
+    delete_block_reason = _delete_block_reason(order)
     return OrderSummary(
         id=order.id,
+        source_customer_id=order.customer_id,
+        service_contact=service_contact,
+        cat_snapshot=order.cat_snapshot or [],
         customer=OrderCustomerSummary(
-            id=order.customer.id,
-            name=order.customer.name,
-            community=order.customer.community,
+            id=order.customer_id,
+            name=service_contact.name,
+            community=service_contact.community,
+            address=_snapshot_display_address(order),
         ),
         cats=_cat_summaries(order),
         start_date=order.start_date,
         end_date=order.end_date,
         visits_per_day=order.visits_per_day,
-        service_days=service_days,
-        total_visits=service_days * order.visits_per_day,
+        service_days=order_service_days(order),
+        total_visits=total_visits,
+        cat_count=order.cat_count,
+        service_schedule=[
+            OrderServiceScheduleRead(service_date=value, visit_count=count)
+            for value, count in schedule
+        ],
         service_items=[TaskItemType(item) for item in order.service_items],
+        pricing_mode=order.pricing_mode,
+        unit_price=unit_price,
         base_price=order.base_price,
         extra_cat_fee=order.extra_cat_fee,
         stairs_fee=order.stairs_fee,
@@ -90,9 +157,12 @@ def _order_summary(order: Order) -> OrderSummary:
         total_amount=order.total_amount,
         paid_amount=order.paid_amount,
         due_amount=due_amount(order),
+        overpaid_amount=overpaid_amount(order),
         payment_status=order.payment_status,
         order_status=order.order_status,
         task_count=len(order.tasks),
+        deletable=delete_block_reason is None,
+        delete_block_reason=delete_block_reason,
         updated_at=order.updated_at,
     )
 
@@ -153,6 +223,23 @@ def _validate_customer_and_cats(
     return customer, ordered_cats
 
 
+def _load_source_customer(
+    session: Session,
+    *,
+    customer_id: int | None,
+) -> Customer | None:
+    if customer_id is None:
+        return None
+    customer = session.scalar(
+        select(Customer)
+        .options(selectinload(Customer.cats))
+        .where(Customer.id == customer_id)
+    )
+    if customer is None:
+        raise HTTPException(status_code=404, detail="客户档案不存在")
+    return customer
+
+
 def _pricing(payload: OrderWrite):
     return calculate_order_pricing(
         start_date=payload.start_date,
@@ -168,16 +255,49 @@ def _pricing(payload: OrderWrite):
 @router.get("/form-options", response_model=OrderFormOptions)
 def get_order_form_options(session: DatabaseSession) -> OrderFormOptions:
     customers = session.scalars(
-        select(Customer).options(selectinload(Customer.cats)).order_by(Customer.name, Customer.id)
+        select(Customer)
+        .options(selectinload(Customer.cats))
+        .where(Customer.archived_at.is_(None))
+        .order_by(Customer.name, Customer.id)
     ).all()
     return OrderFormOptions(
         customers=[
             OrderCustomerOption(
                 id=customer.id,
                 name=customer.name,
+                wechat_name=customer.wechat_name,
+                phone=customer.phone,
                 community=customer.community,
+                address=customer.address,
+                building=customer.building,
+                unit=customer.unit,
+                room=customer.room,
+                access_method=customer.access_method,
+                access_info=customer.access_info,
+                key_status=customer.key_status,
+                key_code=customer.key_code,
+                notes=customer.notes,
+                is_repeat_customer=customer.is_repeat_customer,
+                latitude=customer.latitude,
+                longitude=customer.longitude,
+                geocode_status=customer.geocode_status,
                 cats=[
-                    OrderCatOption(id=cat.id, name=cat.name)
+                    OrderCatOption(
+                        id=cat.id,
+                        name=cat.name,
+                        photo_url=cat.photo_url,
+                        gender=cat.gender,
+                        age=cat.age,
+                        breed=cat.breed,
+                        personality=cat.personality,
+                        food=cat.food,
+                        food_preference=cat.food_preference,
+                        litter_type=cat.litter_type,
+                        medication_required=cat.medication_required,
+                        medication_notes=cat.medication_notes,
+                        special_notes=cat.special_notes,
+                        service_notes=cat.service_notes,
+                    )
                     for cat in sorted(customer.cats, key=lambda item: (item.name, item.id))
                     if cat.is_active
                 ],
@@ -204,20 +324,114 @@ def list_orders(session: DatabaseSession) -> OrderListResponse:
 
 
 @router.post("", response_model=OrderDetail, status_code=status.HTTP_201_CREATED)
-def create_order(payload: OrderWrite, session: DatabaseSession) -> OrderDetail:
+def create_order(
+    payload: OrderCreate | OrderWrite, session: DatabaseSession
+) -> OrderDetail:
+    if isinstance(payload, OrderCreate):
+        source_customer = _load_source_customer(
+            session,
+            customer_id=payload.source_customer_id or payload.customer_id,
+        )
+        order = build_simple_order(payload, source_customer=source_customer)
+        session.add(order)
+        session.commit()
+        return _order_detail(_load_order(session, order.id))
+
     if payload.order_status not in {
         OrderStatus.PENDING_CONFIRMATION,
         OrderStatus.CONFIRMED,
     }:
         raise HTTPException(status_code=422, detail="新订单只能设为待确认或已确认")
 
-    _, cats = _validate_customer_and_cats(
+    customer, cats = _validate_customer_and_cats(
         session,
         customer_id=payload.customer_id,
         cat_ids=payload.cat_ids,
     )
-    order = build_order(payload, cats=cats)
+    order = build_order(payload, cats=cats, customer=customer)
     session.add(order)
+    session.commit()
+    return _order_detail(_load_order(session, order.id))
+
+
+@router.patch("/{order_id}", response_model=OrderDetail)
+def patch_order(
+    order_id: int,
+    payload: OrderPatch,
+    session: DatabaseSession,
+) -> OrderDetail:
+    order = _load_order(session, order_id)
+    fields = payload.model_fields_set
+
+    source_field_changed = bool({"customer_id", "source_customer_id"} & fields)
+    requested_customer = order.customer
+    if source_field_changed:
+        requested_customer = _load_source_customer(
+            session,
+            customer_id=payload.source_customer_id or payload.customer_id,
+        )
+    requested_customer_id = (
+        requested_customer.id if requested_customer is not None else None
+    )
+    source_changed = requested_customer_id != order.customer_id
+
+    requested_dates = (
+        [(service_date, 1) for service_date in payload.service_dates]
+        if "service_dates" in fields and payload.service_dates is not None
+        else order_schedule(order)
+    )
+    requested_items = (
+        [item.value for item in payload.service_items]
+        if "service_items" in fields and payload.service_items is not None
+        else order.service_items
+    )
+    requested_cat_count = payload.cat_count if payload.cat_count is not None else order.cat_count
+    structural_change = any(
+        (
+            requested_dates != order_schedule(order),
+            requested_items != order.service_items,
+            requested_cat_count != order.cat_count,
+        )
+    )
+    if structural_change:
+        require_tasks_are_rebuildable(order)
+
+    if source_changed:
+        order.customer_id = requested_customer_id
+        order.cat_links.clear()
+        for task in order.tasks:
+            task.customer_id = requested_customer_id
+        if requested_customer is not None:
+            apply_service_contact(order, customer_service_contact(requested_customer))
+            active_cats = [cat for cat in requested_customer.cats if cat.is_active]
+            order.cat_snapshot = cat_snapshot(active_cats[:requested_cat_count])
+    if "service_contact" in fields and payload.service_contact is not None:
+        apply_service_contact(order, payload.service_contact)
+    elif "customer_name" in fields and payload.customer_name is not None:
+        service_contact = order_service_contact(order)
+        apply_service_contact(
+            order,
+            service_contact.model_copy(update={"name": payload.customer_name}),
+        )
+    if "cat_snapshot" in fields and payload.cat_snapshot is not None:
+        order.cat_snapshot = [
+            item.model_dump(mode="json") for item in payload.cat_snapshot
+        ]
+    order.cat_count = requested_cat_count
+    if requested_dates != order_schedule(order):
+        replace_order_schedule(order, requested_dates)
+    order.service_items = requested_items
+    if "notes" in fields:
+        order.notes = payload.notes
+
+    price_changed = "unit_price" in fields and payload.unit_price is not None
+    if price_changed or structural_change:
+        reprice_order(order, unit_price=payload.unit_price if price_changed else None)
+
+    if structural_change:
+        order.tasks.clear()
+        generate_order_tasks(order)
+
     session.commit()
     return _order_detail(_load_order(session, order.id))
 
@@ -235,20 +449,22 @@ def update_order(
 ) -> OrderDetail:
     order = _load_order(session, order_id)
     existing_cat_ids = {link.cat_id for link in order.cat_links}
-    _, cats = _validate_customer_and_cats(
+    customer, cats = _validate_customer_and_cats(
         session,
         customer_id=payload.customer_id,
         cat_ids=payload.cat_ids,
         allowed_inactive_ids=existing_cat_ids,
     )
     requested_items = [item.value for item in payload.service_items]
+    requested_schedule = [
+        (payload.start_date + timedelta(days=offset), payload.visits_per_day)
+        for offset in range((payload.end_date - payload.start_date).days + 1)
+    ]
     structural_change = any(
         (
             order.customer_id != payload.customer_id,
             existing_cat_ids != set(payload.cat_ids),
-            order.start_date != payload.start_date,
-            order.end_date != payload.end_date,
-            order.visits_per_day != payload.visits_per_day,
+            order_schedule(order) != requested_schedule,
             order.service_items != requested_items,
         )
     )
@@ -267,10 +483,11 @@ def update_order(
 
     pricing = _pricing(payload)
     order.customer_id = payload.customer_id
-    order.start_date = payload.start_date
-    order.end_date = payload.end_date
-    order.visits_per_day = payload.visits_per_day
+    apply_service_contact(order, customer_service_contact(customer))
+    order.cat_snapshot = cat_snapshot(cats)
+    order.cat_count = len(cats)
     order.service_items = requested_items
+    order.pricing_mode = "legacy_components"
     order.base_price = pricing.base_price
     order.extra_cat_fee = pricing.extra_cat_fee
     order.stairs_fee = pricing.stairs_fee
@@ -293,6 +510,8 @@ def update_order(
         )
 
     if structural_change:
+        replace_order_schedule(order, requested_schedule)
+        order.visits_per_day = payload.visits_per_day
         order.tasks.clear()
         order.order_status = payload.order_status
         generate_order_tasks(order)
@@ -315,3 +534,17 @@ def update_order_status(
     order.order_status = payload.order_status
     session.commit()
     return _order_detail(_load_order(session, order.id))
+
+
+@router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_order(order_id: int, session: DatabaseSession) -> None:
+    order = _load_order(session, order_id)
+    reason = _delete_block_reason(order)
+    if reason is not None:
+        raise HTTPException(status_code=409, detail=reason)
+    session.delete(order)
+    session.commit()
+    cat_snapshot,
+    customer_service_contact,
+    order_has_execution_history,
+    order_service_contact,

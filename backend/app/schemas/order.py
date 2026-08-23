@@ -1,6 +1,6 @@
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -81,6 +81,153 @@ class OrderWrite(NormalizedOrderModel):
         return self
 
 
+def _normalized_service_dates(values: list[date]) -> list[date]:
+    unique = sorted(set(values))
+    if len(unique) != len(values):
+        raise ValueError("服务日期不能重复")
+    return unique
+
+
+class OrderServiceContact(NormalizedOrderModel):
+    name: str = Field(min_length=1, max_length=100)
+    wechat_name: str | None = Field(default=None, max_length=100)
+    phone: str | None = Field(default=None, max_length=32)
+    community: str | None = Field(default=None, max_length=200)
+    address: str | None = Field(default=None, max_length=1000)
+    building: str | None = Field(default=None, max_length=50)
+    unit: str | None = Field(default=None, max_length=50)
+    room: str | None = Field(default=None, max_length=50)
+    access_method: str | None = Field(default=None, max_length=100)
+    access_info: str | None = Field(default=None, max_length=4000)
+    key_status: str | None = Field(default=None, max_length=50)
+    key_code: str | None = Field(default=None, max_length=100)
+    notes: str | None = Field(default=None, max_length=4000)
+    is_repeat_customer: bool = False
+    latitude: Decimal | None = Field(default=None, ge=-90, le=90)
+    longitude: Decimal | None = Field(default=None, ge=-180, le=180)
+    geocode_status: str | None = Field(default=None, max_length=32)
+
+
+class OrderCatSnapshot(NormalizedOrderModel):
+    source_cat_id: int | None = Field(default=None, gt=0)
+    name: str = Field(min_length=1, max_length=100)
+    photo_url: str | None = Field(default=None, max_length=500)
+    gender: str | None = Field(default=None, max_length=32)
+    age: Decimal | None = Field(default=None, ge=0, le=999)
+    breed: str | None = Field(default=None, max_length=100)
+    personality: str | None = Field(default=None, max_length=4000)
+    food: str | None = Field(default=None, max_length=4000)
+    food_preference: str | None = Field(default=None, max_length=4000)
+    litter_type: str | None = Field(default=None, max_length=100)
+    medication_required: bool = False
+    medication_notes: str | None = Field(default=None, max_length=4000)
+    special_notes: str | None = Field(default=None, max_length=4000)
+    service_notes: str | None = Field(default=None, max_length=4000)
+
+
+class OrderCreate(NormalizedOrderModel):
+    source_customer_id: int | None = Field(default=None, gt=0)
+    service_contact: OrderServiceContact | None = None
+    cat_snapshot: list[OrderCatSnapshot] = Field(default_factory=list, max_length=50)
+    # 兼容旧客户端；它们只作为订单快照输入，不会自动创建客户档案。
+    customer_id: int | None = Field(default=None, gt=0)
+    customer_name: str | None = Field(default=None, min_length=1, max_length=100)
+    cat_count: int = Field(ge=1, le=50)
+    service_dates: list[date] = Field(min_length=1, max_length=366)
+    service_items: list[TaskItemType] = Field(min_length=1, max_length=8)
+    unit_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("service_dates")
+    @classmethod
+    def normalize_service_dates(cls, values: list[date]) -> list[date]:
+        return _normalized_service_dates(values)
+
+    @field_validator("service_items")
+    @classmethod
+    def normalize_service_items(
+        cls, values: list[TaskItemType]
+    ) -> list[TaskItemType]:
+        return list(dict.fromkeys(values))
+
+    @model_validator(mode="after")
+    def require_customer_reference(self) -> Self:
+        customer_ids = [
+            value
+            for value in (self.source_customer_id, self.customer_id)
+            if value is not None
+        ]
+        if len(set(customer_ids)) > 1:
+            raise ValueError("客户档案来源不能互相冲突")
+        if self.service_contact is None and self.customer_name is None and not customer_ids:
+            raise ValueError("必须填写联系人名称或从客户档案带入")
+        if (
+            self.service_contact is not None
+            and self.customer_name is not None
+            and self.service_contact.name != self.customer_name
+        ):
+            raise ValueError("联系人名称不能互相冲突")
+        if self.cat_snapshot and len(self.cat_snapshot) != self.cat_count:
+            raise ValueError("猫咪详情数量必须与猫咪数量一致")
+        return self
+
+
+class OrderPatch(NormalizedOrderModel):
+    source_customer_id: int | None = Field(default=None, gt=0)
+    service_contact: OrderServiceContact | None = None
+    cat_snapshot: list[OrderCatSnapshot] | None = Field(default=None, max_length=50)
+    # 兼容旧客户端；不会按名称创建客户档案。
+    customer_id: int | None = Field(default=None, gt=0)
+    customer_name: str | None = Field(default=None, min_length=1, max_length=100)
+    cat_count: int | None = Field(default=None, ge=1, le=50)
+    service_dates: list[date] | None = Field(default=None, min_length=1, max_length=366)
+    service_items: list[TaskItemType] | None = Field(default=None, min_length=1, max_length=8)
+    unit_price: Decimal | None = Field(
+        default=None, ge=0, max_digits=10, decimal_places=2
+    )
+    notes: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("service_dates")
+    @classmethod
+    def normalize_service_dates(cls, values: list[date] | None) -> list[date] | None:
+        return _normalized_service_dates(values) if values is not None else None
+
+    @field_validator("service_items")
+    @classmethod
+    def normalize_service_items(
+        cls, values: list[TaskItemType] | None
+    ) -> list[TaskItemType] | None:
+        return list(dict.fromkeys(values)) if values is not None else None
+
+    @model_validator(mode="after")
+    def reject_multiple_customer_references(self) -> Self:
+        customer_ids = [
+            value
+            for value in (self.source_customer_id, self.customer_id)
+            if value is not None
+        ]
+        if len(set(customer_ids)) > 1:
+            raise ValueError("客户档案来源不能互相冲突")
+        if (
+            {"customer_id", "source_customer_id"} & self.model_fields_set
+            and self.customer_id is None
+            and self.source_customer_id is None
+        ):
+            # 显式清空来源档案是允许的；订单继续使用已有快照。
+            return self
+        if (
+            self.service_contact is not None
+            and self.customer_name is not None
+            and self.service_contact.name != self.customer_name
+        ):
+            raise ValueError("联系人名称不能互相冲突")
+        target_cat_count = self.cat_count
+        if self.cat_snapshot is not None and target_cat_count is not None:
+            if len(self.cat_snapshot) != target_cat_count:
+                raise ValueError("猫咪详情数量必须与猫咪数量一致")
+        return self
+
+
 class OrderStatusUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -88,15 +235,16 @@ class OrderStatusUpdate(BaseModel):
 
 
 class OrderCatSummary(BaseModel):
-    id: int
+    id: int | None
     name: str
     is_active: bool
 
 
 class OrderCustomerSummary(BaseModel):
-    id: int
+    id: int | None
     name: str
     community: str | None
+    address: str | None
 
 
 class OrderTaskItemRead(BaseModel):
@@ -114,8 +262,16 @@ class OrderTaskRead(BaseModel):
     items: list[OrderTaskItemRead]
 
 
+class OrderServiceScheduleRead(BaseModel):
+    service_date: date
+    visit_count: int = Field(ge=1, le=10)
+
+
 class OrderSummary(BaseModel):
     id: int
+    source_customer_id: int | None
+    service_contact: OrderServiceContact
+    cat_snapshot: list[OrderCatSnapshot]
     customer: OrderCustomerSummary
     cats: list[OrderCatSummary]
     start_date: date
@@ -123,7 +279,11 @@ class OrderSummary(BaseModel):
     visits_per_day: int
     service_days: int
     total_visits: int
+    cat_count: int = Field(ge=1, le=50)
+    service_schedule: list[OrderServiceScheduleRead]
     service_items: list[TaskItemType]
+    pricing_mode: Literal["legacy_components", "per_visit"]
+    unit_price: Decimal = Field(ge=0)
     base_price: Decimal
     extra_cat_fee: Decimal
     stairs_fee: Decimal
@@ -131,9 +291,12 @@ class OrderSummary(BaseModel):
     total_amount: Decimal
     paid_amount: Decimal
     due_amount: Decimal
+    overpaid_amount: Decimal = Field(ge=0)
     payment_status: OrderPaymentStatus
     order_status: OrderStatus
     task_count: int
+    deletable: bool
+    delete_block_reason: str | None
     updated_at: datetime
 
 
@@ -151,12 +314,39 @@ class OrderListResponse(BaseModel):
 class OrderCatOption(BaseModel):
     id: int
     name: str
+    photo_url: str | None
+    gender: str | None
+    age: Decimal | None
+    breed: str | None
+    personality: str | None
+    food: str | None
+    food_preference: str | None
+    litter_type: str | None
+    medication_required: bool
+    medication_notes: str | None
+    special_notes: str | None
+    service_notes: str | None
 
 
 class OrderCustomerOption(BaseModel):
     id: int
     name: str
+    wechat_name: str | None
+    phone: str | None
     community: str | None
+    address: str | None
+    building: str | None
+    unit: str | None
+    room: str | None
+    access_method: str | None
+    access_info: str | None
+    key_status: str | None
+    key_code: str | None
+    notes: str | None
+    is_repeat_customer: bool
+    latitude: Decimal | None
+    longitude: Decimal | None
+    geocode_status: str | None
     cats: list[OrderCatOption]
 
 

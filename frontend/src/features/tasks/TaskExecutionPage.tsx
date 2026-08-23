@@ -8,7 +8,6 @@ import {
   LoaderCircle,
   MapPin,
   PawPrint,
-  Phone,
   Play,
   RefreshCw,
   Save,
@@ -18,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { PageHeader } from "../../components/ui/PageHeader";
+import { customerAddress } from "../../lib/customerDisplay";
 import { serviceItemOptions } from "../orders/constants";
 import type { ServiceItem, TaskStatus } from "../orders/types";
 import { planTaskStatusLabels } from "../plans/constants";
@@ -52,13 +52,7 @@ function displayDateTime(value: string | null): string {
 }
 
 function addressLine(detail: TaskExecutionDetail): string {
-  return [
-    detail.customer.community,
-    detail.customer.address,
-    detail.customer.building,
-    detail.customer.unit,
-    detail.customer.room,
-  ].filter(Boolean).join(" · ") || "未填写地址";
+  return customerAddress(detail.customer) || "未填写地址";
 }
 
 function statusStyle(status: TaskStatus): string {
@@ -108,7 +102,7 @@ export function TaskExecutionPage() {
 
   const loadTask = useCallback(async () => {
     if (!validTaskId) {
-      setError("任务编号无效，请从订单计划重新进入。");
+      setError("任务编号无效，请从路线图重新进入。");
       setLoading(false);
       return;
     }
@@ -129,7 +123,7 @@ export function TaskExecutionPage() {
     let active = true;
     Promise.resolve()
       .then(() => {
-        if (!validTaskId) throw new Error("任务编号无效，请从订单计划重新进入。");
+        if (!validTaskId) throw new Error("任务编号无效，请从路线图重新进入。");
         return getTaskExecution(taskId);
       })
       .then((response) => {
@@ -272,8 +266,8 @@ export function TaskExecutionPage() {
 
   return (
     <section className="cc-page" aria-labelledby="task-execution-title">
-      <Link className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-indigo-700" to="/admin/plans">
-        <ArrowLeft size={15} />返回订单计划
+      <Link className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-orange-700" to="/admin/routes">
+        <ArrowLeft size={15} />返回路线图
       </Link>
       <PageHeader
         eyebrow="现场执行"
@@ -316,8 +310,7 @@ export function TaskExecutionPage() {
               </div>
               <dl className="mt-5 space-y-4 border-t border-slate-100 pt-4">
                 <div className="flex gap-2"><MapPin className="mt-0.5 shrink-0 text-slate-400" size={16} /><FieldValue label="服务地址" value={addressLine(detail)} /></div>
-                <div className="flex gap-2"><Phone className="mt-0.5 shrink-0 text-slate-400" size={16} /><FieldValue label="联系电话" value={detail.customer.phone} /></div>
-                <FieldValue label="入户方式" value={[detail.customer.access_method, detail.customer.access_info].filter(Boolean).join(" · ") || null} />
+                <FieldValue label="门禁方式" value={detail.customer.access_method} />
                 <div className="flex gap-2"><KeyRound className="mt-0.5 shrink-0 text-slate-400" size={16} /><FieldValue label="钥匙信息" value={[detail.customer.key_status, detail.customer.key_code].filter(Boolean).join(" · ") || null} /></div>
                 <FieldValue label="订单备注" value={detail.order_notes} />
               </dl>
@@ -327,8 +320,8 @@ export function TaskExecutionPage() {
             <section className="cc-surface p-5">
               <h2 className="text-sm font-semibold text-slate-950">猫咪与服务要求</h2>
               <div className="mt-4 space-y-3">
-                {detail.cats.map((cat) => (
-                  <article key={cat.id} className="rounded-lg border border-slate-200 p-4">
+                {detail.cats.map((cat, index) => (
+                  <article key={cat.id ?? `${cat.name}-${index}`} className="rounded-lg border border-slate-200 p-4">
                     <p className="font-semibold text-slate-900">{cat.name}{cat.is_active ? "" : "（已停用）"}</p>
                     <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                       <FieldValue label="主粮" value={cat.food} />
@@ -358,7 +351,7 @@ export function TaskExecutionPage() {
                   </button>
                 ) : null}
               </div>
-              {detail.status === "pending" ? <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">任务仍待确认，请先在订单计划中确认后再开始。</p> : null}
+              {detail.status === "pending" ? <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">任务仍待确认，请先在路线图中确认后再开始。</p> : null}
               {terminal ? <p className="mt-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">该任务已进入终态，执行记录为只读。</p> : null}
             </section>
 
@@ -374,7 +367,7 @@ export function TaskExecutionPage() {
                     <label key={item.id} className={`flex items-center gap-3 rounded-lg border px-3 py-3 ${item.completed ? "border-emerald-200 bg-emerald-50" : "border-slate-200"} ${editing && !photoItem ? "cursor-pointer" : ""}`}>
                       <input
                         type="checkbox"
-                        className="size-4 accent-indigo-600"
+                        className="size-4 accent-orange-500"
                         checked={item.completed}
                         onChange={(event) => void handleChecklist(item.id, event.target.checked)}
                         disabled={!editing || photoItem || controlsDisabled}
@@ -439,11 +432,11 @@ export function TaskExecutionPage() {
             </section>
 
             {editing ? (
-              <section className="rounded-xl border border-indigo-700 bg-indigo-700 p-5 text-white shadow-sm">
+              <section className="rounded-2xl border border-orange-700 bg-orange-700 p-5 text-white shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <h2 className="text-lg font-semibold">完成本次服务</h2>
-                    <p className="mt-1 text-sm text-indigo-100">{textDirty ? "执行记录尚未保存" : missingRequired.length ? `仍有 ${missingRequired.length} 项必做事项未完成` : "必做事项已全部完成，请最后核对记录"}</p>
+                    <p className="mt-1 text-sm text-orange-50">{textDirty ? "执行记录尚未保存" : missingRequired.length ? `仍有 ${missingRequired.length} 项必做事项未完成` : "必做事项已全部完成，请最后核对记录"}</p>
                   </div>
                   <button type="button" className="inline-flex items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-slate-900 disabled:opacity-40" onClick={() => void handleComplete()} disabled={missingRequired.length > 0 || textDirty || controlsDisabled}>
                     {busy === "complete" ? <LoaderCircle className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}完成本次服务

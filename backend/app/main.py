@@ -6,7 +6,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.api.auth import router as auth_router
 from app.api.customers import router as customers_router
 from app.api.dashboard import router as dashboard_router
 from app.api.intake import admin_router as admin_intake_router
@@ -15,9 +14,10 @@ from app.api.mobile import router as mobile_router
 from app.api.orders import router as orders_router
 from app.api.payments import router as payments_router
 from app.api.plans import router as plans_router
+from app.api.settings import router as settings_router
 from app.api.tasks import router as tasks_router
 from app.services.privacy_logging import install_fill_token_redaction
-from app.services.auth import allowed_hosts, require_admin, require_mobile
+from app.services.local_access import allowed_hosts, require_local_request
 
 
 class HealthResponse(TypedDict):
@@ -40,7 +40,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
 async def add_sensitive_response_headers(request: Request, call_next) -> Response:
     response = await call_next(request)
     if request.url.path.startswith(
-        ("/api/admin", "/api/mobile", "/api/auth", "/api/fill")
+        ("/api/admin", "/api/mobile", "/api/fill")
     ):
         if "no-store" not in response.headers.get("Cache-Control", "").lower():
             response.headers["Cache-Control"] = "no-store"
@@ -55,7 +55,7 @@ async def privacy_safe_validation_error(
     request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
-    if not request.url.path.startswith(("/api/fill/", "/api/auth/")):
+    if not request.url.path.startswith("/api/fill/"):
         return await request_validation_exception_handler(request, exc)
     safe_errors = [
         {
@@ -67,19 +67,18 @@ async def privacy_safe_validation_error(
     ]
     return JSONResponse(status_code=422, content={"detail": safe_errors})
 
-admin_dependencies = [Depends(require_admin)]
-mobile_dependencies = [Depends(require_mobile)]
+local_dependencies = [Depends(require_local_request)]
 
-app.include_router(auth_router)
 app.include_router(public_intake_router)
-app.include_router(customers_router, dependencies=admin_dependencies)
-app.include_router(dashboard_router, dependencies=admin_dependencies)
-app.include_router(admin_intake_router, dependencies=admin_dependencies)
-app.include_router(mobile_router, dependencies=mobile_dependencies)
-app.include_router(orders_router, dependencies=admin_dependencies)
-app.include_router(payments_router, dependencies=admin_dependencies)
-app.include_router(plans_router, dependencies=admin_dependencies)
-app.include_router(tasks_router, dependencies=admin_dependencies)
+app.include_router(customers_router, dependencies=local_dependencies)
+app.include_router(dashboard_router, dependencies=local_dependencies)
+app.include_router(admin_intake_router, dependencies=local_dependencies)
+app.include_router(mobile_router, dependencies=local_dependencies)
+app.include_router(orders_router, dependencies=local_dependencies)
+app.include_router(payments_router, dependencies=local_dependencies)
+app.include_router(plans_router, dependencies=local_dependencies)
+app.include_router(settings_router, dependencies=local_dependencies)
+app.include_router(tasks_router, dependencies=local_dependencies)
 
 
 @app.get("/api/health", response_model=HealthResponse, tags=["system"])

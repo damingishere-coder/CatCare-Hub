@@ -1,10 +1,16 @@
-import { LoaderCircle, X } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 
+import { FormDialog } from "../../components/ui/FormDialog";
 import type { CatDetail, CatInput, CustomerDetail, CustomerInput } from "./types";
+import {
+  accessMethodOptions,
+  customerAddress,
+  keyStatusOptions,
+  optionsWithLegacy,
+} from "../../lib/customerDisplay";
 
 const inputClass =
-  "mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-400";
+  "mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 placeholder:text-slate-400";
 const labelClass = "block text-sm font-medium text-slate-700";
 
 function optionalValue(formData: FormData, field: string): string | null {
@@ -14,86 +20,6 @@ function optionalValue(formData: FormData, field: string): string | null {
   }
   const normalized = value.trim();
   return normalized || null;
-}
-
-interface FormDialogProps {
-  title: string;
-  description: string;
-  saving: boolean;
-  error: string | null;
-  onCancel: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  children: ReactNode;
-}
-
-function FormDialog({
-  title,
-  description,
-  saving,
-  error,
-  onCancel,
-  onSubmit,
-  children,
-}: FormDialogProps) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-[2px] sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="record-form-title"
-    >
-      <form
-        className="w-full max-w-3xl rounded-xl border border-slate-200 bg-white shadow-2xl"
-        onSubmit={onSubmit}
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div>
-            <h2 id="record-form-title" className="text-lg font-semibold text-slate-950">
-              {title}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">{description}</p>
-          </div>
-          <button
-            type="button"
-            className="cc-icon-button"
-            onClick={onCancel}
-            aria-label="关闭表单"
-            disabled={saving}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="cc-scrollbar max-h-[calc(100vh-13rem)] space-y-7 overflow-y-auto px-5 py-5 sm:px-6">
-          {error ? (
-            <p className="cc-alert cc-alert--danger" role="alert">
-              {error}
-            </p>
-          ) : null}
-          {children}
-        </div>
-
-        <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4 sm:px-6">
-          <button
-            type="button"
-            className="cc-button cc-button--secondary"
-            onClick={onCancel}
-            disabled={saving}
-          >
-            取消
-          </button>
-          <button
-            type="submit"
-            className="cc-button cc-button--primary"
-            disabled={saving}
-          >
-            {saving ? <LoaderCircle className="animate-spin" size={16} /> : null}
-            {saving ? "保存中…" : "保存"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
 }
 
 interface CustomerFormDialogProps {
@@ -111,21 +37,14 @@ export function CustomerFormDialog({ initial, onCancel, onSave }: CustomerFormDi
     const formData = new FormData(event.currentTarget);
     const name = optionalValue(formData, "name");
     if (!name) {
-      setError("请填写客户姓名。");
+      setError("请填写客户名称。");
       return;
     }
 
     const payload: CustomerInput = {
       name,
-      wechat_name: optionalValue(formData, "wechat_name"),
-      phone: optionalValue(formData, "phone"),
-      community: optionalValue(formData, "community"),
       address: optionalValue(formData, "address"),
-      building: optionalValue(formData, "building"),
-      unit: optionalValue(formData, "unit"),
-      room: optionalValue(formData, "room"),
       access_method: optionalValue(formData, "access_method"),
-      access_info: optionalValue(formData, "access_info"),
       key_status: optionalValue(formData, "key_status"),
       key_code: optionalValue(formData, "key_code"),
       notes: optionalValue(formData, "notes"),
@@ -145,7 +64,7 @@ export function CustomerFormDialog({ initial, onCancel, onSave }: CustomerFormDi
   return (
     <FormDialog
       title={initial ? "编辑客户" : "新增客户"}
-      description="门禁、钥匙和地址信息仅保存在本地业务数据库中。"
+      description="只保留上门服务真正需要的客户资料。"
       saving={saving}
       error={error}
       onCancel={onCancel}
@@ -155,20 +74,12 @@ export function CustomerFormDialog({ initial, onCancel, onSave }: CustomerFormDi
         <h3 id="customer-basic-fields" className="text-sm font-semibold text-slate-950">
           基本信息
         </h3>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
           <label className={labelClass}>
-            姓名 <span className="text-red-600">*</span>
+            名称 <span className="text-red-600">*</span>
             <input className={inputClass} name="name" defaultValue={initial?.name ?? ""} required maxLength={100} />
           </label>
-          <label className={labelClass}>
-            微信昵称
-            <input className={inputClass} name="wechat_name" defaultValue={initial?.wechat_name ?? ""} maxLength={100} />
-          </label>
-          <label className={labelClass}>
-            手机号
-            <input className={inputClass} name="phone" type="tel" defaultValue={initial?.phone ?? ""} maxLength={32} />
-          </label>
-          <label className="flex items-center gap-2 self-end rounded-md border border-slate-200 px-3 py-2.5 text-sm text-slate-700">
+          <label className="flex min-h-11 items-center gap-2 self-end rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-700">
             <input name="is_repeat_customer" type="checkbox" defaultChecked={initial?.is_repeat_customer ?? false} />
             标记为老客户
           </label>
@@ -179,28 +90,10 @@ export function CustomerFormDialog({ initial, onCancel, onSave }: CustomerFormDi
         <h3 id="customer-address-fields" className="text-sm font-semibold text-slate-950">
           地址
         </h3>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <label className={labelClass}>
-            小区
-            <input className={inputClass} name="community" defaultValue={initial?.community ?? ""} maxLength={200} />
-          </label>
-          <label className={labelClass}>
-            详细地址
-            <input className={inputClass} name="address" defaultValue={initial?.address ?? ""} maxLength={1000} />
-          </label>
-          <label className={labelClass}>
-            楼栋
-            <input className={inputClass} name="building" defaultValue={initial?.building ?? ""} maxLength={50} />
-          </label>
-          <label className={labelClass}>
-            单元
-            <input className={inputClass} name="unit" defaultValue={initial?.unit ?? ""} maxLength={50} />
-          </label>
-          <label className={labelClass}>
-            房号
-            <input className={inputClass} name="room" defaultValue={initial?.room ?? ""} maxLength={50} />
-          </label>
-        </div>
+        <label className={`${labelClass} mt-3`}>
+          地址
+          <textarea className={inputClass} name="address" defaultValue={initial ? customerAddress(initial) : ""} rows={2} maxLength={1000} placeholder="填写完整上门地址" />
+        </label>
       </section>
 
       <section aria-labelledby="customer-access-fields">
@@ -210,19 +103,25 @@ export function CustomerFormDialog({ initial, onCancel, onSave }: CustomerFormDi
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <label className={labelClass}>
             门禁方式
-            <input className={inputClass} name="access_method" defaultValue={initial?.access_method ?? ""} maxLength={100} />
+            <select className={inputClass} name="access_method" defaultValue={initial?.access_method ?? ""}>
+              <option value="">未选择</option>
+              {optionsWithLegacy(accessMethodOptions, initial?.access_method).map((option) => (
+                <option key={option} value={option}>{accessMethodOptions.includes(option as typeof accessMethodOptions[number]) ? option : `历史值：${option}`}</option>
+              ))}
+            </select>
           </label>
           <label className={labelClass}>
             钥匙状态
-            <input className={inputClass} name="key_status" defaultValue={initial?.key_status ?? ""} maxLength={50} placeholder="待取 / 已取 / 已归还 / 无需钥匙" />
+            <select className={inputClass} name="key_status" defaultValue={initial?.key_status ?? ""}>
+              <option value="">未选择</option>
+              {optionsWithLegacy(keyStatusOptions, initial?.key_status).map((option) => (
+                <option key={option} value={option}>{keyStatusOptions.includes(option as typeof keyStatusOptions[number]) ? option : `历史值：${option}`}</option>
+              ))}
+            </select>
           </label>
           <label className={labelClass}>
             钥匙编号
             <input className={inputClass} name="key_code" defaultValue={initial?.key_code ?? ""} maxLength={100} />
-          </label>
-          <label className={`${labelClass} sm:col-span-2`}>
-            入户信息
-            <textarea className={inputClass} name="access_info" defaultValue={initial?.access_info ?? ""} rows={3} maxLength={4000} />
           </label>
         </div>
       </section>

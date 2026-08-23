@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AmapMapProvider,
   hasAmapBrowserKey,
+  hasAmapBrowserSecurityCode,
   markerDisplayOffset,
 } from "./mapProvider";
 import type {
@@ -97,14 +98,14 @@ function CoordinateCanvas({
           <button
             key={marker.task_id}
             type="button"
-            className={`absolute flex size-8 -translate-1/2 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white shadow-md ${selectedTaskId === marker.task_id ? "bg-amber-600 ring-2 ring-amber-300" : "bg-indigo-600"}`}
+            className={`absolute flex size-8 -translate-1/2 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white shadow-md ${selectedTaskId === marker.task_id ? "bg-orange-700 ring-2 ring-orange-300" : "bg-[#FF9500]"}`}
             style={{
               left: `${projected.left}%`,
               top: `${projected.top}%`,
               transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
             }}
             aria-label={`地图任务 ${marker.sequence}：${marker.customer_name}`}
-            title={marker.community || marker.customer_name}
+            title={marker.address || marker.community || marker.customer_name}
             onClick={() => onSelectTask(marker.task_id)}
           >
             {marker.sequence}
@@ -119,7 +120,7 @@ export function RouteMap(props: RouteMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const selectTask = useRef(props.onSelectTask);
   const [amapFailed, setAmapFailed] = useState(false);
-  const canUseAmap = props.providerName === "amap" && hasAmapBrowserKey() && !amapFailed;
+  const canUseAmap = props.providerName === "amap" && hasAmapBrowserKey() && hasAmapBrowserSecurityCode() && !amapFailed;
   const modelKey = useMemo(
     () => JSON.stringify({
       start: props.start,

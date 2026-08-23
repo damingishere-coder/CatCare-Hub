@@ -28,7 +28,6 @@ LOCKED_ORDER_STATUSES = {
 
 def _task_load_options() -> tuple:
     return (
-        selectinload(Task.customer),
         selectinload(Task.order)
         .selectinload(Order.cat_links)
         .selectinload(OrderCat.cat),
@@ -73,19 +72,19 @@ def day_plan_revision(tasks: Sequence[Task]) -> str:
             "sort_order": task.sort_order,
             "status": task.status.value,
             "customer_map_state": {
-                "id": task.customer.id,
-                "geocode_status": task.customer.geocode_status,
+                "id": task.order.customer_id,
+                "geocode_status": task.order.route_geocode_status,
                 "latitude": (
-                    str(task.customer.latitude)
-                    if task.customer.latitude is not None
+                    str(task.order.route_latitude)
+                    if task.order.route_latitude is not None
                     else None
                 ),
                 "longitude": (
-                    str(task.customer.longitude)
-                    if task.customer.longitude is not None
+                    str(task.order.route_longitude)
+                    if task.order.route_longitude is not None
                     else None
                 ),
-                "updated_at": _datetime_value(task.customer.updated_at),
+                "updated_at": _datetime_value(task.order.updated_at),
             },
             "updated_at": _datetime_value(task.updated_at),
             "started_at": _datetime_value(task.started_at),

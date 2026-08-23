@@ -125,6 +125,7 @@ class CustomerSummary(BaseModel):
     is_repeat_customer: bool
     active_cat_count: int
     inactive_cat_count: int
+    archived_at: datetime | None
     updated_at: datetime
 
 
@@ -134,6 +135,7 @@ class CustomerDetail(CustomerFields):
     id: int
     name: str
     cats: list[CatRead]
+    archived_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
@@ -145,3 +147,10 @@ class CustomerListResponse(BaseModel):
 
 class CustomerSearch(NormalizedModel):
     search: str = Field(min_length=1, max_length=100)
+    include_archived: bool = False
+
+
+class CustomerArchiveUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    archived: bool

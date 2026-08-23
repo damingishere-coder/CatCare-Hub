@@ -300,11 +300,12 @@ def test_dashboard_aggregates_schedule_reminders_and_privacy(
         "status": "ready",
         "customer_name": "P7 今日客户（虚构）",
         "community": "P7 虚构小区",
+        "address": "P7 不对应真实地点的详细地址",
         "cat_count": 1,
     }
 
     reminders = {item["id"]: item for item in payload["reminders"]}
-    assert f"key_pickup:customer:{customer['id']}" in reminders
+    assert f"key_pickup:order:{today_order['id']}" in reminders
     assert f"medicine:task:{today_order['tasks'][0]['id']}" in reminders
     photo_reminder = reminders[
         f"photos_pending:task:{today_order['tasks'][1]['id']}"
@@ -324,7 +325,6 @@ def test_dashboard_aggregates_schedule_reminders_and_privacy(
     for forbidden in (
         "FAKE-P7-PHONE",
         "P7 虚构微信",
-        "P7 不对应真实地点的详细地址",
         "P7 虚构门禁",
         "FAKE-P7-KEY-CODE",
         "P7 不应进入工作台的客户备注",

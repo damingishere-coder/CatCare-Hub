@@ -53,9 +53,9 @@ class Task(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    customer_id: Mapped[int] = mapped_column(
-        ForeignKey("customers.id", ondelete="CASCADE"),
-        nullable=False,
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     service_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
@@ -79,7 +79,7 @@ class Task(TimestampMixin, Base):
     exception_notes: Mapped[str | None] = mapped_column(Text)
 
     order: Mapped["Order"] = relationship(back_populates="tasks")
-    customer: Mapped["Customer"] = relationship(back_populates="tasks")
+    customer: Mapped["Customer | None"] = relationship(back_populates="tasks")
     items: Mapped[list["TaskItem"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan",

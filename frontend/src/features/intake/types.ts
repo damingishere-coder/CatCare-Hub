@@ -13,6 +13,7 @@ export type TaskItemType =
 
 export interface IntakeCustomerDraft {
   name: string | null;
+  is_repeat_customer: boolean;
   wechat_name: string | null;
   phone: string | null;
   community: string | null;
@@ -98,6 +99,8 @@ export interface IntakeSubmissionList {
 
 export interface IntakeSubmissionDetail extends IntakeSubmissionSummary {
   payload: IntakeDraftPayload;
+  review_payload: IntakeDraftPayload | null;
+  review_unit_price: string | null;
   reviewed_at: string | null;
   converted_at: string | null;
   converted_customer_id: number | null;

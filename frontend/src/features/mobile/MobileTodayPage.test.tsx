@@ -25,6 +25,7 @@ const today: MobileTodayRead = {
       status: "in_progress",
       customer_name: "P9 虚构客户甲",
       community: "P9 虚构小区甲",
+      address: "P9 虚构完整地址甲",
       cat_count: 2,
       navigation_url: "https://uri.amap.com/navigation?to=120,30,test",
       navigation_state: "ready",
@@ -38,6 +39,7 @@ const today: MobileTodayRead = {
       status: "completed",
       customer_name: "P9 虚构客户乙",
       community: null,
+      address: null,
       cat_count: 1,
       navigation_url: null,
       navigation_state: "missing_coordinates",
@@ -69,7 +71,7 @@ it("shows the ordered route, safe summaries, navigation, and refresh", async () 
   );
   expect(screen.getByText("地址坐标尚未在电脑计划页解析")).toBeInTheDocument();
   expect(screen.getAllByRole("link", { name: "查看任务" })[0]).toHaveAttribute("href", "/mobile/tasks/7");
-  expect(screen.getByText(/已启用执行端登录与权限隔离/)).toBeInTheDocument();
+  expect(screen.getByText(/免登录本地模式/)).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "刷新今日任务" }));
   await waitFor(() => expect(apiMocks.getMobileToday).toHaveBeenCalledTimes(2));

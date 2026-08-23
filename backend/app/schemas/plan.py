@@ -10,20 +10,20 @@ class PlanWriteModel(BaseModel):
 
 
 class PlanCustomerSummary(BaseModel):
-    id: int
+    id: int | None
     name: str
     community: str | None
+    address: str | None
 
 
 class PlanCustomerDetail(PlanCustomerSummary):
-    address: str | None
     building: str | None
     unit: str | None
     room: str | None
 
 
 class PlanCatSummary(BaseModel):
-    id: int
+    id: int | None
     name: str
 
 
@@ -49,6 +49,7 @@ class PlanTaskSummary(BaseModel):
     sort_order: int
     status: TaskStatus
     customer: PlanCustomerSummary
+    cat_count: int = Field(ge=1, le=50)
     cats: list[PlanCatSummary]
     items: list[PlanTaskItemRead]
     has_execution_history: bool
@@ -127,6 +128,12 @@ class PlanMapProviderRead(BaseModel):
     message: str | None
 
 
+class PlanRecommendationProviderRead(BaseModel):
+    name: str
+    configured: bool
+    message: str | None
+
+
 class PlanRouteStart(BaseModel):
     label: str
     position: PlanGeoPoint
@@ -137,6 +144,7 @@ class PlanRouteMarker(BaseModel):
     sequence: int
     customer_name: str
     community: str | None
+    address: str | None
     position: PlanGeoPoint
     navigation_url: str | None
 
@@ -145,6 +153,7 @@ class PlanRouteIssue(BaseModel):
     task_id: int
     customer_name: str
     community: str | None
+    address: str | None
     reason: Literal[
         "missing_address",
         "not_geocoded",
@@ -165,12 +174,15 @@ class PlanRouteWorkspace(BaseModel):
     revision: str
     schedule_locked: bool
     provider: PlanMapProviderRead
+    recommendation_provider: PlanRecommendationProviderRead
     start: PlanRouteStart | None
     markers: list[PlanRouteMarker]
     unresolved_tasks: list[PlanRouteIssue]
     current_route: PlanRoutePath | None
     recommended_route: PlanRoutePath | None
     recommended_task_ids: list[int]
+    recommendation_source: Literal["none", "openai", "local"]
+    recommendation_message: str | None
     can_adopt_recommendation: bool
 
 

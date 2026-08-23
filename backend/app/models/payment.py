@@ -32,13 +32,13 @@ class Payment(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int] = mapped_column(
-        ForeignKey("orders.id", ondelete="CASCADE"),
+        ForeignKey("orders.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
-    customer_id: Mapped[int] = mapped_column(
-        ForeignKey("customers.id", ondelete="CASCADE"),
-        nullable=False,
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
@@ -57,4 +57,4 @@ class Payment(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
     order: Mapped["Order"] = relationship(back_populates="payments")
-    customer: Mapped["Customer"] = relationship(back_populates="payments")
+    customer: Mapped["Customer | None"] = relationship(back_populates="payments")

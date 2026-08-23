@@ -2,28 +2,29 @@
 
 :root {
   font-family:
-    Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont,
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter,
+    "PingFang SC", "Microsoft YaHei",
     "Segoe UI", sans-serif;
-  color: #182033;
-  background: #f3f5f8;
-  --cc-app: #f3f5f8;
+  color: #1d1d1f;
+  background: #f5f5f7;
+  --cc-app: #f5f5f7;
   --cc-surface: #ffffff;
-  --cc-surface-subtle: #f8f9fb;
-  --cc-surface-strong: #182033;
-  --cc-text: #182033;
-  --cc-text-secondary: #5e687b;
-  --cc-text-tertiary: #8a94a6;
-  --cc-border: #e4e8ef;
-  --cc-border-strong: #cbd2dd;
-  --cc-action: #4f46e5;
-  --cc-action-hover: #4338ca;
-  --cc-action-soft: #eef2ff;
-  --cc-focus: #6366f1;
+  --cc-surface-subtle: #fafafa;
+  --cc-surface-strong: #1d1d1f;
+  --cc-text: #1d1d1f;
+  --cc-text-secondary: #6e6e73;
+  --cc-text-tertiary: #86868b;
+  --cc-border: #e5e5e7;
+  --cc-border-strong: #d2d2d7;
+  --cc-action: #ff9500;
+  --cc-action-hover: #e67700;
+  --cc-action-soft: #fff4e5;
+  --cc-focus: #c2410c;
   --cc-success: #047857;
   --cc-warning: #a16207;
   --cc-danger: #b42318;
-  --cc-shadow-sm: 0 1px 2px rgb(24 32 51 / 5%), 0 1px 4px rgb(24 32 51 / 4%);
-  --cc-shadow-md: 0 14px 36px rgb(24 32 51 / 9%);
+  --cc-shadow-sm: 0 1px 2px rgb(29 29 31 / 4%), 0 8px 24px rgb(29 29 31 / 5%);
+  --cc-shadow-md: 0 24px 60px rgb(29 29 31 / 12%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -52,8 +53,8 @@ body {
 }
 
 ::selection {
-  background: #c7d2fe;
-  color: #1e1b4b;
+  background: #ffd8a3;
+  color: #6b3100;
 }
 
 .mobile-safe-area {
@@ -71,6 +72,12 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button,
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select {
+  min-height: 2.75rem;
 }
 
 button,
@@ -98,7 +105,7 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
 select:focus,
 textarea:focus {
   border-color: var(--cc-focus);
-  box-shadow: 0 0 0 3px rgb(99 102 241 / 12%);
+  box-shadow: 0 0 0 4px rgb(255 149 0 / 16%);
   outline: none;
 }
 
@@ -117,7 +124,7 @@ textarea:disabled {
   width: 100%;
   max-width: 80rem;
   margin-inline: auto;
-  animation: cc-page-in 220ms ease-out both;
+  animation: cc-page-in 220ms ease-out;
 }
 
 .cc-page--wide {
@@ -134,7 +141,7 @@ textarea:disabled {
 
 .cc-eyebrow {
   margin: 0 0 0.45rem;
-  color: var(--cc-action);
+  color: #b45309;
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.13em;
@@ -159,24 +166,24 @@ textarea:disabled {
 }
 
 .cc-surface {
-  border: 1px solid rgb(228 232 239 / 85%);
-  border-radius: 0.75rem;
-  background: rgb(255 255 255 / 96%);
+  border: 1px solid rgb(229 229 231 / 90%);
+  border-radius: 1.125rem;
+  background: rgb(255 255 255 / 92%);
   box-shadow: var(--cc-shadow-sm);
 }
 
 .cc-surface-muted {
-  border-radius: 0.65rem;
+  border-radius: 0.875rem;
   background: var(--cc-surface-subtle);
 }
 
 .cc-button {
   display: inline-flex;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  border-radius: 0.55rem;
+  border-radius: 0.75rem;
   padding: 0.55rem 0.9rem;
   font-size: 0.875rem;
   font-weight: 650;
@@ -205,8 +212,8 @@ textarea:disabled {
 .cc-button--primary {
   border: 1px solid var(--cc-action);
   background: var(--cc-action);
-  color: white;
-  box-shadow: 0 1px 2px rgb(79 70 229 / 18%);
+  color: #1d1d1f;
+  box-shadow: 0 6px 18px rgb(255 149 0 / 22%);
 }
 
 .cc-button--primary:hover:not(:disabled) {
@@ -233,12 +240,12 @@ textarea:disabled {
 
 .cc-icon-button {
   display: inline-flex;
-  min-width: 2.5rem;
-  min-height: 2.5rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--cc-border-strong);
-  border-radius: 0.55rem;
+  border-radius: 0.75rem;
   background: white;
   color: #475467;
   cursor: pointer;
@@ -248,7 +255,7 @@ textarea:disabled {
   position: relative;
   overflow: hidden;
   border: 1px solid rgb(228 232 239 / 70%);
-  border-radius: 0.75rem;
+  border-radius: 1.125rem;
   background: white;
   box-shadow: var(--cc-shadow-sm);
 }
@@ -257,7 +264,7 @@ textarea:disabled {
   position: absolute;
   inset: auto 0 0;
   height: 2px;
-  background: #6366f1;
+  background: #ff9500;
   content: "";
   opacity: 0.72;
 }
@@ -266,7 +273,7 @@ textarea:disabled {
   display: flex;
   align-items: flex-start;
   gap: 0.65rem;
-  border-radius: 0.65rem;
+  border-radius: 0.875rem;
   padding: 0.75rem 0.9rem;
   font-size: 0.875rem;
   line-height: 1.4rem;

@@ -25,12 +25,14 @@ const overview: PaymentsOverview = {
       order_id: 12,
       customer_name: "P8 页面客户（虚构）",
       community: "P8 虚构小区",
+      address: "P8 不对应真实地点的地址",
       start_date: "2035-10-06",
       end_date: "2035-10-08",
       cat_count: 2,
       total_amount: "90.00",
       paid_amount: "30.00",
       due_amount: "60.00",
+      overpaid_amount: "0.00",
       payment_status: "partial",
       order_status: "completed",
       revision: "a".repeat(64),
@@ -70,7 +72,7 @@ it("shows real summaries, receivables, and immutable payment records", async () 
   renderPage();
 
   expect(await screen.findByRole("heading", { name: "收款记录" })).toBeInTheDocument();
-  const todayCard = screen.getByText("今日收款").closest("article");
+  const todayCard = (await screen.findByText("今日收款", {}, { timeout: 5000 })).closest("article");
   const monthCard = screen.getByText("本月收入").closest("article");
   expect(todayCard).not.toBeNull();
   expect(monthCard).not.toBeNull();

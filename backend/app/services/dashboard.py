@@ -27,7 +27,7 @@ from app.services.business_time import (
     business_month_bounds_utc,
     current_business_date,
 )
-from app.services.orders import due_amount, money
+from app.services.orders import due_amount, money, order_display_address
 from app.services.task_execution import (
     execution_revision,
     load_execution_task,
@@ -55,7 +55,6 @@ def _load_day_tasks(session: Session, business_date: date) -> list[Task]:
                 Order.order_status != OrderStatus.CANCELLED,
             )
             .options(
-                selectinload(Task.customer),
                 selectinload(Task.items),
                 selectinload(Task.photos),
                 selectinload(Task.order)
@@ -105,7 +104,6 @@ def _load_pending_photo_tasks(session: Session, business_date: date) -> list[Tas
                 Order.order_status != OrderStatus.CANCELLED,
             )
             .options(
-                selectinload(Task.customer),
                 selectinload(Task.items),
                 selectinload(Task.photos),
                 selectinload(Task.order)
@@ -137,15 +135,16 @@ def _task_summary(task: Task) -> DashboardTaskSummary:
         planned_time=task.planned_time,
         sort_order=task.sort_order,
         status=task.status,
-        customer_name=task.customer.name,
-        community=task.customer.community,
-        cat_count=len(task.order.cat_links),
+        customer_name=task.order.contact_name,
+        community=task.order.contact_community,
+        address=order_display_address(task.order),
+        cat_count=task.order.cat_count,
     )
 
 
 def _task_label(task: Task) -> str:
     planned = task.planned_time.strftime("%H:%M") if task.planned_time else "未定时间"
-    return f"{planned} · {task.customer.name}"
+    return f"{planned} · {task.order.contact_name}"
 
 
 def _task_reminders(
@@ -153,24 +152,24 @@ def _task_reminders(
     pending_photo_tasks: list[Task],
 ) -> list[DashboardReminder]:
     reminders: list[DashboardReminder] = []
-    seen_key_customers: set[int] = set()
+    seen_key_orders: set[int] = set()
 
     for task in tasks:
         if task.status not in OPEN_TASK_STATUSES:
             continue
         if (
-            task.customer.key_status == "待取"
-            and task.customer_id not in seen_key_customers
+            task.order.contact_key_status == "待取"
+            and task.order_id not in seen_key_orders
         ):
-            seen_key_customers.add(task.customer_id)
+            seen_key_orders.add(task.order_id)
             reminders.append(
                 DashboardReminder(
-                    id=f"key_pickup:customer:{task.customer_id}",
+                    id=f"key_pickup:order:{task.order_id}",
                     kind="key_pickup",
-                    customer_name=task.customer.name,
+                    customer_name=task.order.contact_name,
                     task_id=task.id,
                     order_id=task.order_id,
-                    cat_count=len(task.order.cat_links),
+                    cat_count=task.order.cat_count,
                     message=f"{_task_label(task)}，钥匙状态为待取",
                 )
             )
@@ -181,17 +180,18 @@ def _task_reminders(
         medicine_pending = any(not item.completed for item in medicine_items)
         if not medicine_items:
             medicine_pending = any(
-                link.cat.medication_required for link in task.order.cat_links
+                bool(cat.get("medication_required"))
+                for cat in task.order.cat_snapshot
             )
         if medicine_pending:
             reminders.append(
                 DashboardReminder(
                     id=f"medicine:task:{task.id}",
                     kind="medicine",
-                    customer_name=task.customer.name,
+                    customer_name=task.order.contact_name,
                     task_id=task.id,
                     order_id=task.order_id,
-                    cat_count=len(task.order.cat_links),
+                    cat_count=task.order.cat_count,
                     message=f"{_task_label(task)}，请核对喂药要求",
                 )
             )
@@ -201,10 +201,10 @@ def _task_reminders(
             DashboardReminder(
                 id=f"photos_pending:task:{task.id}",
                 kind="photos_pending",
-                customer_name=task.customer.name,
+                customer_name=task.order.contact_name,
                 task_id=task.id,
                 order_id=task.order_id,
-                cat_count=len(task.order.cat_links),
+                cat_count=task.order.cat_count,
                 expected_revision=execution_revision(task),
                 message=(
                     f"{task.service_date.strftime('%m-%d')} · {_task_label(task)}，"
@@ -238,9 +238,9 @@ def _order_reminders(
                 DashboardReminder(
                     id=f"payment_due:order:{order.id}",
                     kind="payment_due",
-                    customer_name=order.customer.name,
+                    customer_name=order.contact_name,
                     order_id=order.id,
-                    cat_count=len(order.cat_links),
+                    cat_count=order.cat_count,
                     amount=amount_due,
                     message=f"订单 #{order.id} 待收 {amount_due:.2f} 元",
                 )
@@ -252,10 +252,10 @@ def _order_reminders(
                 DashboardReminder(
                     id=f"last_service:order:{order.id}",
                     kind="last_service",
-                    customer_name=order.customer.name,
+                    customer_name=order.contact_name,
                     task_id=final_task.id,
                     order_id=order.id,
-                    cat_count=len(order.cat_links),
+                    cat_count=order.cat_count,
                     message=f"订单 #{order.id} 今天完成最后一次服务",
                 )
             )
@@ -265,9 +265,9 @@ def _order_reminders(
                 DashboardReminder(
                     id=f"order_starts_tomorrow:order:{order.id}",
                     kind="order_starts_tomorrow",
-                    customer_name=order.customer.name,
+                    customer_name=order.contact_name,
                     order_id=order.id,
-                    cat_count=len(order.cat_links),
+                    cat_count=order.cat_count,
                     message=f"订单 #{order.id} 将于明日开始",
                 )
             )

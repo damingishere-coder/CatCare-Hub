@@ -46,6 +46,7 @@ const summary: CustomerSummary = {
   is_repeat_customer: true,
   active_cat_count: 1,
   inactive_cat_count: 0,
+  archived_at: null,
   updated_at: timestamp,
 };
 
@@ -66,6 +67,7 @@ const detail: CustomerDetail = {
   notes: "自动测试资料",
   is_repeat_customer: true,
   cats: [cat],
+  archived_at: null,
   created_at: timestamp,
   updated_at: timestamp,
 };
@@ -84,22 +86,23 @@ beforeEach(() => {
   prepareExistingCustomer();
 });
 
-it("loads the customer list and keeps sensitive fields in the selected detail", async () => {
+it("loads the customer list with one address and only the visible access fields", async () => {
   render(<CustomersPage />);
 
   expect(await screen.findByRole("heading", { name: "测试客户（虚构）", level: 2 })).toBeInTheDocument();
   expect(screen.getByText("敏感信息，仅本地后台可见")).toBeInTheDocument();
-  expect(screen.getByText("虚构入户说明")).toBeInTheDocument();
+  expect(screen.getByText("不对应真实地点")).toBeInTheDocument();
   expect(screen.getByText("未提供 · TEST-KEY")).toBeInTheDocument();
+  expect(screen.queryByText("虚构入户说明")).not.toBeInTheDocument();
 
   const customerList = screen.getByLabelText("客户列表");
   expect(within(customerList).queryByText("虚构入户说明")).not.toBeInTheDocument();
   expect(within(customerList).queryByText("TEST-KEY")).not.toBeInTheDocument();
-  expect(apiMocks.listCustomers).toHaveBeenCalledWith();
+  expect(apiMocks.listCustomers).toHaveBeenCalledWith("", false);
   expect(apiMocks.getCustomer).toHaveBeenCalledWith(1);
 });
 
-it("creates a complete customer from the admin form", async () => {
+it("creates a simplified customer without submitting hidden legacy fields", async () => {
   apiMocks.listCustomers
     .mockResolvedValueOnce({ items: [], total: 0 })
     .mockResolvedValue({ items: [summary], total: 1 });
@@ -111,21 +114,12 @@ it("creates a complete customer from the admin form", async () => {
 
   fireEvent.click(screen.getByRole("button", { name: "新增客户" }));
   const dialog = screen.getByRole("dialog", { name: "新增客户" });
-  fireEvent.change(within(dialog).getByRole("textbox", { name: /姓名/ }), {
+  fireEvent.change(within(dialog).getByRole("textbox", { name: /名称/ }), {
     target: { value: "测试客户（虚构）" },
   });
-  fireEvent.change(within(dialog).getByRole("textbox", { name: "手机号" }), {
-    target: { value: "TEST-PHONE" },
-  });
-  fireEvent.change(within(dialog).getByRole("textbox", { name: "小区" }), {
-    target: { value: "虚构小区" },
-  });
-  fireEvent.change(within(dialog).getByRole("textbox", { name: "门禁方式" }), {
-    target: { value: "虚构门禁" },
-  });
-  fireEvent.change(within(dialog).getByRole("textbox", { name: "入户信息" }), {
-    target: { value: "虚构入户说明" },
-  });
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "地址" }), { target: { value: "虚构完整地址" } });
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "门禁方式" }), { target: { value: "密码" } });
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "钥匙状态" }), { target: { value: "待取" } });
   fireEvent.change(within(dialog).getByRole("textbox", { name: "钥匙编号" }), {
     target: { value: "TEST-KEY" },
   });
@@ -136,14 +130,21 @@ it("creates a complete customer from the admin form", async () => {
     expect(apiMocks.createCustomer).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "测试客户（虚构）",
-        phone: "TEST-PHONE",
-        community: "虚构小区",
-        access_method: "虚构门禁",
-        access_info: "虚构入户说明",
+        address: "虚构完整地址",
+        access_method: "密码",
+        key_status: "待取",
         key_code: "TEST-KEY",
         is_repeat_customer: true,
       }),
     );
+    const payload = apiMocks.createCustomer.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("wechat_name");
+    expect(payload).not.toHaveProperty("phone");
+    expect(payload).not.toHaveProperty("community");
+    expect(payload).not.toHaveProperty("building");
+    expect(payload).not.toHaveProperty("unit");
+    expect(payload).not.toHaveProperty("room");
+    expect(payload).not.toHaveProperty("access_info");
   });
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });
@@ -178,7 +179,7 @@ it("searches, adds a second cat, and soft-disables a cat", async () => {
     target: { value: "奶糖" },
   });
   fireEvent.click(screen.getByRole("button", { name: "搜索" }));
-  await waitFor(() => expect(apiMocks.listCustomers).toHaveBeenLastCalledWith("奶糖"));
+  await waitFor(() => expect(apiMocks.listCustomers).toHaveBeenLastCalledWith("奶糖", false));
 
   fireEvent.click(screen.getByRole("button", { name: "添加猫咪" }));
   const dialog = screen.getByRole("dialog", { name: "添加猫咪" });

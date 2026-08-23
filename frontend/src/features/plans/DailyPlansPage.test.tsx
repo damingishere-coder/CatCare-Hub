@@ -44,7 +44,13 @@ function task(
     planned_time: id === 1 ? "09:30:00" : null,
     sort_order: sortOrder,
     status: "confirmed",
-    customer: { id, name: customerName, community: `虚构小区 ${id}` },
+    customer: {
+      id,
+      name: customerName,
+      community: `虚构小区 ${id}`,
+      address: `虚构完整地址 ${id}`,
+    },
+    cat_count: 1,
     cats: [{ id, name: `虚构猫 ${id}` }],
     items: [
       { item_type: "feed", required: true, completed: false },
@@ -80,6 +86,7 @@ const routeWorkspace: PlanRouteWorkspace = {
     coordinate_system: "GCJ-02",
     message: null,
   },
+  recommendation_provider: { name: "openai", configured: true, message: null },
   start: {
     label: "家",
     position: { latitude: 30, longitude: 120 },
@@ -89,6 +96,7 @@ const routeWorkspace: PlanRouteWorkspace = {
     sequence: index + 1,
     customer_name: planTask.customer.name,
     community: planTask.customer.community,
+    address: planTask.customer.address,
     position: { latitude: 30 + (index + 1) / 10, longitude: 120 + (index + 1) / 10 },
     navigation_url: `https://uri.amap.com/navigation?to=${index + 1}`,
   })),
@@ -96,6 +104,8 @@ const routeWorkspace: PlanRouteWorkspace = {
   current_route: null,
   recommended_route: null,
   recommended_task_ids: [],
+  recommendation_source: "none",
+  recommendation_message: null,
   can_adopt_recommendation: false,
 };
 
@@ -115,6 +125,8 @@ const previewWorkspace: PlanRouteWorkspace = {
     polyline: [routeWorkspace.start!.position, ...[...routeWorkspace.markers].reverse().map((marker) => marker.position)],
   },
   recommended_task_ids: [3, 2, 1],
+  recommendation_source: "openai",
+  recommendation_message: "GPT-5.6 Sol 已根据高德行车矩阵生成建议",
   can_adopt_recommendation: true,
 };
 
@@ -187,6 +199,9 @@ it("shows date tasks, route workspace, and a privacy-minimized selected detail",
 
   expect(await screen.findByText("P4 第一位虚构客户")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "路线地图" })).toBeInTheDocument();
+  expect(screen.getByText("高德后端：已配置")).toBeInTheDocument();
+  expect(screen.getByText("街道底图：未配置")).toBeInTheDocument();
+  expect(screen.getByText("GPT 建议：已配置")).toBeInTheDocument();
   expect(screen.getByText(/只有点击生成路线后/)).toBeInTheDocument();
   expect(await screen.findByText("未配置街道底图，按真实坐标展示")).toBeInTheDocument();
   expect(await screen.findByRole("link", { name: "打开高德导航" })).toHaveAttribute(
@@ -276,6 +291,7 @@ it("previews real route metrics and adopts the revision-protected recommendation
   ));
   expect(await screen.findByText("12.6 km · 48 分钟")).toBeInTheDocument();
   expect(screen.getByText("9.8 km · 37 分钟")).toBeInTheDocument();
+  expect(screen.getByText("GPT-5.6 Sol 已根据高德行车矩阵生成建议")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "推荐" }));
   expect(screen.getByRole("button", { name: "地图任务 1：P4 第三位虚构客户" })).toBeInTheDocument();
@@ -295,6 +311,21 @@ it("previews real route metrics and adopts the revision-protected recommendation
   expect(await screen.findByText("P4 第三位虚构客户")).toBeInTheDocument();
 });
 
+it("labels the deterministic fallback when GPT is unavailable", async () => {
+  apiMocks.previewPlanRoute.mockResolvedValue({
+    ...previewWorkspace,
+    recommendation_source: "local",
+    recommendation_message: "GPT 不可用，已使用本地推荐：GPT 路线建议超时",
+  });
+  renderPage();
+  fireEvent.click(await screen.findByRole("button", { name: "生成路线" }));
+
+  expect(
+    await screen.findByText("GPT 不可用，已使用本地推荐：GPT 路线建议超时"),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "一键采用推荐" })).toBeInTheDocument();
+});
+
 it("keeps manual scheduling available when the map provider is not configured", async () => {
   apiMocks.getPlanRoute.mockResolvedValue({
     ...routeWorkspace,
@@ -310,6 +341,7 @@ it("keeps manual scheduling available when the map provider is not configured", 
       task_id: marker.task_id,
       customer_name: marker.customer_name,
       community: marker.community,
+      address: marker.address,
       reason: "not_geocoded" as const,
     })),
   });

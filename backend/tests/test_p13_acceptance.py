@@ -26,12 +26,9 @@ from app.models import (
 )
 from app.models.enums import FormSubmissionStatus, FormTokenStatus
 from app.services import task_uploads
-from app.services.auth import login_rate_limiter
-from app.services.credentials import hash_access_code, token_digest
+from app.services.credentials import token_digest
 
 
-ADMIN_CODE = "P13-admin-acceptance-code"
-MOBILE_CODE = "P13-mobile-acceptance-code"
 TRUSTED_ORIGIN = "http://localhost:5180"
 
 
@@ -47,7 +44,6 @@ def p13_context(
     migrated_database_url: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    real_auth_dependencies,
 ) -> Generator[P13Context, None, None]:
     engine = build_engine(migrated_database_url)
     testing_session = sessionmaker(
@@ -57,19 +53,8 @@ def p13_context(
     )
     upload_root = (tmp_path / "p13-uploads").resolve()
     monkeypatch.setattr(task_uploads, "UPLOAD_ROOT", upload_root)
-    monkeypatch.setenv(
-        "CATCARE_ADMIN_PASSWORD_HASH",
-        hash_access_code(ADMIN_CODE, iterations=300_000),
-    )
-    monkeypatch.setenv(
-        "CATCARE_MOBILE_PASSWORD_HASH",
-        hash_access_code(MOBILE_CODE, iterations=300_000),
-    )
-    monkeypatch.setenv("CATCARE_SESSION_HOURS", "12")
-    monkeypatch.setenv("CATCARE_COOKIE_SECURE", "false")
     monkeypatch.setenv("CATCARE_TRUSTED_ORIGINS", TRUSTED_ORIGIN)
     monkeypatch.setenv("CATCARE_MAP_PROVIDER", "disabled")
-    login_rate_limiter.reset()
 
     def override_get_db() -> Generator[Session, None, None]:
         with testing_session() as session:
@@ -85,23 +70,7 @@ def p13_context(
             )
     finally:
         app.dependency_overrides.pop(get_db, None)
-        login_rate_limiter.reset()
         engine.dispose()
-
-
-def login(client: TestClient, role: str) -> None:
-    access_code = ADMIN_CODE if role == "admin" else MOBILE_CODE
-    response = client.post(
-        "/api/auth/login",
-        json={"role": role, "access_code": access_code},
-    )
-    assert response.status_code == 200
-    assert response.json()["role"] == role
-
-
-def logout(client: TestClient) -> None:
-    response = client.post("/api/auth/logout")
-    assert response.status_code == 204
 
 
 def image_bytes() -> bytes:
@@ -214,10 +183,9 @@ def fill_payload() -> dict[str, object]:
     }
 
 
-def test_p13_authenticated_business_lifecycle(p13_context: P13Context) -> None:
+def test_p13_local_business_lifecycle(p13_context: P13Context) -> None:
     client = p13_context.client
-    assert client.get("/api/admin/customers").status_code == 401
-    login(client, "admin")
+    assert client.get("/api/admin/customers").status_code == 200
 
     customer_response = client.post(
         "/api/admin/customers",
@@ -302,9 +270,6 @@ def test_p13_authenticated_business_lifecycle(p13_context: P13Context) -> None:
     assert stale.status_code == 409
     assert client.get("/api/admin/plans/2036-06-01").json() == saved
 
-    logout(client)
-    login(client, "mobile")
-    assert client.get("/api/admin/customers").status_code == 403
     mobile_day = client.get("/api/mobile/today", params={"date": "2036-06-01"})
     assert mobile_day.status_code == 200
     assert [task["id"] for task in mobile_day.json()["tasks"]] == reversed_ids
@@ -336,8 +301,6 @@ def test_p13_authenticated_business_lifecycle(p13_context: P13Context) -> None:
         assert stored_path is not None and stored_path.is_file()
         assert stored_path.is_relative_to(p13_context.upload_root)
 
-    logout(client)
-    login(client, "admin")
     completed_order = client.get(f"/api/admin/orders/{order['id']}").json()
     assert completed_order["order_status"] == "completed"
     overview = client.get(
@@ -405,7 +368,6 @@ def test_p13_authenticated_business_lifecycle(p13_context: P13Context) -> None:
 
 def test_p13_fill_token_lifecycle(p13_context: P13Context) -> None:
     client = p13_context.client
-    login(client, "admin")
     created_response = client.post(
         "/api/admin/intake/tokens",
         json={"expires_in_days": 14},
@@ -418,8 +380,6 @@ def test_p13_fill_token_lifecycle(p13_context: P13Context) -> None:
     assert next(item for item in listed if item["id"] == created["id"])[
         "fill_path"
     ] is None
-    logout(client)
-
     assert client.get(f"/api/fill/{'x' * 43}").status_code == 404
     draft_response = client.put(f"/api/fill/{raw_token}", json=fill_payload())
     assert draft_response.status_code == 200
@@ -435,13 +395,16 @@ def test_p13_fill_token_lifecycle(p13_context: P13Context) -> None:
         json=fill_payload(),
     ).status_code == 409
 
-    login(client, "admin")
     summaries = client.get("/api/admin/intake/submissions").json()["items"]
     summary = next(item for item in summaries if item["customer_name"].startswith("P13"))
     assert summary["cat_count"] == 2
-    reviewed_response = client.post(
-        f"/api/admin/intake/submissions/{summary['id']}/review",
-        json={"expected_revision": summary["revision"]},
+    reviewed_response = client.put(
+        f"/api/admin/intake/submissions/{summary['id']}/review-draft",
+        json={
+            "expected_revision": summary["revision"],
+            "review_payload": fill_payload(),
+            "unit_price": "35.00",
+        },
     )
     assert reviewed_response.status_code == 200
     reviewed = reviewed_response.json()
@@ -485,7 +448,6 @@ def test_p13_fill_token_lifecycle(p13_context: P13Context) -> None:
         assert stored is not None
         stored.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
 
-    logout(client)
     assert client.get(f"/api/fill/{disabled_raw}").status_code == 410
     assert client.get(f"/api/fill/{expired_raw}").status_code == 410
 

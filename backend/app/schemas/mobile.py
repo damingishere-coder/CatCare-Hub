@@ -19,6 +19,7 @@ class MobileTodayTask(BaseModel):
     status: TaskStatus
     customer_name: str
     community: str | None
+    address: str | None
     cat_count: int
     navigation_url: str | None
     navigation_state: NavigationState
