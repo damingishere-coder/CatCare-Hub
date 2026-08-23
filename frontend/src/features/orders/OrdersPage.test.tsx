@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import { OrdersPage } from "./OrdersPage";
 import type {
@@ -16,6 +17,9 @@ const apiMocks = vi.hoisted(() => ({
   deleteOrder: vi.fn(),
   updateOrder: vi.fn(),
   updateOrderStatus: vi.fn(),
+  retryOrderGeocode: vi.fn(),
+  previewDemoData: vi.fn(),
+  clearDemoData: vi.fn(),
 }));
 
 vi.mock("./api", () => apiMocks);
@@ -90,6 +94,8 @@ const summary: OrderSummary = {
   service_schedule: Array.from({ length: 7 }, (_, index) => ({ service_date: `2030-10-${String(index + 1).padStart(2, "0")}`, visit_count: 1 })),
   service_items: ["feed", "water"],
   pricing_mode: "legacy_components",
+  settlement_mode: "daily",
+  amount_adjustment: { type: "none", amount: "0.00", reason: null, service_date: null },
   unit_price: "35.00",
   base_price: "30.00",
   extra_cat_fee: "5.00",
@@ -100,7 +106,12 @@ const summary: OrderSummary = {
   due_amount: "245.00",
   overpaid_amount: "0.00",
   payment_status: "unpaid",
+  daily_receivables: Array.from({ length: 7 }, (_, index) => ({ service_date: `2030-10-${String(index + 1).padStart(2, "0")}`, expected_amount: "35.00", paid_amount: "0.00", due_amount: "35.00", task_status: "pending" as const })),
   order_status: "pending_confirmation",
+  route_geocode_status: "pending",
+  pending_cat_profile_count: 0,
+  customer_resolution: null,
+  is_demo_data: false,
   task_count: 7,
   deletable: true,
   delete_block_reason: null,
@@ -113,6 +124,14 @@ const detail: OrderDetail = {
   tasks,
   created_at: timestamp,
 };
+
+function renderPage(initialCreate = false) {
+  return render(
+    <MemoryRouter>
+      <OrdersPage initialCreate={initialCreate} />
+    </MemoryRouter>,
+  );
+}
 
 const options: OrderFormOptions = {
   customers: [
@@ -158,7 +177,7 @@ beforeEach(() => {
 });
 
 it("shows an order, authoritative pricing, and seven generated tasks", async () => {
-  render(<OrdersPage />);
+  renderPage();
 
   expect(
     await screen.findByRole(
@@ -170,27 +189,36 @@ it("shows an order, authoritative pricing, and seven generated tasks", async () 
   expect(screen.getByText("7 个日期 · 7 次")).toBeInTheDocument();
   expect(screen.getAllByText("¥245.00").length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText("共 7 个任务；具体时间与排序请在“按天计划”中设置。")).toBeInTheDocument();
-  expect(screen.getByText("2030-10-01")).toBeInTheDocument();
-  expect(screen.getByText("2030-10-07")).toBeInTheDocument();
+  expect(screen.getAllByText("2030-10-01").length).toBeGreaterThanOrEqual(1);
+  expect(screen.getAllByText("2030-10-07").length).toBeGreaterThanOrEqual(1);
   expect(apiMocks.getOrder).toHaveBeenCalledWith(1);
 });
 
-it("creates an order from plain contact text without creating or selecting a profile", async () => {
+it("creates a daily order with standard access selects and a dated surcharge", async () => {
   apiMocks.listOrders
     .mockResolvedValueOnce({ items: [], total: 0 })
     .mockResolvedValue({ items: [summary], total: 1 });
-  render(<OrdersPage />);
+  renderPage();
   expect(await screen.findByText("还没有订单")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "新建订单" }));
   const dialog = screen.getByRole("dialog", { name: "新建订单" });
   fireEvent.change(within(dialog).getByLabelText(/^联系人名称/), { target: { value: "直接输入的订单联系人" } });
   fireEvent.change(within(dialog).getByLabelText("详细地址"), { target: { value: "虚构订单地址 8 号" } });
+  expect(within(dialog).getByLabelText("入户方式").tagName).toBe("SELECT");
+  expect(within(dialog).getByLabelText("钥匙状态").tagName).toBe("SELECT");
+  fireEvent.change(within(dialog).getByLabelText("入户方式"), { target: { value: "钥匙" } });
+  fireEvent.change(within(dialog).getByLabelText("钥匙状态"), { target: { value: "已取" } });
+  fireEvent.change(within(dialog).getByLabelText("钥匙编号"), { target: { value: "TEST-KEY-18" } });
   fireEvent.change(within(dialog).getByLabelText("猫咪数量"), { target: { value: "2" } });
   const today = new Date();
   fireEvent.click(within(dialog).getByRole("button", { name: String(today.getDate()) }));
 
-  expect(within(dialog).getAllByText("¥30.00")).toHaveLength(2);
+  expect(within(dialog).getByLabelText("结算方式")).toHaveValue("daily");
+  fireEvent.change(within(dialog).getByLabelText("金额变动"), { target: { value: "surcharge" } });
+  fireEvent.change(within(dialog).getByLabelText("变动金额（元）"), { target: { value: "5" } });
+  fireEvent.change(within(dialog).getByLabelText("原因"), { target: { value: "节假日加收" } });
+  expect(within(dialog).getAllByText("¥35.00").length).toBeGreaterThanOrEqual(2);
   fireEvent.click(within(dialog).getByRole("button", { name: "创建订单" }));
 
   await waitFor(() => expect(apiMocks.createOrder).toHaveBeenCalledTimes(1));
@@ -204,6 +232,13 @@ it("creates an order from plain contact text without creating or selecting a pro
       cat_count: 2,
       service_dates: [expect.any(String)],
       unit_price: "30.00",
+      settlement_mode: "daily",
+      amount_adjustment: expect.objectContaining({
+        type: "surcharge",
+        amount: "5.00",
+        reason: "节假日加收",
+        service_date: expect.any(String),
+      }),
     }),
   );
   expect(payload).not.toHaveProperty("customer_id");
@@ -213,7 +248,7 @@ it("creates an order from plain contact text without creating or selecting a pro
 });
 
 it("opens the create form from the dashboard quick-entry flag", async () => {
-  render(<OrdersPage initialCreate />);
+  renderPage(true);
 
   await waitFor(() =>
     expect(screen.getByRole("dialog", { name: "新建订单" })).toBeInTheDocument(),
@@ -221,7 +256,7 @@ it("opens the create form from the dashboard quick-entry flag", async () => {
 });
 
 it("edits an order and keeps cancellation as a separate protected action", async () => {
-  render(<OrdersPage />);
+  renderPage();
   expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "编辑订单" }));

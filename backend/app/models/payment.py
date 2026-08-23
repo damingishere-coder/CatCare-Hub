@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Numeric, Text
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -28,6 +28,7 @@ class Payment(TimestampMixin, Base):
             name="payment_status_values",
         ),
         Index("ix_payments_customer_paid_at", "customer_id", "paid_at"),
+        Index("ix_payments_order_service_date", "order_id", "service_date"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -42,6 +43,7 @@ class Payment(TimestampMixin, Base):
         index=True,
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    service_date: Mapped[date | None] = mapped_column(Date, index=True)
     payment_method: Mapped[PaymentMethod] = mapped_column(
         portable_enum(PaymentMethod, name="payment_method", length=16),
         nullable=False,

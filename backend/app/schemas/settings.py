@@ -25,3 +25,28 @@ class IntegrationTestResult(BaseModel):
     target: Literal["amap", "openai"]
     connected: bool
     message: str
+
+
+class DemoDataCounts(BaseModel):
+    customers: int
+    cats: int
+    orders: int
+    tasks: int
+    payments: int
+
+
+class DemoDataPreview(BaseModel):
+    system_key: Literal["catcare-demo-seed-v1"]
+    already_cleared: bool
+    counts: DemoDataCounts
+
+
+class DemoDataClearRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    system_key: Literal["catcare-demo-seed-v1"]
+    confirmation: Literal["永久清除演示数据"]
+
+
+class DemoDataClearResult(DemoDataPreview):
+    cleared: bool

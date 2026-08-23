@@ -125,6 +125,7 @@ class CustomerSummary(BaseModel):
     is_repeat_customer: bool
     active_cat_count: int
     inactive_cat_count: int
+    pending_cat_profile_count: int = Field(ge=0)
     archived_at: datetime | None
     updated_at: datetime
 
@@ -135,6 +136,7 @@ class CustomerDetail(CustomerFields):
     id: int
     name: str
     cats: list[CatRead]
+    pending_cat_profile_count: int = Field(default=0, ge=0)
     archived_at: datetime | None
     created_at: datetime
     updated_at: datetime

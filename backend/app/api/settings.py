@@ -1,14 +1,25 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
 from app.maps import MapProviderError, MapServices
 from app.maps.factory import get_map_services
+from app.db.session import get_db
 from app.schemas.settings import (
     IntegrationSettingsRead,
     IntegrationState,
     IntegrationTestRequest,
     IntegrationTestResult,
+    DemoDataClearRequest,
+    DemoDataClearResult,
+    DemoDataPreview,
+)
+from app.services.demo_data import (
+    DEMO_SYSTEM_KEY,
+    clear_demo_data,
+    demo_data_counts,
+    demo_data_was_cleared,
 )
 from app.services.route_recommendation import (
     OpenAIRouteRecommender,
@@ -23,6 +34,7 @@ RouteRecommenderDependency = Annotated[
     OpenAIRouteRecommender,
     Depends(get_route_recommender),
 ]
+DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
 def _state(name: str, configured: bool, message: str | None) -> IntegrationState:
@@ -73,3 +85,26 @@ def test_integration(
         )
     except (MapProviderError, RouteRecommendationError) as cause:
         raise HTTPException(status_code=502, detail=str(cause)) from cause
+
+
+@router.get("/demo-data", response_model=DemoDataPreview)
+def preview_demo_data(session: DatabaseSession) -> DemoDataPreview:
+    return DemoDataPreview(
+        system_key=DEMO_SYSTEM_KEY,
+        already_cleared=demo_data_was_cleared(session),
+        counts=demo_data_counts(session),
+    )
+
+
+@router.post("/demo-data/clear", response_model=DemoDataClearResult)
+def permanently_clear_demo_data(
+    payload: DemoDataClearRequest,
+    session: DatabaseSession,
+) -> DemoDataClearResult:
+    counts = clear_demo_data(session)
+    return DemoDataClearResult(
+        system_key=payload.system_key,
+        already_cleared=True,
+        counts=counts,
+        cleared=sum(counts.model_dump().values()) > 0,
+    )

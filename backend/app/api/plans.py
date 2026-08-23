@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.maps import MapServices
 from app.maps.factory import get_map_services
 from app.models.order import Order, OrderCat
+from app.models.enums import TaskStatus
 from app.models.task import Task
 from app.schemas.plan import (
     DayPlanResponse,
@@ -168,11 +169,14 @@ def list_plan_days(session: DatabaseSession) -> PlanDaysResponse:
             func.count(distinct(OrderCat.cat_id)),
         )
         .outerjoin(OrderCat, OrderCat.order_id == Task.order_id)
+        .where(Task.status != TaskStatus.CANCELLED)
         .group_by(Task.service_date)
         .order_by(Task.service_date)
     ).all()
     order_rows = session.execute(
-        select(Task.service_date, Task.order_id).distinct()
+        select(Task.service_date, Task.order_id)
+        .where(Task.status != TaskStatus.CANCELLED)
+        .distinct()
     ).all()
     order_ids = {order_id for _, order_id in order_rows}
     order_counts = {

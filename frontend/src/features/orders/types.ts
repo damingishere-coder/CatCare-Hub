@@ -6,6 +6,15 @@ export type OrderStatus =
   | "cancelled";
 
 export type OrderPaymentStatus = "unpaid" | "partial" | "paid" | "refunded";
+export type OrderSettlementMode = "daily" | "order_total";
+export type OrderAdjustmentType = "none" | "surcharge" | "discount";
+
+export interface OrderAmountAdjustment {
+  type: OrderAdjustmentType;
+  amount: string;
+  reason: string | null;
+  service_date: string | null;
+}
 
 export type TaskStatus =
   | "pending"
@@ -107,6 +116,8 @@ export interface OrderSummary {
   service_schedule: Array<{ service_date: string; visit_count: number }>;
   service_items: ServiceItem[];
   pricing_mode: "legacy_components" | "per_visit";
+  settlement_mode: OrderSettlementMode;
+  amount_adjustment: OrderAmountAdjustment;
   unit_price: string;
   base_price: string;
   extra_cat_fee: string;
@@ -117,7 +128,18 @@ export interface OrderSummary {
   due_amount: string;
   overpaid_amount: string;
   payment_status: OrderPaymentStatus;
+  daily_receivables: Array<{
+    service_date: string;
+    expected_amount: string;
+    paid_amount: string;
+    due_amount: string;
+    task_status: TaskStatus | null;
+  }>;
   order_status: OrderStatus;
+  route_geocode_status: string | null;
+  pending_cat_profile_count: number;
+  customer_resolution: string | null;
+  is_demo_data: boolean;
   task_count: number;
   deletable: boolean;
   delete_block_reason: string | null;
@@ -176,6 +198,8 @@ export interface OrderCreateInput {
   service_dates: string[];
   service_items: ServiceItem[];
   unit_price: string;
+  settlement_mode: OrderSettlementMode;
+  amount_adjustment: OrderAmountAdjustment;
   notes: string | null;
 }
 
@@ -187,6 +211,8 @@ export interface OrderPatchInput {
   service_dates?: string[];
   service_items?: ServiceItem[];
   unit_price?: string;
+  settlement_mode?: OrderSettlementMode;
+  amount_adjustment?: OrderAmountAdjustment;
   notes?: string | null;
 }
 

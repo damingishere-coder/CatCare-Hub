@@ -101,7 +101,7 @@ def fake_map_provider() -> FakeMapProvider:
         app.dependency_overrides.pop(get_map_services, None)
 
 
-def test_route_workspace_is_local_until_explicit_preview_and_adopts_recommendation(
+def test_order_save_geocodes_before_explicit_route_preview_and_adopts_recommendation(
     plan_api_context: PlanApiContext,
     fake_map_provider: FakeMapProvider,
 ) -> None:
@@ -119,10 +119,10 @@ def test_route_workspace_is_local_until_explicit_preview_and_adopts_recommendati
         "message": None,
     }
     assert local["start"]["label"] == "家"
-    assert local["markers"] == []
-    assert len(local["unresolved_tasks"]) == 3
+    assert len(local["markers"]) == 3
+    assert local["unresolved_tasks"] == []
     assert local["current_route"] is None
-    assert fake_map_provider.geocode_calls == []
+    assert len(fake_map_provider.geocode_calls) == 2
 
     preview_response = client.post(
         "/api/admin/plans/2033-10-01/route/preview",
@@ -145,7 +145,7 @@ def test_route_workspace_is_local_until_explicit_preview_and_adopts_recommendati
     assert preview["recommended_task_ids"] == list(
         reversed([task["id"] for task in day["tasks"]])
     )
-    assert preview["revision"] != day["revision"]
+    assert preview["revision"] == day["revision"]
 
     serialized = preview_response.text
     for forbidden in (
@@ -204,7 +204,7 @@ def test_route_preview_caches_order_coordinates_and_ignores_later_profile_change
     with plan_api_context.session_factory() as session:
         customer = session.get(Customer, customer_id)
         assert customer is not None
-        assert customer.geocode_status == "pending"
+        assert customer.geocode_status == "resolved"
         order_ids = {
             task.order_id
             for task in session.scalars(
@@ -437,4 +437,4 @@ def test_cancelled_tasks_are_excluded_and_missing_address_is_not_guessed(
             "reason": "missing_address",
         }
     ]
-    assert fake_map_provider.geocode_calls == []
+    assert len(fake_map_provider.geocode_calls) == 2

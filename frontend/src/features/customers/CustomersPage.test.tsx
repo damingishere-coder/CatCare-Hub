@@ -46,6 +46,7 @@ const summary: CustomerSummary = {
   is_repeat_customer: true,
   active_cat_count: 1,
   inactive_cat_count: 0,
+  pending_cat_profile_count: 0,
   archived_at: null,
   updated_at: timestamp,
 };
@@ -67,6 +68,7 @@ const detail: CustomerDetail = {
   notes: "自动测试资料",
   is_repeat_customer: true,
   cats: [cat],
+  pending_cat_profile_count: 0,
   archived_at: null,
   created_at: timestamp,
   updated_at: timestamp,

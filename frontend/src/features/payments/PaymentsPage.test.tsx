@@ -23,6 +23,8 @@ const overview: PaymentsOverview = {
   receivables: [
     {
       order_id: 12,
+      settlement_mode: "daily",
+      service_date: "2035-10-06",
       customer_name: "P8 页面客户（虚构）",
       community: "P8 虚构小区",
       address: "P8 不对应真实地点的地址",
@@ -35,6 +37,7 @@ const overview: PaymentsOverview = {
       overpaid_amount: "0.00",
       payment_status: "partial",
       order_status: "completed",
+      task_status: "completed",
       revision: "a".repeat(64),
     },
   ],
@@ -42,6 +45,7 @@ const overview: PaymentsOverview = {
     {
       id: 31,
       order_id: 12,
+      service_date: "2035-10-06",
       customer_name: "P8 页面客户（虚构）",
       start_date: "2035-10-06",
       end_date: "2035-10-08",
@@ -107,6 +111,7 @@ it("opens a targeted order, registers a payment, and refreshes", async () => {
 
   await waitFor(() => expect(apiMocks.registerPayment).toHaveBeenCalledWith({
     order_id: 12,
+    service_date: "2035-10-06",
     amount: "10.00",
     payment_method: "cash",
     paid_at: "2035-10-06T09:30:00+08:00",

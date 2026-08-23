@@ -34,9 +34,21 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _customer_detail(customer: Customer) -> CustomerDetail:
+def _pending_cat_profile_count(session: Session, customer: Customer) -> int:
+    ordered_cat_count = int(
+        session.scalar(
+            select(func.max(Order.cat_count)).where(Order.customer_id == customer.id)
+        )
+        or 0
+    )
+    active_cat_count = sum(1 for cat in customer.cats if cat.is_active)
+    return max(ordered_cat_count - active_cat_count, 0)
+
+
+def _customer_detail(session: Session, customer: Customer) -> CustomerDetail:
     detail = CustomerDetail.model_validate(customer)
     detail.cats.sort(key=lambda cat: (not cat.is_active, cat.id))
+    detail.pending_cat_profile_count = _pending_cat_profile_count(session, customer)
     return detail
 
 
@@ -105,6 +117,18 @@ def _list_customers(
             is_repeat_customer=customer.is_repeat_customer,
             active_cat_count=int(active_count),
             inactive_cat_count=int(inactive_count),
+            pending_cat_profile_count=max(
+                int(
+                    session.scalar(
+                        select(func.max(Order.cat_count)).where(
+                            Order.customer_id == customer.id
+                        )
+                    )
+                    or 0
+                )
+                - int(active_count),
+                0,
+            ),
             archived_at=customer.archived_at,
             updated_at=customer.updated_at,
         )
@@ -142,12 +166,12 @@ def create_customer(payload: CustomerCreate, session: DatabaseSession) -> Custom
     customer = build_customer(payload)
     session.add(customer)
     session.commit()
-    return _customer_detail(_load_customer(session, customer.id))
+    return _customer_detail(session, _load_customer(session, customer.id))
 
 
 @router.get("/{customer_id}", response_model=CustomerDetail)
 def get_customer(customer_id: int, session: DatabaseSession) -> CustomerDetail:
-    return _customer_detail(_load_customer(session, customer_id))
+    return _customer_detail(session, _load_customer(session, customer_id))
 
 
 @router.patch("/{customer_id}", response_model=CustomerDetail)
@@ -176,7 +200,7 @@ def update_customer(
             else "missing"
         )
     session.commit()
-    return _customer_detail(_load_customer(session, customer_id))
+    return _customer_detail(session, _load_customer(session, customer_id))
 
 
 @router.patch("/{customer_id}/archive", response_model=CustomerDetail)
@@ -188,7 +212,7 @@ def archive_customer(
     customer = _load_customer(session, customer_id)
     customer.archived_at = datetime.now(timezone.utc) if payload.archived else None
     session.commit()
-    return _customer_detail(_load_customer(session, customer_id))
+    return _customer_detail(session, _load_customer(session, customer_id))
 
 
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)

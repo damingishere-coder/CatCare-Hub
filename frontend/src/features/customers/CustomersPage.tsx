@@ -416,6 +416,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                       <p className={`mt-2 text-xs ${selectedCustomerId === customer.id ? "text-slate-300" : "text-slate-500"}`}>
                         在档猫咪 {customer.active_cat_count} 只
                         {customer.inactive_cat_count ? ` · 已停用 ${customer.inactive_cat_count} 只` : ""}
+                        {customer.pending_cat_profile_count ? ` · 待补 ${customer.pending_cat_profile_count} 只` : ""}
                       </p>
                     </button>
                   </li>
@@ -508,6 +509,7 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
               </section>
 
               <section className="mt-6" aria-labelledby="customer-cats-title">
+                {customerDetail.pending_cat_profile_count > 0 ? <p className="cc-alert cc-alert--warning mb-3">仍有 {customerDetail.pending_cat_profile_count} 只猫咪资料待补。订单只保留数量，不会自动生成占位猫咪。</p> : null}
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <h3 id="customer-cats-title" className="text-base font-semibold text-slate-950">猫咪档案</h3>

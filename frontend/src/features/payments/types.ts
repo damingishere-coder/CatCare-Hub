@@ -1,4 +1,4 @@
-import type { OrderPaymentStatus, OrderStatus } from "../orders/types";
+import type { OrderPaymentStatus, OrderSettlementMode, OrderStatus, TaskStatus } from "../orders/types";
 
 export type PaymentMethod = "wechat" | "alipay" | "cash" | "other";
 export type PaymentRecordStatus = "pending" | "completed" | "refunded";
@@ -12,6 +12,8 @@ export interface PaymentMetrics {
 
 export interface PaymentReceivable {
   order_id: number;
+  settlement_mode: OrderSettlementMode;
+  service_date: string | null;
   customer_name: string;
   community: string | null;
   address: string | null;
@@ -24,12 +26,14 @@ export interface PaymentReceivable {
   overpaid_amount: string;
   payment_status: OrderPaymentStatus;
   order_status: OrderStatus;
+  task_status: TaskStatus | null;
   revision: string;
 }
 
 export interface PaymentRecord {
   id: number;
   order_id: number;
+  service_date: string | null;
   customer_name: string;
   start_date: string;
   end_date: string;
@@ -50,6 +54,7 @@ export interface PaymentsOverview {
 
 export interface PaymentCreateInput {
   order_id: number;
+  service_date: string | null;
   amount: string;
   payment_method: PaymentMethod;
   paid_at: string;

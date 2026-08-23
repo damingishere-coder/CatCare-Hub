@@ -5,10 +5,23 @@ from decimal import Decimal, ROUND_HALF_UP
 from fastapi import HTTPException
 
 from app.models.customer import Cat, Customer
-from app.models.enums import OrderPaymentStatus, OrderStatus, TaskItemType, TaskStatus
+from app.models.enums import (
+    OrderAdjustmentType,
+    OrderPaymentStatus,
+    OrderSettlementMode,
+    OrderStatus,
+    PaymentRecordStatus,
+    TaskItemType,
+    TaskStatus,
+)
 from app.models.order import Order, OrderCat, OrderServiceDate
 from app.models.task import Task, TaskItem
-from app.schemas.order import OrderCreate, OrderServiceContact, OrderWrite
+from app.schemas.order import (
+    OrderAmountAdjustment,
+    OrderCreate,
+    OrderServiceContact,
+    OrderWrite,
+)
 
 
 MONEY = Decimal("0.01")
@@ -26,6 +39,14 @@ class OrderPricing:
     stairs_fee: Decimal
     other_fee: Decimal
     total_amount: Decimal
+
+
+@dataclass(frozen=True)
+class DailyReceivable:
+    service_date: date
+    expected_amount: Decimal
+    paid_amount: Decimal
+    due_amount: Decimal
 
 
 def money(value: Decimal) -> Decimal:
@@ -105,6 +126,83 @@ def order_service_days(order: Order) -> int:
 
 def order_total_visits(order: Order) -> int:
     return sum(visit_count for _, visit_count in order_schedule(order))
+
+
+def _adjustment_delta(order: Order, service_date: date) -> Decimal:
+    if (
+        order.adjustment_service_date != service_date
+        or order.adjustment_type is OrderAdjustmentType.NONE
+    ):
+        return Decimal("0.00")
+    if order.adjustment_type is OrderAdjustmentType.SURCHARGE:
+        return money(order.adjustment_amount)
+    return -money(order.adjustment_amount)
+
+
+def _base_daily_charge(order: Order, service_date: date) -> Decimal:
+    schedule = dict(order_schedule(order))
+    if service_date not in schedule:
+        raise ValueError("服务日期不属于订单")
+    visit_count = schedule[service_date]
+    if order.pricing_mode == "per_visit":
+        base = money(order.base_price * visit_count)
+    else:
+        base = money(
+            (order.base_price + order.extra_cat_fee + order.stairs_fee) * visit_count
+        )
+        if service_date == min(schedule):
+            base = money(base + order.other_fee)
+    return base
+
+
+def order_daily_charge(order: Order, service_date: date) -> Decimal:
+    return money(
+        _base_daily_charge(order, service_date)
+        + _adjustment_delta(order, service_date)
+    )
+
+
+def order_daily_receivables(order: Order) -> list[DailyReceivable]:
+    paid_by_date: dict[date, Decimal] = {}
+    for payment in order.payments:
+        if (
+            payment.payment_status is PaymentRecordStatus.COMPLETED
+            and payment.service_date is not None
+        ):
+            paid_by_date[payment.service_date] = money(
+                paid_by_date.get(payment.service_date, Decimal("0.00"))
+                + payment.amount
+            )
+    return [
+        DailyReceivable(
+            service_date=service_date,
+            expected_amount=(expected := order_daily_charge(order, service_date)),
+            paid_amount=(paid := paid_by_date.get(service_date, Decimal("0.00"))),
+            due_amount=money(max(expected - paid, Decimal("0.00"))),
+        )
+        for service_date, _ in order_schedule(order)
+    ]
+
+
+def apply_amount_adjustment(
+    order: Order, adjustment: OrderAmountAdjustment
+) -> None:
+    service_dates = {service_date for service_date, _ in order_schedule(order)}
+    if (
+        adjustment.service_date is not None
+        and adjustment.service_date not in service_dates
+    ):
+        raise HTTPException(status_code=422, detail="金额变动日期必须属于订单服务日期")
+    if (
+        adjustment.type is OrderAdjustmentType.DISCOUNT
+        and adjustment.service_date is not None
+        and money(adjustment.amount) > _base_daily_charge(order, adjustment.service_date)
+    ):
+        raise HTTPException(status_code=422, detail="减免后当日应收不能小于 0")
+    order.adjustment_type = adjustment.type
+    order.adjustment_amount = money(adjustment.amount)
+    order.adjustment_reason = adjustment.reason
+    order.adjustment_service_date = adjustment.service_date
 
 
 def replace_order_schedule(order: Order, schedule: list[tuple[date, int]]) -> None:
@@ -257,6 +355,7 @@ def build_order(
         cat_count=len(cats),
         service_items=[item.value for item in payload.service_items],
         pricing_mode="legacy_components",
+        settlement_mode=payload.settlement_mode,
         base_price=pricing.base_price,
         extra_cat_fee=pricing.extra_cat_fee,
         stairs_fee=pricing.stairs_fee,
@@ -278,6 +377,8 @@ def build_order(
         ],
     )
     order.visits_per_day = payload.visits_per_day
+    apply_amount_adjustment(order, payload.amount_adjustment)
+    reprice_order(order)
     generate_order_tasks(order)
     return order
 
@@ -302,6 +403,7 @@ def build_simple_order(
         cat_count=payload.cat_count,
         service_items=[item.value for item in payload.service_items],
         pricing_mode="per_visit",
+        settlement_mode=payload.settlement_mode,
         base_price=pricing.base_price,
         extra_cat_fee=pricing.extra_cat_fee,
         stairs_fee=pricing.stairs_fee,
@@ -325,6 +427,8 @@ def build_simple_order(
     )
     apply_service_contact(order, _resolved_contact(payload, source_customer))
     replace_order_schedule(order, schedule)
+    apply_amount_adjustment(order, payload.amount_adjustment)
+    reprice_order(order)
     generate_order_tasks(order)
     return order
 
@@ -353,7 +457,6 @@ def payment_status_for_amounts(
 
 
 def reprice_order(order: Order, *, unit_price: Decimal | None = None) -> None:
-    total_visits = order_total_visits(order)
     if unit_price is not None:
         order.pricing_mode = "per_visit"
         order.base_price = money(unit_price)
@@ -361,14 +464,27 @@ def reprice_order(order: Order, *, unit_price: Decimal | None = None) -> None:
         order.stairs_fee = Decimal("0.00")
         order.other_fee = Decimal("0.00")
 
-    if order.pricing_mode == "per_visit":
-        order.total_amount = money(order.base_price * total_visits)
-    else:
+    if order.pricing_mode != "per_visit":
         order.extra_cat_fee = money(EXTRA_CAT_UNIT_PRICE * max(order.cat_count - 1, 0))
-        order.total_amount = money(
-            (order.base_price + order.extra_cat_fee + order.stairs_fee) * total_visits
-            + order.other_fee
+    service_dates = {service_date for service_date, _ in order_schedule(order)}
+    if (
+        order.adjustment_type is not OrderAdjustmentType.NONE
+        and order.adjustment_service_date not in service_dates
+    ):
+        raise HTTPException(status_code=422, detail="金额变动日期必须属于订单服务日期")
+    if (
+        order.adjustment_type is OrderAdjustmentType.DISCOUNT
+        and order.adjustment_service_date is not None
+        and money(order.adjustment_amount)
+        > _base_daily_charge(order, order.adjustment_service_date)
+    ):
+        raise HTTPException(status_code=422, detail="减免后当日应收不能小于 0")
+    order.total_amount = money(
+        sum(
+            (order_daily_charge(order, service_date) for service_date, _ in order_schedule(order)),
+            Decimal("0.00"),
         )
+    )
     order.payment_status = payment_status_for_amounts(
         total_amount=order.total_amount,
         paid_amount=order.paid_amount,

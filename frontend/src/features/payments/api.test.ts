@@ -42,6 +42,7 @@ it("registers a completed payment using the order revision", async () => {
   );
   const payload = {
     order_id: 12,
+    service_date: "2035-10-06",
     amount: "10.00",
     payment_method: "wechat" as const,
     paid_at: "2035-10-06T01:30:00.000Z",

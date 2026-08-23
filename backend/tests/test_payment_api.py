@@ -91,6 +91,7 @@ def create_payment_order(
             "base_price": "30.00",
             "stairs_fee": "0.00",
             "other_fee": "0.00",
+            "settlement_mode": "order_total",
             "order_status": "confirmed",
             "notes": "P8 不应进入收款页的订单备注",
         },

@@ -6,7 +6,13 @@ from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Index, JSON, 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.enums import OrderPaymentStatus, OrderStatus, portable_enum
+from app.models.enums import (
+    OrderAdjustmentType,
+    OrderPaymentStatus,
+    OrderSettlementMode,
+    OrderStatus,
+    portable_enum,
+)
 from app.models.mixins import TimestampMixin
 
 
@@ -27,6 +33,15 @@ class Order(TimestampMixin, Base):
         CheckConstraint("other_fee >= 0", name="other_fee_non_negative"),
         CheckConstraint("total_amount >= 0", name="total_amount_non_negative"),
         CheckConstraint("paid_amount >= 0", name="paid_amount_non_negative"),
+        CheckConstraint(
+            "settlement_mode IN ('daily', 'order_total')",
+            name="settlement_mode_values",
+        ),
+        CheckConstraint(
+            "adjustment_type IN ('none', 'surcharge', 'discount')",
+            name="adjustment_type_values",
+        ),
+        CheckConstraint("adjustment_amount >= 0", name="adjustment_amount_non_negative"),
         CheckConstraint(
             "payment_status IN ('unpaid', 'partial', 'paid', 'refunded')",
             name="payment_status_values",
@@ -76,6 +91,24 @@ class Order(TimestampMixin, Base):
     pricing_mode: Mapped[str] = mapped_column(
         String(24), nullable=False, default="legacy_components", server_default="legacy_components"
     )
+    settlement_mode: Mapped[OrderSettlementMode] = mapped_column(
+        portable_enum(OrderSettlementMode, name="order_settlement_mode", length=16),
+        nullable=False,
+        default=OrderSettlementMode.DAILY,
+        server_default=OrderSettlementMode.ORDER_TOTAL.value,
+        index=True,
+    )
+    adjustment_type: Mapped[OrderAdjustmentType] = mapped_column(
+        portable_enum(OrderAdjustmentType, name="order_adjustment_type", length=16),
+        nullable=False,
+        default=OrderAdjustmentType.NONE,
+        server_default=OrderAdjustmentType.NONE.value,
+    )
+    adjustment_amount: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
+    adjustment_reason: Mapped[str | None] = mapped_column(Text)
+    adjustment_service_date: Mapped[date | None] = mapped_column(Date)
     base_price: Mapped[Decimal] = mapped_column(
         Numeric(10, 2), nullable=False, default=Decimal("0.00"), server_default="0"
     )

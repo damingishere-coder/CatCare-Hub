@@ -21,6 +21,7 @@ BUSINESS_TABLES = {
     "order_service_dates",
     "orders",
     "payments",
+    "system_flags",
     "task_items",
     "task_photos",
     "tasks",
@@ -228,6 +229,14 @@ def test_p16_migration_upgrades_explicit_0007_database_and_preserves_history(
                     "(SELECT COUNT(*) FROM order_service_dates)"
                 )
             ).one()
+            p18_compatibility = connection.execute(
+                text(
+                    "SELECT orders.settlement_mode, orders.adjustment_type, "
+                    "orders.adjustment_amount, payments.service_date "
+                    "FROM orders JOIN payments ON payments.order_id = orders.id "
+                    "WHERE orders.id = 1"
+                )
+            ).one()
         assert tuple(order[:6]) == (
             "P16 迁移客户（虚构）",
             "P16-FAKE-PHONE",
@@ -240,6 +249,7 @@ def test_p16_migration_upgrades_explicit_0007_database_and_preserves_history(
         assert snapshot[0]["name"] == "P16 迁移猫（虚构）"
         assert snapshot[0]["service_notes"] == "迁移照护说明"
         assert tuple(counts) == (1, 1, 1, 1, 1)
+        assert tuple(p18_compatibility) == ("order_total", "none", 0, None)
 
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM customers WHERE id = 1"))

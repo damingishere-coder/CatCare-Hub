@@ -2,13 +2,21 @@ import { BookUser, Calculator, ChevronLeft, ChevronRight, LoaderCircle, X } from
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { serviceItemOptions } from "./constants";
+import {
+  accessMethodOptions,
+  keyStatusOptions,
+  optionsWithLegacy,
+} from "../../lib/customerDisplay";
 import type {
+  OrderAdjustmentType,
+  OrderAmountAdjustment,
   OrderCreateInput,
   OrderDetail,
   OrderFormOptions,
   OrderPatchInput,
   OrderSaveInput,
   OrderServiceContact,
+  OrderSettlementMode,
   ServiceItem,
 } from "./types";
 
@@ -102,6 +110,21 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
   });
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>(initial?.service_items ?? defaultServices);
   const [unitPrice, setUnitPrice] = useState(initial?.unit_price ?? options.default_base_price);
+  const [settlementMode, setSettlementMode] = useState<OrderSettlementMode>(
+    initial?.settlement_mode ?? "daily",
+  );
+  const [adjustmentType, setAdjustmentType] = useState<OrderAdjustmentType>(
+    initial?.amount_adjustment.type ?? "none",
+  );
+  const [adjustmentAmount, setAdjustmentAmount] = useState(
+    initial?.amount_adjustment.amount ?? "0.00",
+  );
+  const [adjustmentReason, setAdjustmentReason] = useState(
+    initial?.amount_adjustment.reason ?? "",
+  );
+  const [adjustmentDate, setAdjustmentDate] = useState(
+    initial?.amount_adjustment.service_date ?? firstDate,
+  );
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +156,22 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
 
   const selectedSet = useMemo(() => new Set(selectedDates), [selectedDates]);
   const calendarDays = useMemo(() => monthGrid(visibleMonth), [visibleMonth]);
-  const total = selectedDates.length * (Number(unitPrice) || 0);
+  const adjustmentValue = adjustmentType === "none" ? 0 : Number(adjustmentAmount) || 0;
+  const initialVisitCounts = useMemo(
+    () => new Map(initial?.service_schedule.map((entry) => [entry.service_date, entry.visit_count]) ?? []),
+    [initial],
+  );
+  const dailyAmounts = selectedDates.map((serviceDate) => {
+    const visitCount = scheduleDirty ? 1 : (initialVisitCounts.get(serviceDate) ?? 1);
+    const baseAmount = (Number(unitPrice) || 0) * visitCount;
+    const adjustment = serviceDate === adjustmentDate
+      ? (adjustmentType === "surcharge" ? adjustmentValue : adjustmentType === "discount" ? -adjustmentValue : 0)
+      : 0;
+    return { serviceDate, visitCount, baseAmount, finalAmount: Math.max(baseAmount + adjustment, 0) };
+  });
+  const baseTotal = dailyAmounts.reduce((sum, item) => sum + item.baseAmount, 0);
+  const total = dailyAmounts.reduce((sum, item) => sum + item.finalAmount, 0);
+  const financialLocked = Boolean(initial && Number(initial.paid_amount) > 0);
 
   function selectCustomer(customerId: number) {
     const customer = options.customers.find((entry) => entry.id === customerId);
@@ -184,7 +222,11 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
 
   function toggleDate(date: Date) {
     const value = localDateValue(date);
-    setSelectedDates((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value].sort());
+    setSelectedDates((current) => {
+      const next = current.includes(value) ? current.filter((item) => item !== value) : [...current, value].sort();
+      if (!next.includes(adjustmentDate)) setAdjustmentDate(next[0] ?? "");
+      return next;
+    });
     setScheduleDirty(true);
   }
 
@@ -215,6 +257,33 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
       setError("每次价格必须是大于或等于 0 的数字。");
       return;
     }
+    if (adjustmentType !== "none") {
+      if (!adjustmentDate || !selectedDates.includes(adjustmentDate)) {
+        setError("请选择订单内的金额变动服务日期。");
+        return;
+      }
+      if (!Number.isFinite(Number(adjustmentAmount)) || Number(adjustmentAmount) <= 0) {
+        setError("加收或减免金额必须大于 0。");
+        return;
+      }
+      if (!adjustmentReason.trim()) {
+        setError("请填写加收或减免原因。");
+        return;
+      }
+      if (adjustmentType === "discount" && Number(adjustmentAmount) > Number(unitPrice)) {
+        setError("减免后当日应收不能小于 0。");
+        return;
+      }
+    }
+
+    const amountAdjustment: OrderAmountAdjustment = adjustmentType === "none"
+      ? { type: "none", amount: "0.00", reason: null, service_date: null }
+      : {
+          type: adjustmentType,
+          amount: Number(adjustmentAmount).toFixed(2),
+          reason: adjustmentReason.trim(),
+          service_date: adjustmentDate,
+        };
 
     let payload: OrderCreateInput | OrderPatchInput;
     if (!initial) {
@@ -226,6 +295,8 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
         service_dates: selectedDates,
         service_items: serviceItems,
         unit_price: Number(unitPrice).toFixed(2),
+        settlement_mode: settlementMode,
+        amount_adjustment: amountAdjustment,
         notes: optionalValue(notes),
       } satisfies OrderCreateInput;
     } else {
@@ -238,6 +309,8 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
       if (scheduleDirty) patch.service_dates = selectedDates;
       if (!sameItems(serviceItems, initial.service_items)) patch.service_items = serviceItems;
       if (Number(unitPrice).toFixed(2) !== Number(initial.unit_price).toFixed(2)) patch.unit_price = Number(unitPrice).toFixed(2);
+      if (settlementMode !== initial.settlement_mode) patch.settlement_mode = settlementMode;
+      if (JSON.stringify(amountAdjustment) !== JSON.stringify(initial.amount_adjustment)) patch.amount_adjustment = amountAdjustment;
       if (optionalValue(notes) !== initial.notes) patch.notes = optionalValue(notes);
       payload = patch;
     }
@@ -282,8 +355,9 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
                     <label className={`${labelClass} sm:col-span-2`}>详细地址<input className={inputClass} value={serviceContact.address ?? ""} placeholder="未填写时订单仍可保存，但不能自动规划路线" onChange={(event) => updateContact("address", optionalValue(event.target.value))} /></label>
                     <label className={labelClass}>楼栋<input className={inputClass} value={serviceContact.building ?? ""} onChange={(event) => updateContact("building", optionalValue(event.target.value))} /></label>
                     <label className={labelClass}>单元 / 房间<input className={inputClass} value={[serviceContact.unit, serviceContact.room].filter(Boolean).join(" / ")} placeholder="例如 2 单元 / 1201" onChange={(event) => { const [unit, room] = event.target.value.split("/"); updateContact("unit", optionalValue(unit ?? "")); updateContact("room", optionalValue(room ?? "")); }} /></label>
-                    <label className={labelClass}>入户方式<input className={inputClass} value={serviceContact.access_method ?? ""} onChange={(event) => updateContact("access_method", optionalValue(event.target.value))} /></label>
-                    <label className={labelClass}>钥匙状态 / 编号<input className={inputClass} value={[serviceContact.key_status, serviceContact.key_code].filter(Boolean).join(" / ")} onChange={(event) => { const [keyStatus, keyCode] = event.target.value.split("/"); updateContact("key_status", optionalValue(keyStatus ?? "")); updateContact("key_code", optionalValue(keyCode ?? "")); }} /></label>
+                    <label className={labelClass}>入户方式<select className={inputClass} value={serviceContact.access_method ?? ""} onChange={(event) => updateContact("access_method", optionalValue(event.target.value))}><option value="">请选择</option>{optionsWithLegacy(accessMethodOptions, serviceContact.access_method).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+                    <label className={labelClass}>钥匙状态<select className={inputClass} value={serviceContact.key_status ?? ""} onChange={(event) => updateContact("key_status", optionalValue(event.target.value))}><option value="">请选择</option>{optionsWithLegacy(keyStatusOptions, serviceContact.key_status).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+                    <label className={labelClass}>钥匙编号<input className={inputClass} value={serviceContact.key_code ?? ""} onChange={(event) => updateContact("key_code", optionalValue(event.target.value))} /></label>
                     <label className={`${labelClass} sm:col-span-2`}>门禁与入户说明<textarea className={`${inputClass} min-h-20 resize-y`} value={serviceContact.access_info ?? ""} onChange={(event) => updateContact("access_info", optionalValue(event.target.value))} /></label>
                     <label className={`${labelClass} sm:col-span-2`}>客户备注<textarea className={`${inputClass} min-h-20 resize-y`} value={serviceContact.notes ?? ""} onChange={(event) => updateContact("notes", optionalValue(event.target.value))} /></label>
                   </div>
@@ -308,17 +382,18 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
                   <label className={`${labelClass} mt-4`}>服务备注<textarea className={`${inputClass} min-h-24 resize-y`} rows={3} maxLength={4000} value={notes} placeholder="例如喂食用量、猫咪习惯或需要特别留意的事项" onChange={(event) => setNotes(event.target.value)} /></label>
                 </fieldset>
 
-                <section aria-labelledby="order-price-fields">
-                  <h3 id="order-price-fields" className="text-sm font-semibold text-slate-950">价格</h3>
-                  <label className={`${labelClass} mt-3 max-w-xs`}>每次价格（元）<input className={inputClass} type="number" min="0" step="0.01" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} required /></label>
-                  {initial && Number(initial.paid_amount) > 0 ? <p className="mt-2 text-xs leading-5 text-slate-500">已收 {money(Number(initial.paid_amount))} 元。改价不会修改已收金额；如产生超收，保存后会明确显示。</p> : null}
-                </section>
               </div>
 
               <aside className="h-fit rounded-2xl border border-orange-100 bg-orange-50/60 p-4 lg:sticky lg:top-0" aria-label="金额预览">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-950"><Calculator size={16} />自动计算</h3>
-                <dl className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><dt className="text-slate-500">服务日期</dt><dd>{selectedDates.length} 天</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">每次价格</dt><dd>¥{money(Number(unitPrice) || 0)}</dd></div></dl>
-                <div className="mt-4 border-t border-orange-200 pt-4"><p className="text-xs text-slate-500">预计应收</p><p className="mt-1 text-3xl font-semibold tracking-tight text-[#1D1D1F]">¥{money(total)}</p><p className="mt-2 text-xs leading-5 text-slate-500">选中日期数 × 每次价格，不叠加猫咪、爬楼或其他费用。</p></div>
+                <label className={`${labelClass} mt-4`}>每次价格（元）<input className={inputClass} type="number" min="0" step="0.01" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} disabled={financialLocked} required /></label>
+                <label className={`${labelClass} mt-3`}>结算方式<select className={inputClass} value={settlementMode} onChange={(event) => setSettlementMode(event.target.value as OrderSettlementMode)} disabled={financialLocked}><option value="daily">按日期日结</option><option value="order_total">整单结算</option></select></label>
+                <label className={`${labelClass} mt-3`}>金额变动<select className={inputClass} value={adjustmentType} onChange={(event) => setAdjustmentType(event.target.value as OrderAdjustmentType)} disabled={financialLocked}><option value="none">无变动</option><option value="surcharge">加收</option><option value="discount">减免</option></select></label>
+                {adjustmentType !== "none" ? <div className="mt-3 space-y-3"><label className={labelClass}>服务日期<select className={inputClass} value={adjustmentDate} onChange={(event) => setAdjustmentDate(event.target.value)} disabled={financialLocked}>{selectedDates.map((date) => <option key={date} value={date}>{date}</option>)}</select></label><label className={labelClass}>变动金额（元）<input className={inputClass} type="number" min="0.01" step="0.01" value={adjustmentAmount} onChange={(event) => setAdjustmentAmount(event.target.value)} disabled={financialLocked} /></label><label className={labelClass}>原因<input className={inputClass} value={adjustmentReason} onChange={(event) => setAdjustmentReason(event.target.value)} maxLength={1000} disabled={financialLocked} /></label></div> : null}
+                <dl className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><dt className="text-slate-500">服务日期</dt><dd>{selectedDates.length} 天</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">基础应收</dt><dd>¥{money(baseTotal)}</dd></div>{adjustmentType !== "none" ? <div className="flex justify-between gap-4"><dt className="text-slate-500">{adjustmentType === "surcharge" ? "加收" : "减免"}</dt><dd>{adjustmentType === "surcharge" ? "+" : "-"}¥{money(adjustmentValue)}</dd></div> : null}</dl>
+                {dailyAmounts.length > 0 ? <div className="mt-4 space-y-1.5 rounded-xl bg-white/70 p-3" aria-label="每日金额"><p className="text-xs font-semibold text-slate-700">每日金额</p>{dailyAmounts.map((item) => <div key={item.serviceDate} className="flex justify-between gap-3 text-xs text-slate-600"><span>{item.serviceDate}{item.visitCount > 1 ? ` · ${item.visitCount} 次` : ""}</span><span>¥{money(item.finalAmount)}</span></div>)}</div> : null}
+                <div className="mt-4 border-t border-orange-200 pt-4"><p className="text-xs text-slate-500">最终应收</p><p className="mt-1 text-3xl font-semibold tracking-tight text-[#1D1D1F]">¥{money(total)}</p><p className="mt-2 text-xs leading-5 text-slate-500">每次基础 ¥{money(Number(unitPrice) || 0)}；指定日期的加收或减免只计入当天。</p></div>
+                {financialLocked ? <p className="cc-alert cc-alert--warning mt-4">订单已有收款，结算方式、日期与金额已锁定。</p> : null}
               </aside>
             </div>
           </div>

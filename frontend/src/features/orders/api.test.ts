@@ -45,6 +45,8 @@ it("posts only order inputs and leaves the authoritative total to the backend", 
     service_dates: ["2030-10-01", "2030-10-07"],
     service_items: ["feed"],
     unit_price: "30.00",
+    settlement_mode: "daily",
+    amount_adjustment: { type: "none", amount: "0.00", reason: null, service_date: null },
     notes: null,
   };
 

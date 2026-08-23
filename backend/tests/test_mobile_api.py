@@ -33,7 +33,7 @@ class MobileMapProvider:
     def geocode(self, address: str) -> GeoPoint | None:
         del address
         self.geocode_calls += 1
-        raise AssertionError("读取手机今日任务时不得调用地址解析")
+        return None
 
     def plan_route(self, origin: GeoPoint, stops: list[RouteStop]) -> RouteResult:
         del origin, stops
@@ -115,6 +115,8 @@ def test_mobile_today_is_ordered_privacy_minimized_and_uses_cached_navigation(
     }
 
     order = create_task_order(client, visits_per_day=2)
+    assert mobile_map_provider.geocode_calls == 1
+    mobile_map_provider.geocode_calls = 0
     first_id, second_id = [task["id"] for task in order["tasks"]]
     with task_api_context.session_factory() as session:
         _set_task_state(

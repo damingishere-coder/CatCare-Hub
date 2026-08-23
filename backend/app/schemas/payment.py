@@ -8,6 +8,8 @@ from app.models.enums import (
     OrderStatus,
     PaymentMethod,
     PaymentRecordStatus,
+    OrderSettlementMode,
+    TaskStatus,
 )
 
 
@@ -15,6 +17,7 @@ class PaymentCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     order_id: int = Field(gt=0)
+    service_date: date | None = None
     amount: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
     payment_method: PaymentMethod
     paid_at: datetime
@@ -45,6 +48,8 @@ class PaymentMetrics(BaseModel):
 
 class PaymentReceivable(BaseModel):
     order_id: int
+    settlement_mode: OrderSettlementMode
+    service_date: date | None
     customer_name: str
     community: str | None
     address: str | None
@@ -57,12 +62,14 @@ class PaymentReceivable(BaseModel):
     overpaid_amount: Decimal = Field(ge=0)
     payment_status: OrderPaymentStatus
     order_status: OrderStatus
+    task_status: TaskStatus | None
     revision: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class PaymentRecordRead(BaseModel):
     id: int
     order_id: int
+    service_date: date | None
     customer_name: str
     start_date: date
     end_date: date

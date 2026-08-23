@@ -11,7 +11,7 @@ import {
   Save,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import { serviceItemOptions } from "../orders/constants";
@@ -48,7 +48,8 @@ function localDateValue(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
-function chooseInitialDate(days: PlanDaySummary[]): string {
+function chooseInitialDate(days: PlanDaySummary[], requested?: string | null): string {
+  if (requested && days.some((day) => day.service_date === requested)) return requested;
   const today = localDateValue();
   if (days.some((day) => day.service_date === today)) return today;
   const future = days.find((day) => day.service_date > today);
@@ -85,6 +86,13 @@ interface DailyPlansPageProps {
 }
 
 export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDate = searchParams.get("date");
+  const requestedTaskValue = Number(searchParams.get("task_id"));
+  const requestedTaskId = Number.isInteger(requestedTaskValue) && requestedTaskValue > 0
+    ? requestedTaskValue
+    : undefined;
+  const initialRequest = useRef({ date: requestedDate, taskId: requestedTaskId });
   const [days, setDays] = useState<PlanDaySummary[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
   const [plan, setPlan] = useState<DayPlan | null>(null);
@@ -174,9 +182,9 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
         if (!active) return;
         const items = response.items;
         setDays(items);
-        const initialDate = chooseInitialDate(items);
+        const initialDate = chooseInitialDate(items, initialRequest.current.date);
         setSelectedDate(initialDate);
-        void loadDay(initialDate);
+        void loadDay(initialDate, initialRequest.current.taskId);
       })
       .catch((cause: unknown) => {
         if (!active) return;
@@ -209,6 +217,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
   function selectDate(nextDate: string) {
     setSelectedDate(nextDate);
     setTaskDetail(null);
+    setSearchParams({ date: nextDate });
     void loadDay(nextDate);
   }
 
@@ -216,6 +225,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
     if (taskId === selectedTaskId) return;
     setDetailLoading(true);
     setSelectedTaskId(taskId);
+    if (selectedDate) setSearchParams({ date: selectedDate, task_id: String(taskId) });
   }
 
   function updateDraft(next: PlanTaskSummary[]) {

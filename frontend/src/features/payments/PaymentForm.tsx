@@ -37,26 +37,30 @@ function amountIsValid(value: string, dueAmount: string): boolean {
 
 interface PaymentFormProps {
   orders: PaymentReceivable[];
-  initialOrderId: number;
+  initialReceivableKey: string;
   onCancel: () => void;
   onSave: (payload: PaymentCreateInput) => Promise<void>;
 }
 
-export function PaymentForm({ orders, initialOrderId, onCancel, onSave }: PaymentFormProps) {
-  const firstOrder = orders.find((order) => order.order_id === initialOrderId) ?? orders[0];
-  const [orderId, setOrderId] = useState(firstOrder.order_id);
+function receivableKey(order: PaymentReceivable): string {
+  return `${order.order_id}:${order.service_date ?? "order"}`;
+}
+
+export function PaymentForm({ orders, initialReceivableKey, onCancel, onSave }: PaymentFormProps) {
+  const firstOrder = orders.find((order) => receivableKey(order) === initialReceivableKey) ?? orders[0];
+  const [selectedKey, setSelectedKey] = useState(receivableKey(firstOrder));
   const [amount, setAmount] = useState(firstOrder.due_amount);
   const [method, setMethod] = useState<PaymentMethod>("wechat");
   const [paidAt, setPaidAt] = useState(shanghaiDateTimeValue());
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const selectedOrder = orders.find((order) => order.order_id === orderId) ?? firstOrder;
+  const selectedOrder = orders.find((order) => receivableKey(order) === selectedKey) ?? firstOrder;
 
-  function handleOrderChange(nextOrderId: number) {
-    const nextOrder = orders.find((order) => order.order_id === nextOrderId);
+  function handleOrderChange(nextKey: string) {
+    const nextOrder = orders.find((order) => receivableKey(order) === nextKey);
     if (!nextOrder) return;
-    setOrderId(nextOrderId);
+    setSelectedKey(nextKey);
     setAmount(nextOrder.due_amount);
   }
 
@@ -75,6 +79,7 @@ export function PaymentForm({ orders, initialOrderId, onCancel, onSave }: Paymen
     try {
       await onSave({
         order_id: selectedOrder.order_id,
+        service_date: selectedOrder.service_date,
         amount: Number(amount).toFixed(2),
         payment_method: method,
         paid_at: `${paidAt}:00+08:00`,
@@ -102,13 +107,13 @@ export function PaymentForm({ orders, initialOrderId, onCancel, onSave }: Paymen
         <div className="space-y-5">
           <label className={labelClass}>
             待收订单
-            <select className={inputClass} value={orderId} onChange={(event) => handleOrderChange(Number(event.target.value))} disabled={saving}>
-              {orders.map((order) => <option key={order.order_id} value={order.order_id}>#{order.order_id} · {order.customer_name} · 待收 ¥{order.due_amount}</option>)}
+            <select className={inputClass} value={selectedKey} onChange={(event) => handleOrderChange(event.target.value)} disabled={saving}>
+              {orders.map((order) => <option key={receivableKey(order)} value={receivableKey(order)}>#{order.order_id} · {order.customer_name} · {order.service_date ?? "整单"} · 待收 ¥{order.due_amount}</option>)}
             </select>
           </label>
 
           <section className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3" aria-label="订单金额摘要">
-            <div><p className="text-xs text-slate-500">订单应收</p><p className="mt-1 font-semibold text-slate-950">¥{selectedOrder.total_amount}</p></div>
+            <div><p className="text-xs text-slate-500">{selectedOrder.service_date ? `${selectedOrder.service_date} 应收` : "订单应收"}</p><p className="mt-1 font-semibold text-slate-950">¥{selectedOrder.total_amount}</p></div>
             <div><p className="text-xs text-slate-500">已经收取</p><p className="mt-1 font-semibold text-emerald-700">¥{selectedOrder.paid_amount}</p></div>
             <div><p className="text-xs text-slate-500">当前待收</p><p className="mt-1 font-semibold text-amber-700">¥{selectedOrder.due_amount}</p></div>
           </section>

@@ -66,3 +66,35 @@ export function updateOrderStatus(
 export function deleteOrder(orderId: number): Promise<void> {
   return request<void>(`${ordersPath}/${orderId}`, { method: "DELETE" });
 }
+
+export function retryOrderGeocode(orderId: number): Promise<OrderDetail> {
+  return request<OrderDetail>(`${ordersPath}/${orderId}/geocode`, { method: "POST" });
+}
+
+export interface DemoDataCounts {
+  customers: number;
+  cats: number;
+  orders: number;
+  tasks: number;
+  payments: number;
+}
+
+export interface DemoDataPreview {
+  system_key: "catcare-demo-seed-v1";
+  already_cleared: boolean;
+  counts: DemoDataCounts;
+}
+
+export function previewDemoData(): Promise<DemoDataPreview> {
+  return request<DemoDataPreview>(`${apiBase}/api/admin/settings/demo-data`);
+}
+
+export function clearDemoData(): Promise<DemoDataPreview & { cleared: boolean }> {
+  return request(`${apiBase}/api/admin/settings/demo-data/clear`, {
+    method: "POST",
+    body: JSON.stringify({
+      system_key: "catcare-demo-seed-v1",
+      confirmation: "永久清除演示数据",
+    }),
+  });
+}

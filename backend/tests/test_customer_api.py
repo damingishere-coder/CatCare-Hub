@@ -143,6 +143,7 @@ def test_customer_and_multiple_cats_complete_workflow(
         "is_repeat_customer",
         "active_cat_count",
         "inactive_cat_count",
+        "pending_cat_profile_count",
         "archived_at",
         "updated_at",
     }

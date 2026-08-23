@@ -7,6 +7,19 @@ import { getPaymentsOverview, registerPayment } from "./api";
 import { PaymentForm } from "./PaymentForm";
 import type { PaymentCreateInput, PaymentMethod, PaymentRecordStatus, PaymentsOverview } from "./types";
 
+function receivableKey(order: PaymentsOverview["receivables"][number]): string {
+  return `${order.order_id}:${order.service_date ?? "order"}`;
+}
+
+function defaultReceivable(overview: PaymentsOverview, orderId?: number | null) {
+  const candidates = orderId == null
+    ? overview.receivables
+    : overview.receivables.filter((item) => item.order_id === orderId);
+  return candidates.find((item) => item.service_date === overview.business_date)
+    ?? candidates[0]
+    ?? null;
+}
+
 const methodLabels: Record<PaymentMethod, string> = {
   wechat: "微信",
   alipay: "支付宝",
@@ -62,7 +75,7 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
   const [overview, setOverview] = useState<PaymentsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [formOrderId, setFormOrderId] = useState<number | null>(null);
+  const [formReceivableKey, setFormReceivableKey] = useState<string | null>(null);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -86,14 +99,15 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
         if (response.receivables.length === 0) {
           setError("当前没有可登记的待收订单。");
         } else if (initialOrderId !== null) {
-          const requested = response.receivables.find((order) => order.order_id === initialOrderId);
+          const requested = defaultReceivable(response, initialOrderId);
           if (requested) {
-            setFormOrderId(requested.order_id);
+            setFormReceivableKey(receivableKey(requested));
           } else {
             setError(`订单 #${initialOrderId} 已不在待收列表，请刷新工作台确认。`);
           }
         } else {
-          setFormOrderId(response.receivables[0].order_id);
+          const requested = defaultReceivable(response);
+          if (requested) setFormReceivableKey(receivableKey(requested));
         }
       })
       .catch((cause: unknown) => {
@@ -109,7 +123,7 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
 
   async function handleSave(payload: PaymentCreateInput) {
     await registerPayment(payload);
-    setFormOrderId(null);
+    setFormReceivableKey(null);
     await loadOverview();
   }
 
@@ -122,7 +136,7 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
         description={overview ? businessDateLabel(overview.business_date) : "统一查看待收订单与不可变收款流水。"}
         actions={<>
           <button type="button" className="cc-button cc-button--secondary" onClick={() => void loadOverview()} disabled={loading}>{loading ? <LoaderCircle className="animate-spin" size={16} /> : <RefreshCw size={16} />}刷新</button>
-          <button type="button" className="cc-button cc-button--primary" onClick={() => overview?.receivables[0] && setFormOrderId(overview.receivables[0].order_id)} disabled={!overview?.receivables.length}><Plus size={16} />登记收款</button>
+          <button type="button" className="cc-button cc-button--primary" onClick={() => { const requested = overview ? defaultReceivable(overview) : null; if (requested) setFormReceivableKey(receivableKey(requested)); }} disabled={!overview?.receivables.length}><Plus size={16} />登记收款</button>
         </>}
       />
 
@@ -135,23 +149,23 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
           <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { label: "今日收款", value: currency(overview.metrics.today_income), icon: CircleDollarSign },
-              { label: "待收款", value: `${overview.metrics.pending_order_count} 单`, icon: WalletCards },
+              { label: "待收款", value: `${overview.metrics.pending_order_count} 项`, icon: WalletCards },
               { label: "本月收入", value: currency(overview.metrics.month_income), icon: CheckCircle2 },
               { label: "累计完成订单", value: `${overview.metrics.completed_order_count} 单`, icon: Clock3 },
             ].map(({ label, value, icon: Icon }) => <article key={label} className="cc-metric p-4"><div className="flex items-center justify-between text-slate-500"><p className="text-sm font-medium">{label}</p><span className="flex size-9 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><Icon size={18} /></span></div><p className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">{value}</p></article>)}
           </div>
 
           <section className="cc-surface mt-5 overflow-hidden p-0" aria-labelledby="receivables-title">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 id="receivables-title" className="font-semibold text-slate-950">待收订单</h2><p className="mt-1 text-xs text-slate-500">仅列出未取消、非退款且仍有余额的订单</p></div><span className="text-sm font-medium text-slate-500">{overview.receivables.length} 单</span></div>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 id="receivables-title" className="font-semibold text-slate-950">待收项目</h2><p className="mt-1 text-xs text-slate-500">日结订单按服务日期列出，整单订单继续显示整单余额</p></div><span className="text-sm font-medium text-slate-500">{overview.receivables.length} 项</span></div>
             {overview.receivables.length ? (
-              <div className="overflow-x-auto"><table className="cc-table min-w-full text-left text-sm"><thead><tr><th className="px-5 py-3 font-medium">客户 / 订单</th><th className="px-4 py-3 font-medium">服务项目</th><th className="px-4 py-3 font-medium">应收</th><th className="px-4 py-3 font-medium">已收</th><th className="px-4 py-3 font-medium">待收</th><th className="px-5 py-3 text-right font-medium">操作</th></tr></thead><tbody>{overview.receivables.map((order) => <tr key={order.order_id}><td className="px-5 py-4"><p className="font-semibold text-slate-900">{order.customer_name}</p><p className="mt-1 text-xs text-slate-500">订单 #{order.order_id}{order.address ? ` · ${order.address}` : ""}</p></td><td className="px-4 py-4 text-slate-600"><p>{dateRange(order.start_date, order.end_date)}</p><p className="mt-1 text-xs text-slate-500">{order.cat_count} 只猫</p></td><td className="px-4 py-4 text-slate-700">{currency(order.total_amount)}</td><td className="px-4 py-4 text-emerald-700">{currency(order.paid_amount)}</td><td className="px-4 py-4 font-semibold text-amber-700">{currency(order.due_amount)}</td><td className="px-5 py-4 text-right"><button type="button" className="cc-button cc-button--secondary min-h-9 px-3 text-xs" onClick={() => setFormOrderId(order.order_id)}>登记</button></td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="cc-table min-w-full text-left text-sm"><thead><tr><th className="px-5 py-3 font-medium">客户 / 订单</th><th className="px-4 py-3 font-medium">结算日期</th><th className="px-4 py-3 font-medium">应收</th><th className="px-4 py-3 font-medium">已收</th><th className="px-4 py-3 font-medium">待收</th><th className="px-5 py-3 text-right font-medium">操作</th></tr></thead><tbody>{overview.receivables.map((order) => <tr key={receivableKey(order)}><td className="px-5 py-4"><p className="font-semibold text-slate-900">{order.customer_name}</p><p className="mt-1 text-xs text-slate-500">订单 #{order.order_id}{order.address ? ` · ${order.address}` : ""}</p></td><td className="px-4 py-4 text-slate-600"><p>{order.service_date ?? dateRange(order.start_date, order.end_date)}</p><p className="mt-1 text-xs text-slate-500">{order.service_date ? "按日结算" : "整单结算"} · {order.cat_count} 只猫</p></td><td className="px-4 py-4 text-slate-700">{currency(order.total_amount)}</td><td className="px-4 py-4 text-emerald-700">{currency(order.paid_amount)}</td><td className="px-4 py-4 font-semibold text-amber-700">{currency(order.due_amount)}</td><td className="px-5 py-4 text-right"><button type="button" className="cc-button cc-button--secondary min-h-9 px-3 text-xs" onClick={() => setFormReceivableKey(receivableKey(order))}>登记</button></td></tr>)}</tbody></table></div>
             ) : <p className="px-5 py-12 text-center text-sm text-slate-500">当前没有待收订单。</p>}
           </section>
 
           <section className="cc-surface mt-5 overflow-hidden p-0" aria-labelledby="records-title">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 id="records-title" className="font-semibold text-slate-950">收款流水</h2><p className="mt-1 text-xs text-slate-500">流水仅追加；P8 不提供编辑、删除或退款</p></div><span className="text-sm font-medium text-slate-500">{overview.records.length} 条</span></div>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 id="records-title" className="font-semibold text-slate-950">收款流水</h2><p className="mt-1 text-xs text-slate-500">流水仅追加；本轮不提供编辑、删除或退款</p></div><span className="text-sm font-medium text-slate-500">{overview.records.length} 条</span></div>
             {overview.records.length ? (
-              <div className="overflow-x-auto"><table className="cc-table min-w-full text-left text-sm"><thead><tr><th className="px-5 py-3 font-medium">客户</th><th className="px-4 py-3 font-medium">项目</th><th className="px-4 py-3 font-medium">支付方式</th><th className="px-4 py-3 font-medium">金额</th><th className="px-4 py-3 font-medium">状态</th><th className="px-5 py-3 font-medium">时间</th></tr></thead><tbody>{overview.records.map((record) => <tr key={record.id}><td className="px-5 py-4"><p className="font-semibold text-slate-900">{record.customer_name}</p><p className="mt-1 text-xs text-slate-500">订单 #{record.order_id}</p></td><td className="px-4 py-4 text-slate-600"><p>{dateRange(record.start_date, record.end_date)}</p><p className="mt-1 text-xs text-slate-500">{record.cat_count} 只猫</p></td><td className="px-4 py-4 text-slate-700">{methodLabels[record.payment_method]}</td><td className="px-4 py-4 font-semibold text-slate-900">{currency(record.amount)}</td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${recordStatusStyle(record.payment_status)}`}>{statusLabels[record.payment_status]}</span></td><td className="px-5 py-4 text-slate-600">{displayDateTime(record.paid_at)}</td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="cc-table min-w-full text-left text-sm"><thead><tr><th className="px-5 py-3 font-medium">客户</th><th className="px-4 py-3 font-medium">项目</th><th className="px-4 py-3 font-medium">支付方式</th><th className="px-4 py-3 font-medium">金额</th><th className="px-4 py-3 font-medium">状态</th><th className="px-5 py-3 font-medium">时间</th></tr></thead><tbody>{overview.records.map((record) => <tr key={record.id}><td className="px-5 py-4"><p className="font-semibold text-slate-900">{record.customer_name}</p><p className="mt-1 text-xs text-slate-500">订单 #{record.order_id}</p></td><td className="px-4 py-4 text-slate-600"><p>{record.service_date ?? dateRange(record.start_date, record.end_date)}</p><p className="mt-1 text-xs text-slate-500">{record.service_date ? "日结" : "整单"} · {record.cat_count} 只猫</p></td><td className="px-4 py-4 text-slate-700">{methodLabels[record.payment_method]}</td><td className="px-4 py-4 font-semibold text-slate-900">{currency(record.amount)}</td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${recordStatusStyle(record.payment_status)}`}>{statusLabels[record.payment_status]}</span></td><td className="px-5 py-4 text-slate-600">{displayDateTime(record.paid_at)}</td></tr>)}</tbody></table></div>
             ) : <p className="px-5 py-12 text-center text-sm text-slate-500">还没有收款流水。</p>}
           </section>
 
@@ -159,7 +173,7 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
         </>
       ) : null}
 
-      {overview && formOrderId !== null ? <PaymentForm orders={overview.receivables} initialOrderId={formOrderId} onCancel={() => setFormOrderId(null)} onSave={handleSave} /> : null}
+      {overview && formReceivableKey !== null ? <PaymentForm orders={overview.receivables} initialReceivableKey={formReceivableKey} onCancel={() => setFormReceivableKey(null)} onSave={handleSave} /> : null}
     </section>
   );
 }

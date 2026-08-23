@@ -3,7 +3,7 @@ export const ROUTE_REQUEST_TIMEOUT_MS = 45_000;
 export const UPLOAD_REQUEST_TIMEOUT_MS = 60_000;
 
 interface ApiErrorPayload {
-  detail?: string | Array<{ msg?: string }>;
+  detail?: string | { message?: string } | Array<{ msg?: string }>;
 }
 
 export type ApiFailureKind = "network" | "timeout" | "http";
@@ -92,6 +92,8 @@ export async function requestJson<T>(
         const payload = (await response.json()) as ApiErrorPayload;
         if (typeof payload.detail === "string") {
           message = payload.detail;
+        } else if (payload.detail && !Array.isArray(payload.detail)) {
+          message = payload.detail.message || message;
         } else if (Array.isArray(payload.detail)) {
           message = payload.detail.map((item) => item.msg).filter(Boolean).join("；") || message;
         }

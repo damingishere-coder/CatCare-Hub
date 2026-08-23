@@ -4,20 +4,25 @@ import {
   CircleDollarSign,
   ClipboardList,
   LoaderCircle,
+  MapPin,
   Pencil,
   Plus,
   ReceiptText,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import {
   createOrder,
+  clearDemoData,
   deleteOrder,
   getOrder,
   getOrderFormOptions,
   listOrders,
+  previewDemoData,
+  retryOrderGeocode,
   updateOrder,
   updateOrderStatus,
 } from "./api";
@@ -108,6 +113,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
   );
   const [statusSaving, setStatusSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
   const listRequestId = useRef(0);
 
   const applyOrders = useCallback((items: OrderSummary[], preferredId?: number) => {
@@ -223,6 +229,43 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
     }
   }
 
+  async function handleDemoClear() {
+    if (!orderDetail?.is_demo_data) return;
+    setDeleting(true);
+    setPageError(null);
+    try {
+      const preview = await previewDemoData();
+      const counts = preview.counts;
+      const confirmed = window.confirm(
+        `将永久清除系统演示数据：${counts.customers} 位客户、${counts.cats} 只猫咪、${counts.orders} 笔订单、${counts.tasks} 个任务、${counts.payments} 条收款。确认继续吗？`,
+      );
+      if (!confirmed) return;
+      await clearDemoData();
+      setOrderDetail(null);
+      setSelectedOrderId(null);
+      await refreshOrders();
+    } catch (cause) {
+      setPageError(cause instanceof Error ? cause.message : "演示数据清理失败，请重试。");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleGeocodeRetry() {
+    if (!orderDetail) return;
+    setGeocoding(true);
+    setPageError(null);
+    try {
+      const updated = await retryOrderGeocode(orderDetail.id);
+      setOrderDetail(updated);
+      await refreshOrders(updated.id);
+    } catch (cause) {
+      setPageError(cause instanceof Error ? cause.message : "地址定位重试失败。");
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
   const tasksByDate = orderDetail?.tasks.reduce<Record<string, OrderDetail["tasks"]>>(
     (groups, task) => {
       (groups[task.service_date] ??= []).push(task);
@@ -319,12 +362,15 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {!(["cancelled", "completed"] as OrderStatus[]).includes(orderDetail.order_status) ? <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700" onClick={() => void handleStatusChange("cancelled")} disabled={statusSaving}>{statusSaving ? <LoaderCircle className="animate-spin" size={15} /> : null}取消订单</button> : null}
-                  <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700 disabled:cursor-not-allowed disabled:opacity-45" onClick={() => void handleDelete()} disabled={!orderDetail.deletable || deleting} title={orderDetail.delete_block_reason ?? "永久删除订单"}>{deleting ? <LoaderCircle className="animate-spin" size={15} /> : <Trash2 size={15} />}删除订单</button>
+                  {orderDetail.is_demo_data ? <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700" onClick={() => void handleDemoClear()} disabled={deleting}>{deleting ? <LoaderCircle className="animate-spin" size={15} /> : <Trash2 size={15} />}清除整套演示数据</button> : <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700 disabled:cursor-not-allowed disabled:opacity-45" onClick={() => void handleDelete()} disabled={!orderDetail.deletable || deleting} title={orderDetail.delete_block_reason ?? "永久删除订单"}>{deleting ? <LoaderCircle className="animate-spin" size={15} /> : <Trash2 size={15} />}删除订单</button>}
                   <button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={() => setFormMode("edit")}>
                     <Pencil size={15} />编辑订单
                   </button>
                 </div>
               </div>
+
+              {orderDetail.customer_resolution ? <p className="cc-alert cc-alert--success mt-4">客户档案已同步：{orderDetail.customer_resolution === "created" ? "已新建档案" : orderDetail.customer_resolution === "selected" ? "已关联所选档案" : "已匹配现有档案"}。</p> : null}
+              {orderDetail.pending_cat_profile_count > 0 ? <p className="cc-alert cc-alert--warning mt-3">客户档案仍有 {orderDetail.pending_cat_profile_count} 只猫咪资料待补；订单未创建占位猫咪。</p> : null}
 
               <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="order-overview-title">
                 <h3 id="order-overview-title" className="flex items-center gap-2 text-sm font-semibold text-slate-950"><CalendarDays size={16} />服务概览</h3>
@@ -347,6 +393,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                   <div className="sm:col-span-2 xl:col-span-4"><DetailItem label="门禁 / 钥匙 / 客户备注" value={[orderDetail.service_contact.access_info, orderDetail.service_contact.key_status, orderDetail.service_contact.key_code, orderDetail.service_contact.notes].filter(Boolean).join("；") || "未填写"} /></div>
                 </dl>
                 {!orderDetail.deletable && orderDetail.delete_block_reason ? <p className="mt-4 text-xs text-slate-500">删除限制：{orderDetail.delete_block_reason}</p> : null}
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs"><span className={`rounded-full px-2.5 py-1 font-medium ${orderDetail.route_geocode_status === "resolved" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{orderDetail.route_geocode_status === "resolved" ? "地址已定位" : orderDetail.route_geocode_status === "missing" ? "缺少地址" : orderDetail.route_geocode_status === "failed" ? "定位失败" : "地址待定位"}</span>{orderDetail.route_geocode_status !== "resolved" && orderDetail.route_geocode_status !== "missing" ? <button type="button" className="cc-button cc-button--secondary min-h-8 px-2.5 text-xs" onClick={() => void handleGeocodeRetry()} disabled={geocoding}>{geocoding ? <LoaderCircle className="animate-spin" size={13} /> : <MapPin size={13} />}重试定位</button> : null}</div>
               </section>
 
               <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="order-price-title">
@@ -358,6 +405,8 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                   <div className="rounded-md bg-amber-50 p-3"><p className="text-xs text-amber-700">待收 · {paymentStatusLabels[orderDetail.payment_status]}</p><p className="mt-1 text-lg font-semibold text-amber-900">{currency(orderDetail.due_amount)}</p></div>
                 </div>
                 {Number(orderDetail.overpaid_amount) > 0 ? <div className="cc-alert cc-alert--warning mt-3">当前超收 {currency(orderDetail.overpaid_amount)}，待收金额保持为 0；请按实际情况退款或保留为客户余额。</div> : null}
+                <p className="mt-3 text-xs text-slate-500">结算方式：{orderDetail.settlement_mode === "daily" ? "按服务日期日结" : "整单结算"}</p>
+                {orderDetail.daily_receivables.length > 0 ? <div className="mt-4 overflow-x-auto"><table className="cc-table min-w-full text-left text-xs"><thead><tr><th className="px-3 py-2">服务日期</th><th className="px-3 py-2">应收</th><th className="px-3 py-2">已收</th><th className="px-3 py-2">待收</th></tr></thead><tbody>{orderDetail.daily_receivables.map((item) => <tr key={item.service_date}><td className="px-3 py-2">{item.service_date}</td><td className="px-3 py-2">{currency(item.expected_amount)}</td><td className="px-3 py-2 text-emerald-700">{currency(item.paid_amount)}</td><td className="px-3 py-2 font-medium text-amber-700">{currency(item.due_amount)}</td></tr>)}</tbody></table></div> : null}
               </section>
 
               <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="order-notes-title">
@@ -378,7 +427,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                     <article key={date} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-slate-900">{date}</p>
-                        <span className="text-xs text-slate-500">{tasks.length} 次服务</span>
+                        <Link className="cc-button cc-button--secondary min-h-8 px-2.5 text-xs" to={`/admin/routes?date=${date}&task_id=${tasks[0].id}`}><MapPin size={13} />查看路线</Link>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {tasks.map((task) => (

@@ -4,7 +4,14 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.enums import OrderPaymentStatus, OrderStatus, TaskItemType, TaskStatus
+from app.models.enums import (
+    OrderAdjustmentType,
+    OrderPaymentStatus,
+    OrderSettlementMode,
+    OrderStatus,
+    TaskItemType,
+    TaskStatus,
+)
 
 
 class NormalizedOrderModel(BaseModel):
@@ -43,6 +50,10 @@ class OrderWrite(NormalizedOrderModel):
         ge=0,
         max_digits=10,
         decimal_places=2,
+    )
+    settlement_mode: OrderSettlementMode = OrderSettlementMode.DAILY
+    amount_adjustment: "OrderAmountAdjustment" = Field(
+        default_factory=lambda: OrderAmountAdjustment()
     )
     order_status: OrderStatus = OrderStatus.PENDING_CONFIRMATION
     notes: str | None = Field(default=None, max_length=4000)
@@ -86,6 +97,29 @@ def _normalized_service_dates(values: list[date]) -> list[date]:
     if len(unique) != len(values):
         raise ValueError("服务日期不能重复")
     return unique
+
+
+class OrderAmountAdjustment(NormalizedOrderModel):
+    type: OrderAdjustmentType = OrderAdjustmentType.NONE
+    amount: Decimal = Field(
+        default=Decimal("0.00"), ge=0, max_digits=10, decimal_places=2
+    )
+    reason: str | None = Field(default=None, max_length=1000)
+    service_date: date | None = None
+
+    @model_validator(mode="after")
+    def validate_adjustment(self) -> Self:
+        if self.type is OrderAdjustmentType.NONE:
+            if self.amount != 0 or self.service_date is not None or self.reason is not None:
+                raise ValueError("无金额变动时不能填写金额、原因或服务日期")
+            return self
+        if self.amount <= 0:
+            raise ValueError("加收或减免金额必须大于 0")
+        if self.service_date is None:
+            raise ValueError("加收或减免必须指定服务日期")
+        if self.reason is None:
+            raise ValueError("加收或减免必须填写原因")
+        return self
 
 
 class OrderServiceContact(NormalizedOrderModel):
@@ -136,6 +170,10 @@ class OrderCreate(NormalizedOrderModel):
     service_dates: list[date] = Field(min_length=1, max_length=366)
     service_items: list[TaskItemType] = Field(min_length=1, max_length=8)
     unit_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    settlement_mode: OrderSettlementMode = OrderSettlementMode.DAILY
+    amount_adjustment: OrderAmountAdjustment = Field(
+        default_factory=OrderAmountAdjustment
+    )
     notes: str | None = Field(default=None, max_length=4000)
 
     @field_validator("service_dates")
@@ -169,6 +207,16 @@ class OrderCreate(NormalizedOrderModel):
             raise ValueError("联系人名称不能互相冲突")
         if self.cat_snapshot and len(self.cat_snapshot) != self.cat_count:
             raise ValueError("猫咪详情数量必须与猫咪数量一致")
+        if (
+            self.amount_adjustment.service_date is not None
+            and self.amount_adjustment.service_date not in self.service_dates
+        ):
+            raise ValueError("金额变动日期必须属于订单服务日期")
+        if (
+            self.amount_adjustment.type is OrderAdjustmentType.DISCOUNT
+            and self.amount_adjustment.amount > self.unit_price
+        ):
+            raise ValueError("减免后当日应收不能小于 0")
         return self
 
 
@@ -185,6 +233,8 @@ class OrderPatch(NormalizedOrderModel):
     unit_price: Decimal | None = Field(
         default=None, ge=0, max_digits=10, decimal_places=2
     )
+    settlement_mode: OrderSettlementMode | None = None
+    amount_adjustment: OrderAmountAdjustment | None = None
     notes: str | None = Field(default=None, max_length=4000)
 
     @field_validator("service_dates")
@@ -267,6 +317,14 @@ class OrderServiceScheduleRead(BaseModel):
     visit_count: int = Field(ge=1, le=10)
 
 
+class OrderDailyReceivableRead(BaseModel):
+    service_date: date
+    expected_amount: Decimal = Field(ge=0)
+    paid_amount: Decimal = Field(ge=0)
+    due_amount: Decimal = Field(ge=0)
+    task_status: TaskStatus | None
+
+
 class OrderSummary(BaseModel):
     id: int
     source_customer_id: int | None
@@ -283,6 +341,8 @@ class OrderSummary(BaseModel):
     service_schedule: list[OrderServiceScheduleRead]
     service_items: list[TaskItemType]
     pricing_mode: Literal["legacy_components", "per_visit"]
+    settlement_mode: OrderSettlementMode
+    amount_adjustment: OrderAmountAdjustment
     unit_price: Decimal = Field(ge=0)
     base_price: Decimal
     extra_cat_fee: Decimal
@@ -293,7 +353,12 @@ class OrderSummary(BaseModel):
     due_amount: Decimal
     overpaid_amount: Decimal = Field(ge=0)
     payment_status: OrderPaymentStatus
+    daily_receivables: list[OrderDailyReceivableRead]
     order_status: OrderStatus
+    route_geocode_status: str | None
+    pending_cat_profile_count: int = Field(ge=0)
+    customer_resolution: str | None = None
+    is_demo_data: bool = False
     task_count: int
     deletable: bool
     delete_block_reason: str | None

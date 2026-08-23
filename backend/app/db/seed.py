@@ -13,6 +13,7 @@ from app.models import (
     Order,
     OrderCat,
     OrderPaymentStatus,
+    OrderSettlementMode,
     OrderStatus,
     Payment,
     PaymentMethod,
@@ -21,7 +22,9 @@ from app.models import (
     TaskItem,
     TaskItemType,
     TaskStatus,
+    SystemFlag,
 )
+from app.services.demo_data import DEMO_CLEARED_FLAG
 
 
 DEMO_MARKER = "[catcare-demo-seed-v1]"
@@ -36,6 +39,8 @@ def seed_database(database_url: str | None = None) -> bool:
 
     try:
         with session_factory.begin() as session:
+            if session.get(SystemFlag, DEMO_CLEARED_FLAG) is not None:
+                return False
             if session.scalar(
                 select(Customer.id).where(
                     (Customer.system_key == DEMO_SYSTEM_KEY)
@@ -89,6 +94,7 @@ def _insert_demo_records(session: Session) -> None:
         visits_per_day=1,
         cat_count=2,
         service_items=["feed", "water", "litter", "photo"],
+        settlement_mode=OrderSettlementMode.ORDER_TOTAL,
         base_price=Decimal("30.00"),
         extra_cat_fee=Decimal("5.00"),
         stairs_fee=Decimal("0.00"),

@@ -21,9 +21,9 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("./api", () => apiMocks);
 
-function renderPage(onDirtyChange = vi.fn()) {
+function renderPage(onDirtyChange = vi.fn(), initialEntry = "/admin/routes") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <DailyPlansPage onDirtyChange={onDirtyChange} />
     </MemoryRouter>,
   );
@@ -202,7 +202,7 @@ it("shows date tasks, route workspace, and a privacy-minimized selected detail",
   expect(screen.getByText("高德后端：已配置")).toBeInTheDocument();
   expect(screen.getByText("街道底图：未配置")).toBeInTheDocument();
   expect(screen.getByText("GPT 建议：已配置")).toBeInTheDocument();
-  expect(screen.getByText(/只有点击生成路线后/)).toBeInTheDocument();
+  expect(screen.getByText(/订单保存时只把上门地址/)).toBeInTheDocument();
   expect(await screen.findByText("未配置街道底图，按真实坐标展示")).toBeInTheDocument();
   expect(await screen.findByRole("link", { name: "打开高德导航" })).toHaveAttribute(
     "href",
@@ -218,6 +218,14 @@ it("shows date tasks, route workspace, and a privacy-minimized selected detail",
   expect(apiMocks.getDayPlan).toHaveBeenCalledWith("2034-10-01");
   expect(apiMocks.getPlanRoute).toHaveBeenCalledWith("2034-10-01");
   expect(apiMocks.getPlanTask).toHaveBeenCalledWith(1);
+});
+
+it("opens the exact service date and task from an order route link", async () => {
+  renderPage(vi.fn(), "/admin/routes?date=2034-10-01&task_id=2");
+
+  expect(await screen.findByText("P4 第二位虚构客户")).toBeInTheDocument();
+  await waitFor(() => expect(apiMocks.getDayPlan).toHaveBeenCalledWith("2034-10-01"));
+  await waitFor(() => expect(apiMocks.getPlanTask).toHaveBeenCalledWith(2));
 });
 
 it("ends route loading after failure, reports unknown status, and retries", async () => {

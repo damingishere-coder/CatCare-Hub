@@ -7,6 +7,7 @@ export interface CustomerSummary {
   is_repeat_customer: boolean;
   active_cat_count: number;
   inactive_cat_count: number;
+  pending_cat_profile_count: number;
   archived_at: string | null;
   updated_at: string;
 }
@@ -49,6 +50,7 @@ export interface CustomerDetail {
   notes: string | null;
   is_repeat_customer: boolean;
   cats: CatDetail[];
+  pending_cat_profile_count: number;
   archived_at: string | null;
   created_at: string;
   updated_at: string;

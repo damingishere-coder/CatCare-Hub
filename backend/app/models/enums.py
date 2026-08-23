@@ -19,6 +19,17 @@ class OrderPaymentStatus(str, Enum):
     REFUNDED = "refunded"
 
 
+class OrderSettlementMode(str, Enum):
+    DAILY = "daily"
+    ORDER_TOTAL = "order_total"
+
+
+class OrderAdjustmentType(str, Enum):
+    NONE = "none"
+    SURCHARGE = "surcharge"
+    DISCOUNT = "discount"
+
+
 class TaskStatus(str, Enum):
     PENDING = "pending"
     CONFIRMED = "confirmed"

@@ -357,7 +357,7 @@ def test_form_options_exclude_inactive_cats_and_customer_change_with_payment(
     assert response.json()["detail"] == "订单已有收款记录，不能更换客户"
 
 
-def test_simple_order_keeps_customer_as_snapshot_and_creates_non_contiguous_tasks(
+def test_simple_order_syncs_customer_profile_and_creates_non_contiguous_tasks(
     order_api_context: OrderApiContext,
 ) -> None:
     client = order_api_context.client
@@ -390,25 +390,34 @@ def test_simple_order_keeps_customer_as_snapshot_and_creates_non_contiguous_task
         json=simple_order_payload(service_dates=["2032-04-01"]),
     )
     assert reused.status_code == 201
-    assert reused.json()["customer"]["id"] is None
-    assert order["customer"]["id"] is None
+    assert reused.json()["customer"]["id"] is not None
+    assert order["customer"]["id"] is not None
+    assert reused.json()["customer"]["id"] != order["customer"]["id"]
     with order_api_context.session_factory() as session:
-        assert session.scalar(select(func.count(Customer.id))) == 0
+        assert session.scalar(select(func.count(Customer.id))) == 2
 
 
-def test_simple_order_accepts_duplicate_profile_name_and_rejects_invalid_schedule(
+def test_simple_order_requires_selection_for_ambiguous_match_and_rejects_invalid_schedule(
     order_api_context: OrderApiContext,
 ) -> None:
     client = order_api_context.client
-    create_customer_with_cats(client, name="同名客户（虚构）", cat_names=("甲",))
-    create_customer_with_cats(client, name="同名客户（虚构）", cat_names=("乙",))
+    first, _ = create_customer_with_cats(client, name="同名客户（虚构）", cat_names=("甲",))
+    second, _ = create_customer_with_cats(client, name="同名客户（虚构）", cat_names=("乙",))
+    for customer in (first, second):
+        assert client.patch(
+            f"/api/admin/customers/{customer['id']}",
+            json={"phone": "AMBIGUOUS-13800138000"},
+        ).status_code == 200
 
     ambiguous = client.post(
         "/api/admin/orders",
-        json=simple_order_payload(customer_name="同名客户（虚构）"),
+        json=simple_order_payload(
+            customer_name=None,
+            service_contact={"name": "同名客户（虚构）", "phone": "13800138000"},
+        ),
     )
-    assert ambiguous.status_code == 201
-    assert ambiguous.json()["source_customer_id"] is None
+    assert ambiguous.status_code == 409
+    assert ambiguous.json()["detail"]["code"] == "customer_match_ambiguous"
 
     invalid_payloads = [
         simple_order_payload(service_dates=[]),
@@ -420,7 +429,7 @@ def test_simple_order_accepts_duplicate_profile_name_and_rejects_invalid_schedul
         assert client.post("/api/admin/orders", json=payload).status_code == 422
 
 
-def test_paid_simple_order_can_be_repriced_and_reports_overpayment(
+def test_paid_simple_order_rejects_repricing(
     order_api_context: OrderApiContext,
 ) -> None:
     client = order_api_context.client
@@ -453,14 +462,8 @@ def test_paid_simple_order_can_be_repriced_and_reports_overpayment(
         json={"unit_price": "20.00"},
     )
 
-    assert response.status_code == 200
-    repriced = response.json()
-    assert repriced["unit_price"] == "20.00"
-    assert repriced["total_amount"] == "40.00"
-    assert repriced["paid_amount"] == "100.00"
-    assert repriced["due_amount"] == "0.00"
-    assert repriced["overpaid_amount"] == "60.00"
-    assert repriced["payment_status"] == "paid"
+    assert response.status_code == 409
+    assert "已有收款" in response.json()["detail"]
 
 
 def test_unstarted_unpaid_order_can_be_permanently_deleted(

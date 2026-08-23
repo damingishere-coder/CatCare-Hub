@@ -6,8 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import get_db
+from app.maps import MapServices
+from app.maps.factory import get_map_services
 from app.models.customer import Cat, Customer
-from app.models.enums import OrderPaymentStatus, OrderStatus, TaskItemType
+from app.models.enums import (
+    OrderPaymentStatus,
+    OrderSettlementMode,
+    OrderStatus,
+    TaskItemType,
+)
 from app.models.order import Order, OrderCat
 from app.models.task import Task
 from app.schemas.order import (
@@ -17,6 +24,7 @@ from app.schemas.order import (
     OrderCustomerOption,
     OrderCustomerSummary,
     OrderDetail,
+    OrderDailyReceivableRead,
     OrderFormOptions,
     OrderListResponse,
     OrderPatch,
@@ -26,7 +34,10 @@ from app.schemas.order import (
     OrderTaskItemRead,
     OrderTaskRead,
     OrderWrite,
+    OrderServiceContact,
 )
+from app.services.order_customers import resolve_order_customer
+from app.services.order_locations import clear_order_location, geocode_order
 from app.services.orders import (
     DEFAULT_BASE_PRICE,
     EXTRA_CAT_UNIT_PRICE,
@@ -41,6 +52,7 @@ from app.services.orders import (
     generate_order_tasks,
     money,
     order_has_execution_history,
+    order_daily_receivables,
     order_schedule,
     order_service_days,
     order_service_contact,
@@ -51,16 +63,18 @@ from app.services.orders import (
     replace_order_schedule,
     reprice_order,
     synchronize_task_statuses,
+    apply_amount_adjustment,
 )
 
 
 router = APIRouter(prefix="/api/admin/orders", tags=["admin-orders"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
+MapServicesDependency = Annotated[MapServices, Depends(get_map_services)]
 
 
 def _order_load_options() -> tuple:
     return (
-        selectinload(Order.customer),
+        selectinload(Order.customer).selectinload(Customer.cats),
         selectinload(Order.cat_links).selectinload(OrderCat.cat),
         selectinload(Order.service_dates),
         selectinload(Order.tasks).selectinload(Task.items),
@@ -115,7 +129,7 @@ def _delete_block_reason(order: Order) -> str | None:
     return None
 
 
-def _order_summary(order: Order) -> OrderSummary:
+def _order_summary(order: Order, *, customer_resolution: str | None = None) -> OrderSummary:
     schedule = order_schedule(order)
     total_visits = order_total_visits(order)
     unit_price = (
@@ -125,6 +139,22 @@ def _order_summary(order: Order) -> OrderSummary:
     )
     service_contact = order_service_contact(order)
     delete_block_reason = _delete_block_reason(order)
+    task_statuses = {
+        service_date: next(
+            (
+                task.status
+                for task in sorted(order.tasks, key=lambda item: (item.sort_order, item.id))
+                if task.service_date == service_date
+            ),
+            None,
+        )
+        for service_date, _ in schedule
+    }
+    active_profile_cats = (
+        sum(1 for cat in order.customer.cats if cat.is_active)
+        if order.customer is not None
+        else 0
+    )
     return OrderSummary(
         id=order.id,
         source_customer_id=order.customer_id,
@@ -149,6 +179,13 @@ def _order_summary(order: Order) -> OrderSummary:
         ],
         service_items=[TaskItemType(item) for item in order.service_items],
         pricing_mode=order.pricing_mode,
+        settlement_mode=order.settlement_mode,
+        amount_adjustment={
+            "type": order.adjustment_type,
+            "amount": order.adjustment_amount,
+            "reason": order.adjustment_reason,
+            "service_date": order.adjustment_service_date,
+        },
         unit_price=unit_price,
         base_price=order.base_price,
         extra_cat_fee=order.extra_cat_fee,
@@ -159,7 +196,28 @@ def _order_summary(order: Order) -> OrderSummary:
         due_amount=due_amount(order),
         overpaid_amount=overpaid_amount(order),
         payment_status=order.payment_status,
+        daily_receivables=(
+            [
+                OrderDailyReceivableRead(
+                    service_date=item.service_date,
+                    expected_amount=item.expected_amount,
+                    paid_amount=item.paid_amount,
+                    due_amount=item.due_amount,
+                    task_status=task_statuses[item.service_date],
+                )
+                for item in order_daily_receivables(order)
+            ]
+            if order.settlement_mode is OrderSettlementMode.DAILY
+            else []
+        ),
         order_status=order.order_status,
+        route_geocode_status=order.route_geocode_status,
+        pending_cat_profile_count=max(order.cat_count - active_profile_cats, 0),
+        customer_resolution=customer_resolution,
+        is_demo_data=(
+            order.customer is not None
+            and order.customer.system_key == "catcare-demo-seed-v1"
+        ),
         task_count=len(order.tasks),
         deletable=delete_block_reason is None,
         delete_block_reason=delete_block_reason,
@@ -167,8 +225,8 @@ def _order_summary(order: Order) -> OrderSummary:
     )
 
 
-def _order_detail(order: Order) -> OrderDetail:
-    summary = _order_summary(order)
+def _order_detail(order: Order, *, customer_resolution: str | None = None) -> OrderDetail:
+    summary = _order_summary(order, customer_resolution=customer_resolution)
     tasks = [
         OrderTaskRead(
             id=task.id,
@@ -325,17 +383,34 @@ def list_orders(session: DatabaseSession) -> OrderListResponse:
 
 @router.post("", response_model=OrderDetail, status_code=status.HTTP_201_CREATED)
 def create_order(
-    payload: OrderCreate | OrderWrite, session: DatabaseSession
+    payload: OrderCreate | OrderWrite,
+    session: DatabaseSession,
+    services: MapServicesDependency,
 ) -> OrderDetail:
     if isinstance(payload, OrderCreate):
-        source_customer = _load_source_customer(
-            session,
-            customer_id=payload.source_customer_id or payload.customer_id,
+        explicit_customer_id = payload.source_customer_id or payload.customer_id
+        selected_customer = _load_source_customer(
+            session, customer_id=explicit_customer_id
         )
-        order = build_simple_order(payload, source_customer=source_customer)
+        contact = payload.service_contact
+        if contact is None and selected_customer is not None:
+            contact = customer_service_contact(selected_customer)
+        if contact is None and payload.customer_name is not None:
+            contact = OrderServiceContact(name=payload.customer_name)
+        if contact is None:
+            raise HTTPException(status_code=422, detail="订单缺少联系人信息")
+        resolution = resolve_order_customer(
+            session,
+            contact=contact,
+            explicit_customer_id=explicit_customer_id,
+        )
+        order = build_simple_order(payload, source_customer=resolution.customer)
         session.add(order)
         session.commit()
-        return _order_detail(_load_order(session, order.id))
+        geocode_order(session, order.id, services)
+        return _order_detail(
+            _load_order(session, order.id), customer_resolution=resolution.result
+        )
 
     if payload.order_status not in {
         OrderStatus.PENDING_CONFIRMATION,
@@ -351,6 +426,7 @@ def create_order(
     order = build_order(payload, cats=cats, customer=customer)
     session.add(order)
     session.commit()
+    geocode_order(session, order.id, services)
     return _order_detail(_load_order(session, order.id))
 
 
@@ -359,9 +435,11 @@ def patch_order(
     order_id: int,
     payload: OrderPatch,
     session: DatabaseSession,
+    services: MapServicesDependency,
 ) -> OrderDetail:
     order = _load_order(session, order_id)
     fields = payload.model_fields_set
+    original_address = _snapshot_display_address(order)
 
     source_field_changed = bool({"customer_id", "source_customer_id"} & fields)
     requested_customer = order.customer
@@ -396,6 +474,16 @@ def patch_order(
     if structural_change:
         require_tasks_are_rebuildable(order)
 
+    financial_change = bool(
+        {"service_dates", "unit_price", "settlement_mode", "amount_adjustment"}
+        & fields
+    )
+    if order.payments and financial_change:
+        raise HTTPException(
+            status_code=409,
+            detail="订单已有收款记录，不能切换结算模式或修改日期与金额",
+        )
+
     if source_changed:
         order.customer_id = requested_customer_id
         order.cat_links.clear()
@@ -421,23 +509,43 @@ def patch_order(
     if requested_dates != order_schedule(order):
         replace_order_schedule(order, requested_dates)
     order.service_items = requested_items
+    if "settlement_mode" in fields and payload.settlement_mode is not None:
+        order.settlement_mode = payload.settlement_mode
+    if "amount_adjustment" in fields and payload.amount_adjustment is not None:
+        apply_amount_adjustment(order, payload.amount_adjustment)
     if "notes" in fields:
         order.notes = payload.notes
 
     price_changed = "unit_price" in fields and payload.unit_price is not None
-    if price_changed or structural_change:
+    if price_changed or structural_change or "amount_adjustment" in fields:
         reprice_order(order, unit_price=payload.unit_price if price_changed else None)
 
     if structural_change:
         order.tasks.clear()
         generate_order_tasks(order)
 
+    address_changed = original_address != _snapshot_display_address(order)
+    if address_changed:
+        clear_order_location(order)
     session.commit()
+    if address_changed:
+        geocode_order(session, order.id, services)
     return _order_detail(_load_order(session, order.id))
 
 
 @router.get("/{order_id}", response_model=OrderDetail)
 def get_order(order_id: int, session: DatabaseSession) -> OrderDetail:
+    return _order_detail(_load_order(session, order_id))
+
+
+@router.post("/{order_id}/geocode", response_model=OrderDetail)
+def retry_order_geocode(
+    order_id: int,
+    session: DatabaseSession,
+    services: MapServicesDependency,
+) -> OrderDetail:
+    _load_order(session, order_id)
+    geocode_order(session, order_id, services)
     return _order_detail(_load_order(session, order_id))
 
 
