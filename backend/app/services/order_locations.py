@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.maps import MapProviderError, MapServices
 from app.models.order import Order
 from app.models.task import Task
-from app.services.orders import order_display_address
+from app.services.orders import order_geocode_address
 
 
 def _normalized(value: str | None) -> str:
@@ -17,18 +17,23 @@ def _customer_address(order: Order) -> str | None:
     if order.customer is None:
         return None
     parts = [
-        order.customer.address or order.customer.community,
+        order.customer.community,
+        order.customer.address,
         order.customer.building,
-        order.customer.unit,
-        order.customer.room,
     ]
-    return " ".join(part.strip() for part in parts if part and part.strip()) or None
+    values: list[str] = []
+    for part in parts:
+        value = " ".join((part or "").strip().split())
+        if value and not any(_normalized(value) in _normalized(item) for item in values):
+            values = [item for item in values if _normalized(item) not in _normalized(value)]
+            values.append(value)
+    return " ".join(values) or None
 
 
 def clear_order_location(order: Order) -> None:
     order.route_latitude = None
     order.route_longitude = None
-    order.route_geocode_status = "pending" if order_display_address(order) else "missing"
+    order.route_geocode_status = "pending" if order_geocode_address(order) else "missing"
     for task in order.tasks:
         task.planned_lat = None
         task.planned_lng = None
@@ -44,7 +49,7 @@ def geocode_order(session: Session, order_id: int, services: MapServices) -> str
     )
     if order is None:
         return "missing_order"
-    address = order_display_address(order)
+    address = order_geocode_address(order)
     if not address:
         clear_order_location(order)
         session.commit()

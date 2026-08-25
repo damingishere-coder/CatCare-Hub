@@ -95,7 +95,7 @@ export function PaymentForm({ orders, initialReceivableKey, onCancel, onSave }: 
   return (
     <FormDialog
       title="登记收款"
-      description="流水保存后不可在本轮编辑、删除或退款。"
+      description="流水保存后不可编辑或删除；误登记需在流水列表中带原因撤销，实际退款仍在线下处理。"
       saving={saving}
       error={error}
       submitLabel="确认登记"

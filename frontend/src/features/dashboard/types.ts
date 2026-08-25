@@ -9,7 +9,7 @@ export type DashboardReminderType =
   | "order_starts_tomorrow";
 
 export interface DashboardMetrics {
-  today_order_count: number;
+  month_order_count: number;
   pending_task_count: number;
   pending_payment_count: number;
   month_income: string;

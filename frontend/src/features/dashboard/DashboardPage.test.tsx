@@ -15,7 +15,7 @@ const dashboard: DashboardResponse = {
   business_date: "2035-10-06",
   month_start: "2035-10-01",
   metrics: {
-    today_order_count: 2,
+    month_order_count: 2,
     pending_task_count: 1,
     pending_payment_count: 3,
     month_income: "4860.00",
@@ -81,11 +81,11 @@ it("shows real metrics, schedule, reminders, and working quick links", async () 
   renderPage();
 
   expect(await screen.findByRole("heading", { name: "工作台" })).toBeInTheDocument();
-  const todayCard = (await screen.findByText("今日订单", {}, { timeout: 5000 })).closest("article");
+  const monthCard = (await screen.findByText("当月订单", {}, { timeout: 5000 })).closest("article");
   const incomeCard = screen.getByText("本月收入").closest("article");
-  expect(todayCard).not.toBeNull();
+  expect(monthCard).not.toBeNull();
   expect(incomeCard).not.toBeNull();
-  expect(within(todayCard as HTMLElement).getByText("2")).toBeInTheDocument();
+  expect(within(monthCard as HTMLElement).getByText("2")).toBeInTheDocument();
   expect(within(incomeCard as HTMLElement).getByText("¥4,860.00")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: /P7 工作台客户/ })).toHaveAttribute(
     "href",
@@ -139,7 +139,7 @@ it("recovers from an API error and shows clean empty states", async () => {
   apiMocks.getDashboard.mockResolvedValueOnce({
     ...dashboard,
     metrics: {
-      today_order_count: 0,
+      month_order_count: 0,
       pending_task_count: 0,
       pending_payment_count: 0,
       month_income: "0.00",

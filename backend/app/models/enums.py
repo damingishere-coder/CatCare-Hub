@@ -62,6 +62,7 @@ class PaymentRecordStatus(str, Enum):
     PENDING = "pending"
     COMPLETED = "completed"
     REFUNDED = "refunded"
+    VOIDED = "voided"
 
 
 class FormTokenStatus(str, Enum):

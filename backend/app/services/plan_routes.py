@@ -17,7 +17,11 @@ from app.schemas.plan import (
     PlanRouteStart,
     PlanRouteWorkspace,
 )
-from app.services.orders import order_display_address, task_has_execution_history
+from app.services.orders import (
+    order_display_address,
+    order_geocode_address,
+    task_has_execution_history,
+)
 from app.services.plans import (
     day_plan_revision,
     load_day_tasks,
@@ -107,7 +111,7 @@ def _recommendation_provider_read(
 
 
 def _geocode_address(task: Task) -> str | None:
-    return order_display_address(task.order)
+    return order_geocode_address(task.order)
 
 
 def _cached_task_point(task: Task) -> GeoPoint | None:
@@ -153,7 +157,7 @@ def _marker(
         navigation_url = services.navigation_provider.navigation_url(
             services.map_provider.home_point(),
             point,
-            order_display_address(task.order) or f"任务 #{task.id}",
+            order_geocode_address(task.order) or f"任务 #{task.id}",
         )
     except MapProviderError:
         navigation_url = None
@@ -317,7 +321,7 @@ def _route_stops(tasks: list[Task]) -> list[RouteStop]:
         stops.append(
             RouteStop(
                 task_id=task.id,
-                label=order_display_address(task.order) or f"任务 #{task.id}",
+                label=order_geocode_address(task.order) or f"任务 #{task.id}",
                 position=point,
                 original_index=index,
             )

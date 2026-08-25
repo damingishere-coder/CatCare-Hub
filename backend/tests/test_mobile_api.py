@@ -142,7 +142,7 @@ def test_mobile_today_is_ordered_privacy_minimized_and_uses_cached_navigation(
     assert payload["tasks"][1]["navigation_state"] == "missing_coordinates"
     assert payload["tasks"][1]["navigation_url"] is None
     assert all(
-        task["address"] == "P6 虚构路 6 号 6 栋 6 单元 606"
+        task["address"] == "P6 虚构小区 P6 虚构路 6 号 6 栋 6 单元 606"
         for task in payload["tasks"]
     )
     assert mobile_map_provider.geocode_calls == 0

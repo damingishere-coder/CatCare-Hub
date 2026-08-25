@@ -133,6 +133,45 @@ def test_direct_order_matches_restores_and_only_fills_empty_customer_fields(
         assert str(customer.latitude) == "30.1234567"
 
 
+def test_order_geocoding_excludes_unit_and_room_and_their_edits_keep_coordinates(
+    p18_context: P18Context,
+) -> None:
+    client = p18_context.client
+    created = client.post(
+        "/api/admin/orders",
+        json=direct_order_payload(
+            service_contact={
+                "name": "P19 地址隐私客户（虚构）",
+                "community": "P19 虚构花园",
+                "address": "P19 虚构路 19 号",
+                "building": "3栋",
+                "unit": "2单元",
+                "room": "1901室",
+            }
+        ),
+    )
+    assert created.status_code == 201
+    order = created.json()
+    assert p18_context.geocoder.calls == ["P19 虚构花园 P19 虚构路 19 号 3栋"]
+    assert "2单元" not in p18_context.geocoder.calls[0]
+    assert "1901室" not in p18_context.geocoder.calls[0]
+
+    updated_contact = {
+        **order["service_contact"],
+        "unit": "5单元",
+        "room": "2502室",
+    }
+    patched = client.patch(
+        f"/api/admin/orders/{order['id']}",
+        json={"service_contact": updated_contact},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["service_contact"]["unit"] == "5单元"
+    assert patched.json()["service_contact"]["room"] == "2502室"
+    assert patched.json()["route_geocode_status"] == "resolved"
+    assert p18_context.geocoder.calls == ["P19 虚构花园 P19 虚构路 19 号 3栋"]
+
+
 def test_daily_adjustment_partial_payments_and_financial_lock(
     p18_context: P18Context,
 ) -> None:

@@ -53,18 +53,21 @@ from app.services.orders import (
     money,
     order_has_execution_history,
     order_daily_receivables,
+    order_display_address,
+    order_geocode_address,
     order_schedule,
     order_service_days,
     order_service_contact,
     order_total_visits,
     overpaid_amount,
-    payment_status_for_amounts,
+    payment_status_for_order,
     require_tasks_are_rebuildable,
     replace_order_schedule,
     reprice_order,
     synchronize_task_statuses,
     apply_amount_adjustment,
 )
+from app.services.payments import payment_revision, require_payment_revision
 
 
 router = APIRouter(prefix="/api/admin/orders", tags=["admin-orders"])
@@ -109,14 +112,7 @@ def _cat_summaries(order: Order) -> list[OrderCatSummary]:
 
 
 def _snapshot_display_address(order: Order) -> str | None:
-    parts = [
-        order.contact_address or order.contact_community,
-        order.contact_building,
-        order.contact_unit,
-        order.contact_room,
-    ]
-    text = " ".join(part.strip() for part in parts if part and part.strip())
-    return text or None
+    return order_display_address(order)
 
 
 def _delete_block_reason(order: Order) -> str | None:
@@ -196,6 +192,8 @@ def _order_summary(order: Order, *, customer_resolution: str | None = None) -> O
         due_amount=due_amount(order),
         overpaid_amount=overpaid_amount(order),
         payment_status=order.payment_status,
+        financial_revision=payment_revision(order),
+        has_payment_history=bool(order.payments),
         daily_receivables=(
             [
                 OrderDailyReceivableRead(
@@ -203,6 +201,7 @@ def _order_summary(order: Order, *, customer_resolution: str | None = None) -> O
                     expected_amount=item.expected_amount,
                     paid_amount=item.paid_amount,
                     due_amount=item.due_amount,
+                    overpaid_amount=item.overpaid_amount,
                     task_status=task_statuses[item.service_date],
                 )
                 for item in order_daily_receivables(order)
@@ -439,7 +438,7 @@ def patch_order(
 ) -> OrderDetail:
     order = _load_order(session, order_id)
     fields = payload.model_fields_set
-    original_address = _snapshot_display_address(order)
+    original_route_address = order_geocode_address(order)
 
     source_field_changed = bool({"customer_id", "source_customer_id"} & fields)
     requested_customer = order.customer
@@ -474,15 +473,21 @@ def patch_order(
     if structural_change:
         require_tasks_are_rebuildable(order)
 
-    financial_change = bool(
-        {"service_dates", "unit_price", "settlement_mode", "amount_adjustment"}
+    locked_financial_change = bool(
+        {"service_dates", "settlement_mode", "amount_adjustment", "cat_count"}
         & fields
     )
-    if order.payments and financial_change:
+    if order.payments and locked_financial_change:
         raise HTTPException(
             status_code=409,
-            detail="订单已有收款记录，不能切换结算模式或修改日期与金额",
+            detail="订单已有收款记录，只能调整每次价格；日期、结算方式、金额变动和猫咪数量保持锁定",
         )
+
+    price_changed = "unit_price" in fields and payload.unit_price is not None
+    if order.payments and price_changed:
+        if payload.expected_financial_revision is None:
+            raise HTTPException(status_code=409, detail="请刷新订单后再调整价格")
+        require_payment_revision(order, payload.expected_financial_revision)
 
     if source_changed:
         order.customer_id = requested_customer_id
@@ -516,7 +521,6 @@ def patch_order(
     if "notes" in fields:
         order.notes = payload.notes
 
-    price_changed = "unit_price" in fields and payload.unit_price is not None
     if price_changed or structural_change or "amount_adjustment" in fields:
         reprice_order(order, unit_price=payload.unit_price if price_changed else None)
 
@@ -524,7 +528,7 @@ def patch_order(
         order.tasks.clear()
         generate_order_tasks(order)
 
-    address_changed = original_address != _snapshot_display_address(order)
+    address_changed = original_route_address != order_geocode_address(order)
     if address_changed:
         clear_order_location(order)
     session.commit()
@@ -568,6 +572,7 @@ def update_order(
         (payload.start_date + timedelta(days=offset), payload.visits_per_day)
         for offset in range((payload.end_date - payload.start_date).days + 1)
     ]
+    pricing = _pricing(payload)
     structural_change = any(
         (
             order.customer_id != payload.customer_id,
@@ -581,6 +586,26 @@ def update_order(
             status_code=409,
             detail="订单已有收款记录，不能更换客户",
         )
+    if order.payments and any(
+        (
+            existing_cat_ids != set(payload.cat_ids),
+            order_schedule(order) != requested_schedule,
+            payload.settlement_mode != order.settlement_mode,
+            payload.amount_adjustment.type != order.adjustment_type,
+            money(payload.amount_adjustment.amount) != money(order.adjustment_amount),
+            payload.amount_adjustment.reason != order.adjustment_reason,
+            payload.amount_adjustment.service_date != order.adjustment_service_date,
+            pricing.base_price != money(order.base_price),
+            pricing.extra_cat_fee != money(order.extra_cat_fee),
+            pricing.stairs_fee != money(order.stairs_fee),
+            pricing.other_fee != money(order.other_fee),
+            pricing.total_amount != money(order.total_amount),
+        )
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="订单已有收款记录，兼容更新接口不能修改财务字段；请使用订单价格调整",
+        )
     if structural_change:
         require_tasks_are_rebuildable(order)
     if payload.order_status is OrderStatus.COMPLETED and structural_change:
@@ -589,7 +614,6 @@ def update_order(
             detail="不能在重建任务的同时把订单标记为已完成",
         )
 
-    pricing = _pricing(payload)
     order.customer_id = payload.customer_id
     apply_service_contact(order, customer_service_contact(customer))
     order.cat_snapshot = cat_snapshot(cats)
@@ -601,11 +625,7 @@ def update_order(
     order.stairs_fee = pricing.stairs_fee
     order.other_fee = pricing.other_fee
     order.total_amount = pricing.total_amount
-    order.payment_status = payment_status_for_amounts(
-        total_amount=pricing.total_amount,
-        paid_amount=order.paid_amount,
-        current_status=order.payment_status,
-    )
+    order.payment_status = payment_status_for_order(order)
     order.notes = payload.notes
 
     if existing_cat_ids != set(payload.cat_ids):

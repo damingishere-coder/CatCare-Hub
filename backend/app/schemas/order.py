@@ -236,6 +236,9 @@ class OrderPatch(NormalizedOrderModel):
     settlement_mode: OrderSettlementMode | None = None
     amount_adjustment: OrderAmountAdjustment | None = None
     notes: str | None = Field(default=None, max_length=4000)
+    expected_financial_revision: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
 
     @field_validator("service_dates")
     @classmethod
@@ -322,6 +325,7 @@ class OrderDailyReceivableRead(BaseModel):
     expected_amount: Decimal = Field(ge=0)
     paid_amount: Decimal = Field(ge=0)
     due_amount: Decimal = Field(ge=0)
+    overpaid_amount: Decimal = Field(ge=0)
     task_status: TaskStatus | None
 
 
@@ -353,6 +357,8 @@ class OrderSummary(BaseModel):
     due_amount: Decimal
     overpaid_amount: Decimal = Field(ge=0)
     payment_status: OrderPaymentStatus
+    financial_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    has_payment_history: bool
     daily_receivables: list[OrderDailyReceivableRead]
     order_status: OrderStatus
     route_geocode_status: str | None

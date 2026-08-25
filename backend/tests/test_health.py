@@ -49,7 +49,7 @@ def test_ready_check_reports_current_database_revision(
         "status": "ready",
         "service": "catcare-hub-api",
         "database": "ready",
-        "schema_revision": "0009_order_daily_settlement",
+        "schema_revision": "0010_payment_void_audit",
     }
 
 

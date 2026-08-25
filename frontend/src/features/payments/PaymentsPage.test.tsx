@@ -7,6 +7,7 @@ import type { PaymentsOverview } from "./types";
 const apiMocks = vi.hoisted(() => ({
   getPaymentsOverview: vi.fn(),
   registerPayment: vi.fn(),
+  voidPayment: vi.fn(),
 }));
 
 vi.mock("./api", () => apiMocks);
@@ -54,6 +55,9 @@ const overview: PaymentsOverview = {
       payment_method: "alipay",
       payment_status: "completed",
       paid_at: "2035-10-06T01:00:00Z",
+      voided_at: null,
+      voided_reason: null,
+      revision: "b".repeat(64),
     },
   ],
 };
@@ -70,9 +74,18 @@ beforeEach(() => {
   vi.resetAllMocks();
   apiMocks.getPaymentsOverview.mockResolvedValue(overview);
   apiMocks.registerPayment.mockResolvedValue({ payment: overview.records[0], order: overview.receivables[0] });
+  apiMocks.voidPayment.mockResolvedValue({
+    payment: { ...overview.records[0], payment_status: "voided", voided_at: "2035-10-06T02:00:00Z", voided_reason: "重复登记" },
+    order_id: 12,
+    paid_amount: "0.00",
+    due_amount: "90.00",
+    overpaid_amount: "0.00",
+    payment_status: "unpaid",
+    revision: "c".repeat(64),
+  });
 });
 
-it("shows real summaries, receivables, and immutable payment records", async () => {
+it("shows real summaries, receivables, and auditable payment records", async () => {
   renderPage();
 
   expect(await screen.findByRole("heading", { name: "收款记录" })).toBeInTheDocument();
@@ -86,6 +99,38 @@ it("shows real summaries, receivables, and immutable payment records", async () 
   expect(screen.getByText("支付宝")).toBeInTheDocument();
   expect(screen.getByText("已完成")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "登记收款" })).toBeEnabled();
+});
+
+it("requires a reason and confirms a soft void before refreshing", async () => {
+  apiMocks.getPaymentsOverview
+    .mockResolvedValueOnce(overview)
+    .mockResolvedValueOnce({
+      ...overview,
+      records: [{
+        ...overview.records[0],
+        payment_status: "voided",
+        voided_at: "2035-10-06T02:00:00Z",
+        voided_reason: "重复登记",
+        revision: "c".repeat(64),
+      }],
+    });
+  renderPage();
+  expect(await screen.findByRole("heading", { name: "收款记录" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+  const dialog = screen.getByRole("dialog", { name: "撤销误登记收款" });
+  expect(within(dialog).getByText(/不会向微信、支付宝、银行卡或现金渠道发起退款/)).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "确认撤销" }));
+  expect(within(dialog).getByRole("alert")).toHaveTextContent("请填写撤销原因");
+  fireEvent.change(within(dialog).getByLabelText(/^撤销原因/), { target: { value: "  重复登记  " } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "确认撤销" }));
+
+  await waitFor(() => expect(apiMocks.voidPayment).toHaveBeenCalledWith(31, {
+    expected_revision: "b".repeat(64),
+    reason: "重复登记",
+  }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "撤销误登记收款" })).not.toBeInTheDocument());
+  expect(await screen.findByText("已撤销")).toBeInTheDocument();
+  expect(screen.getByText("原因：重复登记")).toBeInTheDocument();
 });
 
 it("opens a targeted order, registers a payment, and refreshes", async () => {

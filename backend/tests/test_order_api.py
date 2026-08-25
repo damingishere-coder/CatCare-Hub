@@ -1,7 +1,8 @@
 from collections import Counter
 from collections.abc import Generator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,6 +17,7 @@ from app.models import (
     OrderPaymentStatus,
     Payment,
     PaymentMethod,
+    PaymentRecordStatus,
     Task,
     TaskItem,
     TaskPhoto,
@@ -429,7 +431,7 @@ def test_simple_order_requires_selection_for_ambiguous_match_and_rejects_invalid
         assert client.post("/api/admin/orders", json=payload).status_code == 422
 
 
-def test_paid_simple_order_rejects_repricing(
+def test_paid_simple_order_allows_revision_protected_repricing_without_changing_payments(
     order_api_context: OrderApiContext,
 ) -> None:
     client = order_api_context.client
@@ -448,22 +450,193 @@ def test_paid_simple_order_rejects_repricing(
         assert order is not None
         order.paid_amount = 100
         order.payment_status = OrderPaymentStatus.PAID
+        session.add_all(
+            [
+                Payment(
+                    order_id=order.id,
+                    customer_id=customer["id"],
+                    service_date=date(2032, 5, service_day),
+                    amount=50,
+                    payment_method=PaymentMethod.CASH,
+                    payment_status=PaymentRecordStatus.COMPLETED,
+                    paid_at=datetime(2032, 5, service_day, 8, 0, tzinfo=timezone.utc),
+                )
+                for service_day in (1, 3)
+            ]
+        )
+
+    refreshed = client.get(f"/api/admin/orders/{created['id']}").json()
+    response = client.patch(
+        f"/api/admin/orders/{created['id']}",
+        json={
+            "unit_price": "20.00",
+            "expected_financial_revision": refreshed["financial_revision"],
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["total_amount"] == "40.00"
+    assert updated["paid_amount"] == "100.00"
+    assert updated["due_amount"] == "0.00"
+    assert updated["overpaid_amount"] == "60.00"
+    assert updated["payment_status"] == "paid"
+    assert [item["overpaid_amount"] for item in updated["daily_receivables"]] == [
+        "30.00",
+        "30.00",
+    ]
+    with order_api_context.session_factory() as session:
+        payments = list(
+            session.scalars(
+                select(Payment)
+                .where(Payment.order_id == created["id"])
+                .order_by(Payment.id)
+            )
+        )
+        assert [(payment.amount, payment.payment_status) for payment in payments] == [
+            (Decimal("50.00"), PaymentRecordStatus.COMPLETED),
+            (Decimal("50.00"), PaymentRecordStatus.COMPLETED),
+        ]
+
+    increased = client.patch(
+        f"/api/admin/orders/{created['id']}",
+        json={
+            "unit_price": "60.00",
+            "expected_financial_revision": updated["financial_revision"],
+        },
+    )
+    assert increased.status_code == 200
+    assert increased.json()["total_amount"] == "120.00"
+    assert increased.json()["paid_amount"] == "100.00"
+    assert increased.json()["due_amount"] == "20.00"
+    assert increased.json()["overpaid_amount"] == "0.00"
+    assert increased.json()["payment_status"] == "partial"
+
+    stale_revision = client.patch(
+        f"/api/admin/orders/{created['id']}",
+        json={
+            "unit_price": "55.00",
+            "expected_financial_revision": updated["financial_revision"],
+        },
+    )
+    assert stale_revision.status_code == 409
+
+    missing_revision = client.patch(
+        f"/api/admin/orders/{created['id']}",
+        json={"unit_price": "25.00"},
+    )
+    assert missing_revision.status_code == 409
+    assert client.patch(
+        f"/api/admin/orders/{created['id']}",
+        json={"cat_count": 2},
+    ).status_code == 409
+
+
+def test_daily_repricing_keeps_overpaid_and_due_service_dates_separate(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+    customer, _ = create_customer_with_cats(client, cat_names=("跨日猫",))
+    created = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(
+            customer_name=None,
+            customer_id=customer["id"],
+            service_dates=["2032-05-01", "2032-05-03"],
+            unit_price="50.00",
+        ),
+    ).json()
+    with order_api_context.session_factory.begin() as session:
+        order = session.get(Order, created["id"])
+        assert order is not None
+        order.paid_amount = Decimal("50.00")
+        order.payment_status = OrderPaymentStatus.PARTIAL
         session.add(
             Payment(
                 order_id=order.id,
                 customer_id=customer["id"],
-                amount=100,
+                service_date=date(2032, 5, 1),
+                amount=Decimal("50.00"),
                 payment_method=PaymentMethod.CASH,
+                payment_status=PaymentRecordStatus.COMPLETED,
+                paid_at=datetime(2032, 5, 1, 8, 0, tzinfo=timezone.utc),
             )
         )
 
+    current = client.get(f"/api/admin/orders/{created['id']}").json()
     response = client.patch(
         f"/api/admin/orders/{created['id']}",
-        json={"unit_price": "20.00"},
+        json={
+            "unit_price": "20.00",
+            "expected_financial_revision": current["financial_revision"],
+        },
     )
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["total_amount"] == "40.00"
+    assert updated["paid_amount"] == "50.00"
+    assert updated["due_amount"] == "20.00"
+    assert updated["overpaid_amount"] == "30.00"
+    assert updated["payment_status"] == "partial"
+    assert [
+        (item["service_date"], item["due_amount"], item["overpaid_amount"])
+        for item in updated["daily_receivables"]
+    ] == [
+        ("2032-05-01", "0.00", "30.00"),
+        ("2032-05-03", "20.00", "0.00"),
+    ]
 
-    assert response.status_code == 409
-    assert "已有收款" in response.json()["detail"]
+    overview = client.get("/api/admin/payments", params={"date": "2032-05-01"}).json()
+    matching = [item for item in overview["receivables"] if item["order_id"] == created["id"]]
+    assert len(matching) == 1
+    assert matching[0]["service_date"] == "2032-05-03"
+    assert matching[0]["due_amount"] == "20.00"
+
+
+def test_legacy_put_cannot_bypass_paid_order_financial_lock(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+    customer, cats = create_customer_with_cats(client, cat_names=("兼容接口猫",))
+    created = client.post(
+        "/api/admin/orders",
+        json=order_payload(
+            customer["id"],
+            [cats[0]["id"]],
+            start_date="2032-06-01",
+            end_date="2032-06-01",
+            order_status="confirmed",
+        ),
+    ).json()
+    with order_api_context.session_factory.begin() as session:
+        order = session.get(Order, created["id"])
+        assert order is not None
+        order.paid_amount = Decimal("10.00")
+        order.payment_status = OrderPaymentStatus.PARTIAL
+        session.add(
+            Payment(
+                order_id=order.id,
+                customer_id=customer["id"],
+                amount=Decimal("10.00"),
+                payment_method=PaymentMethod.CASH,
+                payment_status=PaymentRecordStatus.COMPLETED,
+                paid_at=datetime(2032, 6, 1, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+
+    bypass = client.put(
+        f"/api/admin/orders/{created['id']}",
+        json=order_payload(
+            customer["id"],
+            [cats[0]["id"]],
+            start_date="2032-06-01",
+            end_date="2032-06-01",
+            base_price="40.00",
+            order_status="confirmed",
+        ),
+    )
+    assert bypass.status_code == 409
+    assert "兼容更新接口不能修改财务字段" in bypass.json()["detail"]
 
 
 def test_unstarted_unpaid_order_can_be_permanently_deleted(

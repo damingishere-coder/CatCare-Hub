@@ -47,10 +47,11 @@ class DailyReceivable:
     expected_amount: Decimal
     paid_amount: Decimal
     due_amount: Decimal
+    overpaid_amount: Decimal
 
 
-def money(value: Decimal) -> Decimal:
-    return value.quantize(MONEY, rounding=ROUND_HALF_UP)
+def money(value: Decimal | int | float | str) -> Decimal:
+    return Decimal(str(value)).quantize(MONEY, rounding=ROUND_HALF_UP)
 
 
 def calculate_order_pricing(
@@ -179,6 +180,7 @@ def order_daily_receivables(order: Order) -> list[DailyReceivable]:
             expected_amount=(expected := order_daily_charge(order, service_date)),
             paid_amount=(paid := paid_by_date.get(service_date, Decimal("0.00"))),
             due_amount=money(max(expected - paid, Decimal("0.00"))),
+            overpaid_amount=money(max(paid - expected, Decimal("0.00"))),
         )
         for service_date, _ in order_schedule(order)
     ]
@@ -305,15 +307,49 @@ def order_service_contact(order: Order) -> OrderServiceContact:
     )
 
 
+def _deduplicated_address(parts: list[str | None]) -> str | None:
+    values: list[str] = []
+    normalized: list[str] = []
+    for part in parts:
+        value = " ".join((part or "").strip().split())
+        if not value:
+            continue
+        compact = "".join(value.casefold().split())
+        if any(compact == existing or compact in existing for existing in normalized):
+            continue
+        values = [
+            existing
+            for existing, existing_normalized in zip(values, normalized, strict=True)
+            if existing_normalized not in compact
+        ]
+        normalized = [
+            existing
+            for existing in normalized
+            if existing not in compact
+        ]
+        values.append(value)
+        normalized.append(compact)
+    return " ".join(values) or None
+
+
+def order_geocode_address(order: Order) -> str | None:
+    """Return the routable address without unit or room privacy details."""
+
+    return _deduplicated_address(
+        [order.contact_community, order.contact_address, order.contact_building]
+    )
+
+
 def order_display_address(order: Order) -> str | None:
-    parts = [
-        order.contact_address or order.contact_community,
-        order.contact_building,
-        order.contact_unit,
-        order.contact_room,
-    ]
-    value = " ".join(part.strip() for part in parts if part and part.strip())
-    return value or None
+    return _deduplicated_address(
+        [
+            order.contact_community,
+            order.contact_address,
+            order.contact_building,
+            order.contact_unit,
+            order.contact_room,
+        ]
+    )
 
 
 def _resolved_contact(
@@ -434,10 +470,24 @@ def build_simple_order(
 
 
 def due_amount(order: Order) -> Decimal:
+    if order.settlement_mode is OrderSettlementMode.DAILY:
+        return money(
+            sum(
+                (item.due_amount for item in order_daily_receivables(order)),
+                Decimal("0.00"),
+            )
+        )
     return money(max(order.total_amount - order.paid_amount, Decimal("0")))
 
 
 def overpaid_amount(order: Order) -> Decimal:
+    if order.settlement_mode is OrderSettlementMode.DAILY:
+        return money(
+            sum(
+                (item.overpaid_amount for item in order_daily_receivables(order)),
+                Decimal("0.00"),
+            )
+        )
     return money(max(order.paid_amount - order.total_amount, Decimal("0")))
 
 
@@ -452,6 +502,16 @@ def payment_status_for_amounts(
     if paid_amount <= 0:
         return OrderPaymentStatus.UNPAID
     if paid_amount < total_amount:
+        return OrderPaymentStatus.PARTIAL
+    return OrderPaymentStatus.PAID
+
+
+def payment_status_for_order(order: Order) -> OrderPaymentStatus:
+    if order.payment_status is OrderPaymentStatus.REFUNDED:
+        return OrderPaymentStatus.REFUNDED
+    if money(order.paid_amount) <= 0:
+        return OrderPaymentStatus.UNPAID
+    if due_amount(order) > 0:
         return OrderPaymentStatus.PARTIAL
     return OrderPaymentStatus.PAID
 
@@ -485,11 +545,7 @@ def reprice_order(order: Order, *, unit_price: Decimal | None = None) -> None:
             Decimal("0.00"),
         )
     )
-    order.payment_status = payment_status_for_amounts(
-        total_amount=order.total_amount,
-        paid_amount=order.paid_amount,
-        current_status=order.payment_status,
-    )
+    order.payment_status = payment_status_for_order(order)
 
 
 def initial_task_status(order_status: OrderStatus) -> TaskStatus:

@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.enums import (
@@ -74,10 +74,7 @@ def _load_relevant_orders(session: Session, business_date: date) -> list[Order]:
             .where(
                 Order.order_status != OrderStatus.CANCELLED,
                 or_(
-                    and_(
-                        Order.payment_status != OrderPaymentStatus.REFUNDED,
-                        Order.total_amount > Order.paid_amount,
-                    ),
+                    Order.payment_status != OrderPaymentStatus.REFUNDED,
                     Order.end_date == business_date,
                     Order.start_date == tomorrow,
                 ),
@@ -85,6 +82,8 @@ def _load_relevant_orders(session: Session, business_date: date) -> list[Order]:
             .options(
                 selectinload(Order.customer),
                 selectinload(Order.cat_links),
+                selectinload(Order.payments),
+                selectinload(Order.service_dates),
             )
             .order_by(Order.id)
         ).unique()
@@ -126,6 +125,26 @@ def _month_income(session: Session, business_date: date) -> Decimal:
         )
     )
     return money(total or Decimal("0"))
+
+
+def _month_order_count(session: Session, business_date: date) -> int:
+    month_start = business_date.replace(day=1)
+    next_month = (
+        month_start.replace(year=month_start.year + 1, month=1)
+        if month_start.month == 12
+        else month_start.replace(month=month_start.month + 1)
+    )
+    count = session.scalar(
+        select(func.count(func.distinct(Task.order_id)))
+        .join(Task.order)
+        .where(
+            Task.service_date >= month_start,
+            Task.service_date < next_month,
+            Task.status != TaskStatus.CANCELLED,
+            Order.order_status != OrderStatus.CANCELLED,
+        )
+    )
+    return count or 0
 
 
 def _task_summary(task: Task) -> DashboardTaskSummary:
@@ -289,7 +308,7 @@ def get_dashboard(
         business_date=target_date,
         month_start=target_date.replace(day=1),
         metrics=DashboardMetrics(
-            today_order_count=len({task.order_id for task in tasks}),
+            month_order_count=_month_order_count(session, target_date),
             pending_task_count=sum(
                 task.status in OPEN_TASK_STATUSES for task in tasks
             ),

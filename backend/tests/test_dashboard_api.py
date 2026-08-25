@@ -1,6 +1,6 @@
 from collections.abc import Generator
 from dataclasses import dataclass
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
 import pytest
@@ -127,7 +127,7 @@ def test_dashboard_empty_state_and_date_validation(
         "business_date": "2035-10-06",
         "month_start": "2035-10-01",
         "metrics": {
-            "today_order_count": 0,
+            "month_order_count": 0,
             "pending_task_count": 0,
             "pending_payment_count": 0,
             "month_income": "0.00",
@@ -139,6 +139,35 @@ def test_dashboard_empty_state_and_date_validation(
         "/api/admin/dashboard",
         params={"date": "not-a-date"},
     ).status_code == 422
+
+
+def test_dashboard_month_order_count_uses_service_month_and_excludes_cancelled(
+    dashboard_api_context: DashboardApiContext,
+) -> None:
+    client = dashboard_api_context.client
+    created_orders: dict[str, dict] = {}
+    for label, service_date in (
+        ("上月", "2035-09-30"),
+        ("本月首日", "2035-10-01"),
+        ("本月未来", "2035-10-31"),
+        ("下月", "2035-11-01"),
+        ("本月取消", "2035-10-20"),
+    ):
+        customer, cat = create_customer(client, name=f"P19 {label}客户（虚构）")
+        created_orders[label] = create_order(
+            client,
+            customer_id=customer["id"],
+            cat_id=cat["id"],
+            start_date=service_date,
+            end_date=service_date,
+        )
+    assert client.patch(
+        f"/api/admin/orders/{created_orders['本月取消']['id']}/status",
+        json={"order_status": "cancelled"},
+    ).status_code == 200
+
+    payload = client.get("/api/admin/dashboard", params={"date": "2035-10-06"}).json()
+    assert payload["metrics"]["month_order_count"] == 2
 
 
 def test_dashboard_aggregates_schedule_reminders_and_privacy(
@@ -233,6 +262,15 @@ def test_dashboard_aggregates_schedule_reminders_and_privacy(
         session.add_all(
             [
                 Payment(
+                    order_id=prior_order_model.id,
+                    customer_id=prior_customer["id"],
+                    service_date=date(2035, 10, 5),
+                    amount=prior_order_model.total_amount,
+                    payment_method=PaymentMethod.CASH,
+                    payment_status=PaymentRecordStatus.COMPLETED,
+                    paid_at=datetime(2035, 9, 29, 8, 0, tzinfo=timezone.utc),
+                ),
+                Payment(
                     order_id=order.id,
                     customer_id=customer["id"],
                     amount=Decimal("88.50"),
@@ -279,7 +317,7 @@ def test_dashboard_aggregates_schedule_reminders_and_privacy(
     assert response.status_code == 200
     payload = response.json()
     assert payload["metrics"] == {
-        "today_order_count": 1,
+        "month_order_count": 3,
         "pending_task_count": 1,
         "pending_payment_count": 2,
         "month_income": "88.50",
@@ -300,7 +338,7 @@ def test_dashboard_aggregates_schedule_reminders_and_privacy(
         "status": "ready",
         "customer_name": "P7 今日客户（虚构）",
         "community": "P7 虚构小区",
-        "address": "P7 不对应真实地点的详细地址",
+        "address": "P7 虚构小区 P7 不对应真实地点的详细地址",
         "cat_count": 1,
     }
 

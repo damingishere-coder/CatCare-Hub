@@ -1,11 +1,12 @@
-import { CheckCircle2, CircleDollarSign, Clock3, LoaderCircle, Plus, RefreshCw, WalletCards } from "lucide-react";
+import { CheckCircle2, CircleDollarSign, Clock3, LoaderCircle, Plus, RefreshCw, RotateCcw, WalletCards } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import { PageHeader } from "../../components/ui/PageHeader";
-import { getPaymentsOverview, registerPayment } from "./api";
+import { getPaymentsOverview, registerPayment, voidPayment } from "./api";
 import { PaymentForm } from "./PaymentForm";
-import type { PaymentCreateInput, PaymentMethod, PaymentRecordStatus, PaymentsOverview } from "./types";
+import { PaymentVoidDialog } from "./PaymentVoidDialog";
+import type { PaymentCreateInput, PaymentMethod, PaymentRecord, PaymentRecordStatus, PaymentsOverview } from "./types";
 
 function receivableKey(order: PaymentsOverview["receivables"][number]): string {
   return `${order.order_id}:${order.service_date ?? "order"}`;
@@ -31,6 +32,7 @@ const statusLabels: Record<PaymentRecordStatus, string> = {
   pending: "待确认",
   completed: "已完成",
   refunded: "已退款",
+  voided: "已撤销",
 };
 
 function currency(value: string): string {
@@ -63,6 +65,7 @@ function recordStatusStyle(status: PaymentRecordStatus): string {
     pending: "bg-amber-50 text-amber-700",
     completed: "bg-emerald-50 text-emerald-700",
     refunded: "bg-slate-200 text-slate-600",
+    voided: "bg-red-50 text-red-700",
   }[status];
 }
 
@@ -76,6 +79,7 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formReceivableKey, setFormReceivableKey] = useState<string | null>(null);
+  const [voidRecord, setVoidRecord] = useState<PaymentRecord | null>(null);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -127,6 +131,16 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
     await loadOverview();
   }
 
+  async function handleVoid(reason: string) {
+    if (!voidRecord) return;
+    await voidPayment(voidRecord.id, {
+      expected_revision: voidRecord.revision,
+      reason,
+    });
+    setVoidRecord(null);
+    await loadOverview();
+  }
+
   return (
     <section className="cc-page" aria-labelledby="payments-title">
       <PageHeader
@@ -163,9 +177,9 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
           </section>
 
           <section className="cc-surface mt-5 overflow-hidden p-0" aria-labelledby="records-title">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 id="records-title" className="font-semibold text-slate-950">收款流水</h2><p className="mt-1 text-xs text-slate-500">流水仅追加；本轮不提供编辑、删除或退款</p></div><span className="text-sm font-medium text-slate-500">{overview.records.length} 条</span></div>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 id="records-title" className="font-semibold text-slate-950">收款流水</h2><p className="mt-1 text-xs text-slate-500">流水永久保留；误登记可以撤销，实际退款仍需在线下完成</p></div><span className="text-sm font-medium text-slate-500">{overview.records.length} 条</span></div>
             {overview.records.length ? (
-              <div className="overflow-x-auto"><table className="cc-table min-w-full text-left text-sm"><thead><tr><th className="px-5 py-3 font-medium">客户</th><th className="px-4 py-3 font-medium">项目</th><th className="px-4 py-3 font-medium">支付方式</th><th className="px-4 py-3 font-medium">金额</th><th className="px-4 py-3 font-medium">状态</th><th className="px-5 py-3 font-medium">时间</th></tr></thead><tbody>{overview.records.map((record) => <tr key={record.id}><td className="px-5 py-4"><p className="font-semibold text-slate-900">{record.customer_name}</p><p className="mt-1 text-xs text-slate-500">订单 #{record.order_id}</p></td><td className="px-4 py-4 text-slate-600"><p>{record.service_date ?? dateRange(record.start_date, record.end_date)}</p><p className="mt-1 text-xs text-slate-500">{record.service_date ? "日结" : "整单"} · {record.cat_count} 只猫</p></td><td className="px-4 py-4 text-slate-700">{methodLabels[record.payment_method]}</td><td className="px-4 py-4 font-semibold text-slate-900">{currency(record.amount)}</td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${recordStatusStyle(record.payment_status)}`}>{statusLabels[record.payment_status]}</span></td><td className="px-5 py-4 text-slate-600">{displayDateTime(record.paid_at)}</td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="cc-table min-w-full text-left text-sm"><thead><tr><th className="px-5 py-3 font-medium">客户</th><th className="px-4 py-3 font-medium">项目</th><th className="px-4 py-3 font-medium">支付方式</th><th className="px-4 py-3 font-medium">金额</th><th className="px-4 py-3 font-medium">状态</th><th className="px-4 py-3 font-medium">时间</th><th className="px-5 py-3 text-right font-medium">操作</th></tr></thead><tbody>{overview.records.map((record) => <tr key={record.id}><td className="px-5 py-4"><p className="font-semibold text-slate-900">{record.customer_name}</p><p className="mt-1 text-xs text-slate-500">订单 #{record.order_id}</p></td><td className="px-4 py-4 text-slate-600"><p>{record.service_date ?? dateRange(record.start_date, record.end_date)}</p><p className="mt-1 text-xs text-slate-500">{record.service_date ? "日结" : "整单"} · {record.cat_count} 只猫</p></td><td className="px-4 py-4 text-slate-700">{methodLabels[record.payment_method]}</td><td className="px-4 py-4 font-semibold text-slate-900">{currency(record.amount)}</td><td className="max-w-64 px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${recordStatusStyle(record.payment_status)}`}>{statusLabels[record.payment_status]}</span>{record.voided_reason ? <p className="mt-2 text-xs leading-5 text-red-700">原因：{record.voided_reason}</p> : null}</td><td className="px-4 py-4 text-slate-600"><p>{displayDateTime(record.paid_at)}</p>{record.voided_at ? <p className="mt-1 text-xs text-red-700">撤销：{displayDateTime(record.voided_at)}</p> : null}</td><td className="px-5 py-4 text-right">{record.payment_status === "completed" ? <button type="button" className="cc-button cc-button--secondary min-h-9 px-3 text-xs text-red-700" onClick={() => setVoidRecord(record)}><RotateCcw size={14} />撤销</button> : <span className="text-xs text-slate-400">—</span>}</td></tr>)}</tbody></table></div>
             ) : <p className="px-5 py-12 text-center text-sm text-slate-500">还没有收款流水。</p>}
           </section>
 
@@ -174,6 +188,7 @@ export function PaymentsPage({ initialCreate = false, initialOrderId = null }: P
       ) : null}
 
       {overview && formReceivableKey !== null ? <PaymentForm orders={overview.receivables} initialReceivableKey={formReceivableKey} onCancel={() => setFormReceivableKey(null)} onSave={handleSave} /> : null}
+      {voidRecord ? <PaymentVoidDialog record={voidRecord} onCancel={() => setVoidRecord(null)} onConfirm={handleVoid} /> : null}
     </section>
   );
 }

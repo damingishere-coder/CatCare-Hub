@@ -106,7 +106,9 @@ const summary: OrderSummary = {
   due_amount: "245.00",
   overpaid_amount: "0.00",
   payment_status: "unpaid",
-  daily_receivables: Array.from({ length: 7 }, (_, index) => ({ service_date: `2030-10-${String(index + 1).padStart(2, "0")}`, expected_amount: "35.00", paid_amount: "0.00", due_amount: "35.00", task_status: "pending" as const })),
+  financial_revision: "f".repeat(64),
+  has_payment_history: false,
+  daily_receivables: Array.from({ length: 7 }, (_, index) => ({ service_date: `2030-10-${String(index + 1).padStart(2, "0")}`, expected_amount: "35.00", paid_amount: "0.00", due_amount: "35.00", overpaid_amount: "0.00", task_status: "pending" as const })),
   order_status: "pending_confirmation",
   route_geocode_status: "pending",
   pending_cat_profile_count: 0,
@@ -218,7 +220,8 @@ it("creates a daily order with standard access selects and a dated surcharge", a
   fireEvent.change(within(dialog).getByLabelText("金额变动"), { target: { value: "surcharge" } });
   fireEvent.change(within(dialog).getByLabelText("变动金额（元）"), { target: { value: "5" } });
   fireEvent.change(within(dialog).getByLabelText("原因"), { target: { value: "节假日加收" } });
-  expect(within(dialog).getAllByText("¥35.00").length).toBeGreaterThanOrEqual(2);
+  fireEvent.change(within(dialog).getByLabelText("每次价格（元）"), { target: { value: "31.2" } });
+  expect(within(dialog).getAllByText("¥36.20").length).toBeGreaterThanOrEqual(2);
   fireEvent.click(within(dialog).getByRole("button", { name: "创建订单" }));
 
   await waitFor(() => expect(apiMocks.createOrder).toHaveBeenCalledTimes(1));
@@ -231,7 +234,7 @@ it("creates a daily order with standard access selects and a dated surcharge", a
       }),
       cat_count: 2,
       service_dates: [expect.any(String)],
-      unit_price: "30.00",
+      unit_price: "31.20",
       settlement_mode: "daily",
       amount_adjustment: expect.objectContaining({
         type: "surcharge",
@@ -245,6 +248,74 @@ it("creates a daily order with standard access selects and a dated surcharge", a
   expect(payload).not.toHaveProperty("source_customer_id");
   expect(payload).not.toHaveProperty("total_amount");
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+});
+
+it("parses a pasted residential address locally and uses five editable fields", async () => {
+  apiMocks.listOrders.mockResolvedValue({ items: [], total: 0 });
+  renderPage();
+  expect(await screen.findByText("还没有订单")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "新建订单" }));
+  const dialog = screen.getByRole("dialog", { name: "新建订单" });
+  const smartPaste = within(dialog).getByLabelText("粘贴地址智能填写");
+  fireEvent.paste(smartPaste, {
+    clipboardData: {
+      getData: () => "广东省深圳市龙华区民治街道 星河盛世花园 3栋 2单元 1201室",
+    },
+  });
+
+  expect(within(dialog).getByLabelText("小区")).toHaveValue("星河盛世花园");
+  expect(within(dialog).getByLabelText("详细地址")).toHaveValue("广东省深圳市龙华区民治街道");
+  expect(within(dialog).getByLabelText("楼栋")).toHaveValue("3栋");
+  expect(within(dialog).getByLabelText("单元 / 房间")).toHaveValue("2单元 / 1201室");
+  expect(within(dialog).getByText("已自动拆分地址，请核对后再保存。")).toBeInTheDocument();
+  fireEvent.paste(smartPaste, {
+    clipboardData: {
+      getData: () => "广东省深圳市龙华区民治街道 星河盛世花园 3栋 2单元 1201室",
+    },
+  });
+  fireEvent.change(within(dialog).getByLabelText("单元 / 房间"), {
+    target: { value: "7单元 / 701室" },
+  });
+  expect(within(dialog).getByLabelText("单元 / 房间")).toHaveValue("7单元 / 701室");
+  expect(apiMocks.createOrder).not.toHaveBeenCalled();
+});
+
+it("steps the unit price by five while preserving decimals and allowing manual input", async () => {
+  apiMocks.listOrders.mockResolvedValue({ items: [], total: 0 });
+  renderPage();
+  expect(await screen.findByText("还没有订单")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "新建订单" }));
+  const dialog = screen.getByRole("dialog", { name: "新建订单" });
+  const price = within(dialog).getByLabelText("每次价格（元）");
+  fireEvent.change(price, { target: { value: "30.03" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "每次价格增加 5 元" }));
+  expect(price).toHaveValue("35.03");
+  fireEvent.keyDown(price, { key: "ArrowDown" });
+  expect(price).toHaveValue("30.03");
+  fireEvent.keyDown(price, { key: "ArrowUp" });
+  expect(price).toHaveValue("35.03");
+  fireEvent.click(within(dialog).getByRole("button", { name: "每次价格减少 5 元" }));
+  expect(price).toHaveValue("30.03");
+  fireEvent.change(price, { target: { value: "3.03" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "每次价格减少 5 元" }));
+  expect(price).toHaveValue("0.00");
+  fireEvent.change(price, { target: { value: "31.27" } });
+  expect(price).toHaveValue("31.27");
+});
+
+it("rejects an invalid manually entered unit price", async () => {
+  apiMocks.listOrders.mockResolvedValue({ items: [], total: 0 });
+  renderPage();
+  expect(await screen.findByText("还没有订单")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "新建订单" }));
+  const dialog = screen.getByRole("dialog", { name: "新建订单" });
+  fireEvent.change(within(dialog).getByLabelText(/^联系人名称/), { target: { value: "价格校验客户" } });
+  const today = new Date();
+  fireEvent.click(within(dialog).getByRole("button", { name: String(today.getDate()) }));
+  fireEvent.change(within(dialog).getByLabelText("每次价格（元）"), { target: { value: "不是金额" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "创建订单" }));
+  expect(within(dialog).getByRole("alert")).toHaveTextContent("每次价格必须是大于或等于 0 的数字");
+  expect(apiMocks.createOrder).not.toHaveBeenCalled();
 });
 
 it("opens the create form from the dashboard quick-entry flag", async () => {
@@ -284,4 +355,34 @@ it("edits an order and keeps cancellation as a separate protected action", async
   await waitFor(() =>
     expect(apiMocks.updateOrderStatus).toHaveBeenCalledWith(1, "cancelled"),
   );
+});
+
+it("allows a payment-history order to change only unit price with its revision", async () => {
+  const paidDetail: OrderDetail = {
+    ...detail,
+    unit_price: "30.03",
+    paid_amount: "30.00",
+    due_amount: "180.21",
+    payment_status: "partial",
+    has_payment_history: true,
+    financial_revision: "c".repeat(64),
+  };
+  apiMocks.listOrders.mockResolvedValue({ items: [paidDetail], total: 1 });
+  apiMocks.getOrder.mockResolvedValue(paidDetail);
+  apiMocks.updateOrder.mockResolvedValue(paidDetail);
+  renderPage();
+  expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "编辑订单" }));
+  const dialog = screen.getByRole("dialog", { name: "编辑订单 #1" });
+  const price = within(dialog).getByLabelText("每次价格（元）");
+  expect(price).toBeEnabled();
+  expect(within(dialog).getByLabelText("猫咪数量")).toBeDisabled();
+  expect(within(dialog).getByLabelText("结算方式")).toBeDisabled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "每次价格增加 5 元" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "保存订单" }));
+
+  await waitFor(() => expect(apiMocks.updateOrder).toHaveBeenCalledWith(1, {
+    unit_price: "35.03",
+    expected_financial_revision: "c".repeat(64),
+  }));
 });

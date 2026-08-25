@@ -4,7 +4,7 @@ const dashboardPayload = {
   business_date: "2035-10-06",
   month_start: "2035-10-01",
   metrics: {
-    today_order_count: 0,
+    month_order_count: 0,
     pending_task_count: 0,
     pending_payment_count: 0,
     month_income: "0.00",

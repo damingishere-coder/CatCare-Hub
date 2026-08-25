@@ -18,7 +18,7 @@ DashboardReminderType = Literal[
 
 
 class DashboardMetrics(BaseModel):
-    today_order_count: int = Field(ge=0)
+    month_order_count: int = Field(ge=0)
     pending_task_count: int = Field(ge=0)
     pending_payment_count: int = Field(ge=0)
     month_income: Decimal = Field(ge=0)

@@ -24,8 +24,14 @@ class Payment(TimestampMixin, Base):
             name="payment_method_values",
         ),
         CheckConstraint(
-            "payment_status IN ('pending', 'completed', 'refunded')",
+            "payment_status IN ('pending', 'completed', 'refunded', 'voided')",
             name="payment_status_values",
+        ),
+        CheckConstraint(
+            "(payment_status = 'voided' AND voided_at IS NOT NULL "
+            "AND voided_reason IS NOT NULL AND length(trim(voided_reason)) BETWEEN 1 AND 500) "
+            "OR (payment_status != 'voided' AND voided_at IS NULL AND voided_reason IS NULL)",
+            name="payment_void_audit",
         ),
         Index("ix_payments_customer_paid_at", "customer_id", "paid_at"),
         Index("ix_payments_order_service_date", "order_id", "service_date"),
@@ -57,6 +63,8 @@ class Payment(TimestampMixin, Base):
     )
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     notes: Mapped[str | None] = mapped_column(Text)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    voided_reason: Mapped[str | None] = mapped_column(Text)
 
     order: Mapped["Order"] = relationship(back_populates="payments")
     customer: Mapped["Customer | None"] = relationship(back_populates="payments")

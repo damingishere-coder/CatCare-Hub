@@ -161,7 +161,7 @@ export function DashboardPage() {
         <>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              { label: "今日订单", value: `${dashboard.metrics.today_order_count}`, unit: "单", icon: ClipboardCheck },
+              { label: "当月订单", value: `${dashboard.metrics.month_order_count}`, unit: "单", icon: ClipboardCheck },
               { label: "待执行", value: `${dashboard.metrics.pending_task_count}`, unit: "项", icon: CalendarCheck2 },
               { label: "待收款", value: `${dashboard.metrics.pending_payment_count}`, unit: "单", icon: WalletCards },
               { label: "本月收入", value: currency(dashboard.metrics.month_income), unit: "", icon: CircleDollarSign },

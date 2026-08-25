@@ -1,4 +1,10 @@
-import type { PaymentCreateInput, PaymentRegistration, PaymentsOverview } from "./types";
+import type {
+  PaymentCreateInput,
+  PaymentRegistration,
+  PaymentVoidInput,
+  PaymentVoidResult,
+  PaymentsOverview,
+} from "./types";
 import { requestJson } from "../../lib/api";
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -27,6 +33,16 @@ export function getPaymentsOverview(businessDate?: string): Promise<PaymentsOver
 
 export function registerPayment(payload: PaymentCreateInput): Promise<PaymentRegistration> {
   return request<PaymentRegistration>(paymentsPath, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function voidPayment(
+  paymentId: number,
+  payload: PaymentVoidInput,
+): Promise<PaymentVoidResult> {
+  return request<PaymentVoidResult>(`${paymentsPath}/${paymentId}/void`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

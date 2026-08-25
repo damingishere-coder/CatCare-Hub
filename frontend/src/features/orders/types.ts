@@ -128,11 +128,14 @@ export interface OrderSummary {
   due_amount: string;
   overpaid_amount: string;
   payment_status: OrderPaymentStatus;
+  financial_revision: string;
+  has_payment_history: boolean;
   daily_receivables: Array<{
     service_date: string;
     expected_amount: string;
     paid_amount: string;
     due_amount: string;
+    overpaid_amount: string;
     task_status: TaskStatus | null;
   }>;
   order_status: OrderStatus;
@@ -214,6 +217,7 @@ export interface OrderPatchInput {
   settlement_mode?: OrderSettlementMode;
   amount_adjustment?: OrderAmountAdjustment;
   notes?: string | null;
+  expected_financial_revision?: string;
 }
 
 export type OrderSaveInput = OrderCreateInput | OrderPatchInput;

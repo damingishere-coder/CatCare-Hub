@@ -78,6 +78,9 @@ class PaymentRecordRead(BaseModel):
     payment_method: PaymentMethod
     payment_status: PaymentRecordStatus
     paid_at: datetime | None
+    voided_at: datetime | None
+    voided_reason: str | None
+    revision: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class PaymentsOverview(BaseModel):
@@ -91,3 +94,20 @@ class PaymentsOverview(BaseModel):
 class PaymentRegistration(BaseModel):
     payment: PaymentRecordRead
     order: PaymentReceivable
+
+
+class PaymentVoidRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    expected_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class PaymentVoidResult(BaseModel):
+    payment: PaymentRecordRead
+    order_id: int
+    paid_amount: Decimal = Field(ge=0)
+    due_amount: Decimal = Field(ge=0)
+    overpaid_amount: Decimal = Field(ge=0)
+    payment_status: OrderPaymentStatus
+    revision: str = Field(pattern=r"^[0-9a-f]{64}$")

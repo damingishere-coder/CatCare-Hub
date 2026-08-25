@@ -132,10 +132,12 @@ def test_order_save_geocodes_before_explicit_route_preview_and_adopts_recommenda
     preview = preview_response.json()
     assert len(fake_map_provider.geocode_calls) == 2
     assert all("P4" not in address for address in fake_map_provider.geocode_calls)
-    assert all("2 单元" in address for address in fake_map_provider.geocode_calls)
-    assert all("1602" in address for address in fake_map_provider.geocode_calls)
+    assert all("2 单元" not in address for address in fake_map_provider.geocode_calls)
+    assert all("1602" not in address for address in fake_map_provider.geocode_calls)
     assert len(preview["markers"]) == 3
     assert all("1602" in marker["address"] for marker in preview["markers"])
+    assert all("2 单元" not in marker["navigation_url"] for marker in preview["markers"])
+    assert all("1602" not in marker["navigation_url"] for marker in preview["markers"])
     assert preview["unresolved_tasks"] == []
     assert preview["current_route"]["distance_meters"] == 12600
     assert preview["current_route"]["duration_seconds"] == 2880

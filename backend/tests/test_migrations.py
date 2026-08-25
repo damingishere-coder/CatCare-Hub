@@ -136,6 +136,46 @@ def test_local_no_auth_migration_removes_access_sessions(tmp_path) -> None:
         engine.dispose()
 
 
+def test_p19_payment_void_migration_upgrades_and_downgrades_0009(tmp_path) -> None:
+    database_path = tmp_path / "p19-from-0009.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = alembic_config(database_url)
+    command.upgrade(config, "0009_order_daily_settlement")
+    engine = build_engine(database_url)
+    try:
+        before_columns = {
+            column["name"] for column in inspect(engine).get_columns("payments")
+        }
+        assert "voided_at" not in before_columns
+        assert "voided_reason" not in before_columns
+
+        command.upgrade(config, "0010_payment_void_audit")
+        inspector = inspect(engine)
+        after_columns = {
+            column["name"] for column in inspector.get_columns("payments")
+        }
+        assert {"voided_at", "voided_reason"} <= after_columns
+        checks = [
+            constraint["sqltext"]
+            for constraint in inspector.get_check_constraints("payments")
+        ]
+        assert any("voided" in check and "payment_status" in check for check in checks)
+        assert any("voided_reason" in check for check in checks)
+        with engine.connect() as connection:
+            assert connection.execute(text("PRAGMA integrity_check")).scalar_one() == "ok"
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+
+        command.downgrade(config, "0009_order_daily_settlement")
+        downgraded_columns = {
+            column["name"] for column in inspect(engine).get_columns("payments")
+        }
+        assert "voided_at" not in downgraded_columns
+        assert "voided_reason" not in downgraded_columns
+        command.upgrade(config, "head")
+    finally:
+        engine.dispose()
+
+
 def test_p16_migration_upgrades_explicit_0007_database_and_preserves_history(
     tmp_path,
 ) -> None:

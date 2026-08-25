@@ -5,8 +5,14 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.payment import PaymentCreate, PaymentRegistration, PaymentsOverview
-from app.services.payments import get_payments_overview, register_payment
+from app.schemas.payment import (
+    PaymentCreate,
+    PaymentRegistration,
+    PaymentVoidRequest,
+    PaymentVoidResult,
+    PaymentsOverview,
+)
+from app.services.payments import get_payments_overview, register_payment, void_payment
 
 
 router = APIRouter(prefix="/api/admin/payments", tags=["admin-payments"])
@@ -28,3 +34,12 @@ def create_payment(
     session: DatabaseSession,
 ) -> PaymentRegistration:
     return register_payment(session, payload)
+
+
+@router.post("/{payment_id}/void", response_model=PaymentVoidResult)
+def void_payment_record(
+    payment_id: int,
+    payload: PaymentVoidRequest,
+    session: DatabaseSession,
+) -> PaymentVoidResult:
+    return void_payment(session, payment_id, payload)

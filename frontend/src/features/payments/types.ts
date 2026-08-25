@@ -1,7 +1,7 @@
 import type { OrderPaymentStatus, OrderSettlementMode, OrderStatus, TaskStatus } from "../orders/types";
 
 export type PaymentMethod = "wechat" | "alipay" | "cash" | "other";
-export type PaymentRecordStatus = "pending" | "completed" | "refunded";
+export type PaymentRecordStatus = "pending" | "completed" | "refunded" | "voided";
 
 export interface PaymentMetrics {
   today_income: string;
@@ -42,6 +42,9 @@ export interface PaymentRecord {
   payment_method: PaymentMethod;
   payment_status: PaymentRecordStatus;
   paid_at: string | null;
+  voided_at: string | null;
+  voided_reason: string | null;
+  revision: string;
 }
 
 export interface PaymentsOverview {
@@ -65,4 +68,19 @@ export interface PaymentCreateInput {
 export interface PaymentRegistration {
   payment: PaymentRecord;
   order: PaymentReceivable;
+}
+
+export interface PaymentVoidInput {
+  expected_revision: string;
+  reason: string;
+}
+
+export interface PaymentVoidResult {
+  payment: PaymentRecord;
+  order_id: number;
+  paid_amount: string;
+  due_amount: string;
+  overpaid_amount: string;
+  payment_status: OrderPaymentStatus;
+  revision: string;
 }

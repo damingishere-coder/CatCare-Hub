@@ -330,6 +330,201 @@ def test_register_partial_and_final_payment_updates_order_and_dashboard(
         }
 
 
+def test_completed_payment_can_be_voided_with_audit_and_reopens_receivable(
+    payment_api_context: PaymentApiContext,
+) -> None:
+    client = payment_api_context.client
+    _, order = create_payment_order(client, name="P19 撤销客户（虚构）")
+    with payment_api_context.session_factory.begin() as session:
+        model = session.get(Order, order["id"])
+        assert model is not None
+        model.order_status = OrderStatus.COMPLETED
+
+    revision = client.get("/api/admin/payments", params={"date": "2035-10-06"}).json()[
+        "receivables"
+    ][0]["revision"]
+    registered = client.post(
+        "/api/admin/payments",
+        json={
+            "order_id": order["id"],
+            "amount": "30.00",
+            "payment_method": "wechat",
+            "paid_at": "2035-10-06T09:15:00+08:00",
+            "expected_revision": revision,
+        },
+    )
+    assert registered.status_code == 201
+    record = registered.json()["payment"]
+
+    stale = client.post(
+        f"/api/admin/payments/{record['id']}/void",
+        json={"expected_revision": "0" * 64, "reason": "虚构的过期撤销"},
+    )
+    assert stale.status_code == 409
+
+    voided = client.post(
+        f"/api/admin/payments/{record['id']}/void",
+        json={
+            "expected_revision": record["revision"],
+            "reason": "重复录入，保留本地审计记录",
+        },
+    )
+    assert voided.status_code == 200
+    result = voided.json()
+    assert result["payment"]["payment_status"] == "voided"
+    assert result["payment"]["amount"] == "30.00"
+    assert result["payment"]["payment_method"] == "wechat"
+    assert result["payment"]["paid_at"] == "2035-10-06T01:15:00Z"
+    assert result["payment"]["voided_at"] is not None
+    assert result["payment"]["voided_reason"] == "重复录入，保留本地审计记录"
+    assert result["paid_amount"] == "0.00"
+    assert result["due_amount"] == "30.00"
+    assert result["overpaid_amount"] == "0.00"
+    assert result["payment_status"] == "unpaid"
+    assert result["revision"] != record["revision"]
+
+    repeated = client.post(
+        f"/api/admin/payments/{record['id']}/void",
+        json={"expected_revision": result["revision"], "reason": "再次撤销"},
+    )
+    assert repeated.status_code == 409
+    assert "只有已完成" in repeated.json()["detail"]
+
+    overview = client.get("/api/admin/payments", params={"date": "2035-10-06"}).json()
+    assert overview["metrics"]["today_income"] == "0.00"
+    assert overview["metrics"]["month_income"] == "0.00"
+    assert overview["metrics"]["completed_order_count"] == 1
+    assert overview["metrics"]["pending_order_count"] == 1
+    assert overview["records"][0]["payment_status"] == "voided"
+    assert client.delete(f"/api/admin/orders/{order['id']}").status_code == 409
+    dashboard = client.get("/api/admin/dashboard", params={"date": "2035-10-06"}).json()
+    assert dashboard["metrics"]["pending_payment_count"] == 1
+
+    with payment_api_context.session_factory() as session:
+        stored = session.get(Payment, record["id"])
+        assert stored is not None
+        assert stored.payment_status is PaymentRecordStatus.VOIDED
+        assert stored.amount == Decimal("30.00")
+        assert stored.voided_reason == "重复录入，保留本地审计记录"
+
+
+def test_cancelled_order_payment_can_be_voided_but_other_payment_states_cannot(
+    payment_api_context: PaymentApiContext,
+) -> None:
+    client = payment_api_context.client
+    _, order = create_payment_order(
+        client,
+        name="P19 已取消订单客户（虚构）",
+        start_date="2035-10-07",
+        end_date="2035-10-07",
+    )
+    overview = client.get("/api/admin/payments", params={"date": "2035-10-06"}).json()
+    receivable = next(item for item in overview["receivables"] if item["order_id"] == order["id"])
+    registered = client.post(
+        "/api/admin/payments",
+        json={
+            "order_id": order["id"],
+            "amount": "30.00",
+            "payment_method": "cash",
+            "paid_at": "2035-10-06T11:00:00+08:00",
+            "expected_revision": receivable["revision"],
+        },
+    ).json()
+    assert client.patch(
+        f"/api/admin/orders/{order['id']}/status",
+        json={"order_status": "cancelled"},
+    ).status_code == 200
+    refreshed = client.get("/api/admin/payments", params={"date": "2035-10-06"}).json()
+    cancelled_record = next(
+        item for item in refreshed["records"] if item["id"] == registered["payment"]["id"]
+    )
+    assert client.post(
+        f"/api/admin/payments/{cancelled_record['id']}/void",
+        json={
+            "expected_revision": cancelled_record["revision"],
+            "reason": "取消订单中的误登记",
+        },
+    ).status_code == 200
+
+    with payment_api_context.session_factory.begin() as session:
+        model = session.get(Order, order["id"])
+        assert model is not None
+        pending = Payment(
+            order_id=model.id,
+            customer_id=model.customer_id,
+            amount=Decimal("1.00"),
+            payment_method=PaymentMethod.OTHER,
+            payment_status=PaymentRecordStatus.PENDING,
+        )
+        refunded = Payment(
+            order_id=model.id,
+            customer_id=model.customer_id,
+            amount=Decimal("1.00"),
+            payment_method=PaymentMethod.OTHER,
+            payment_status=PaymentRecordStatus.REFUNDED,
+        )
+        session.add_all([pending, refunded])
+        session.flush()
+        pending_id = pending.id
+        refunded_id = refunded.id
+
+    records = client.get("/api/admin/payments", params={"date": "2035-10-06"}).json()["records"]
+    by_id = {item["id"]: item for item in records}
+    for payment_id in (pending_id, refunded_id):
+        response = client.post(
+            f"/api/admin/payments/{payment_id}/void",
+            json={
+                "expected_revision": by_id[payment_id]["revision"],
+                "reason": "不允许的状态",
+            },
+        )
+        assert response.status_code == 409
+
+
+def test_refunded_order_context_rejects_payment_void(
+    payment_api_context: PaymentApiContext,
+) -> None:
+    client = payment_api_context.client
+    _, order = create_payment_order(
+        client,
+        name="P19 已退款上下文客户（虚构）",
+        start_date="2035-10-08",
+        end_date="2035-10-08",
+    )
+    overview = client.get("/api/admin/payments", params={"date": "2035-10-06"}).json()
+    receivable = next(item for item in overview["receivables"] if item["order_id"] == order["id"])
+    registered = client.post(
+        "/api/admin/payments",
+        json={
+            "order_id": order["id"],
+            "amount": "30.00",
+            "payment_method": "alipay",
+            "paid_at": "2035-10-06T12:00:00+08:00",
+            "expected_revision": receivable["revision"],
+        },
+    ).json()
+    with payment_api_context.session_factory.begin() as session:
+        model = session.get(Order, order["id"])
+        assert model is not None
+        model.payment_status = OrderPaymentStatus.REFUNDED
+
+    refreshed = client.get("/api/admin/payments", params={"date": "2035-10-06"}).json()
+    record = next(
+        item
+        for item in refreshed["records"]
+        if item["id"] == registered["payment"]["id"]
+    )
+    response = client.post(
+        f"/api/admin/payments/{record['id']}/void",
+        json={
+            "expected_revision": record["revision"],
+            "reason": "退款上下文不能混用撤销",
+        },
+    )
+    assert response.status_code == 409
+    assert "已退款订单" in response.json()["detail"]
+
+
 def test_register_payment_rejects_invalid_or_ineligible_writes_atomically(
     payment_api_context: PaymentApiContext,
 ) -> None:
