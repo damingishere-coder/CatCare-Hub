@@ -417,12 +417,12 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
                     <textarea
                       className={`${inputClass} min-h-20 resize-y`}
                       value={smartAddressText}
-                      placeholder="把网购地址粘贴到这里，将自动拆分小区、楼栋、单元和房间"
+                      placeholder="把网购地址粘贴到这里；缺少地区时默认补深圳市龙岗区"
                       onChange={(event) => setSmartAddressText(event.target.value)}
                       onPaste={handleSmartAddressPaste}
                     />
                   </label>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">粘贴会替换下面五个地址字段；只在本页本地解析，不会调用第三方地址识别服务。</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">粘贴会补齐缺失的深圳市龙岗区并替换下面五个地址字段；明确写了其他地区时保留原文。只在本页本地解析，不会调用第三方地址识别服务。</p>
                   {addressParseMessage ? <p className="cc-alert mt-2 border border-blue-200 bg-blue-50 text-blue-800">{addressParseMessage}</p> : null}
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     <label className={labelClass}>联系人名称 <span className="text-red-600">*</span><input ref={firstInputRef} className={inputClass} value={serviceContact.name} placeholder="直接输入名称，不需要下拉确认" onChange={(event) => updateContact("name", event.target.value)} required /></label>

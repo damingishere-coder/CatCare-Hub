@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -332,12 +333,77 @@ def _deduplicated_address(parts: list[str | None]) -> str | None:
     return " ".join(values) or None
 
 
+_PRIVATE_ROOM_PATTERN = re.compile(
+    r"(?:地下)?(?:[A-Za-z]\d{1,5}|\d{1,5}|[一二三四五六七八九十百]+)\s*(?:室|房|户)"
+)
+_PRIVATE_UNIT_PATTERN = re.compile(
+    r"(?:[A-Za-z]|\d{1,3}|[一二三四五六七八九十百]+)\s*(?:单元|门|梯)"
+)
+
+
+def _routable_address_part(value: str | None) -> str | None:
+    if not value:
+        return None
+    without_private_details = _PRIVATE_ROOM_PATTERN.sub(" ", value)
+    without_private_details = _PRIVATE_UNIT_PATTERN.sub(" ", without_private_details)
+    normalized = " ".join(without_private_details.split())
+    return normalized or None
+
+
 def order_geocode_address(order: Order) -> str | None:
     """Return the routable address without unit or room privacy details."""
 
-    return _deduplicated_address(
-        [order.contact_community, order.contact_address, order.contact_building]
+    return default_geocode_service_area(
+        _deduplicated_address(
+            [
+                _routable_address_part(order.contact_address),
+                order.contact_community,
+                order.contact_building,
+            ]
+        )
     )
+
+
+DEFAULT_MAP_CITY = "深圳市"
+DEFAULT_MAP_DISTRICT = "龙岗区"
+_CITY_PATTERN = re.compile(r"(?:^|省|\s)([^省区县乡镇街道路\s]{2,8}市)")
+_DISTRICT_PATTERN = re.compile(r"(?:^|省|市|\s)([^省市\s]{1,8}(?:区|县))")
+
+
+def default_geocode_service_area(value: str | None) -> str | None:
+    """Fill the local service area without overwriting an explicit region."""
+
+    if not value:
+        return None
+    city_match = _CITY_PATTERN.search(value)
+    district = next(
+        (
+            match.group(1)
+            for match in _DISTRICT_PATTERN.finditer(value)
+            if not match.group(1).endswith(("小区", "社区"))
+        ),
+        None,
+    )
+    city = city_match.group(1) if city_match else None
+    if city and district:
+        return value
+    if city:
+        return (
+            value.replace(DEFAULT_MAP_CITY, f"{DEFAULT_MAP_CITY}{DEFAULT_MAP_DISTRICT}", 1)
+            if city == DEFAULT_MAP_CITY
+            else value
+        )
+    if district:
+        return (
+            value.replace(
+                DEFAULT_MAP_DISTRICT,
+                f"{DEFAULT_MAP_CITY}{DEFAULT_MAP_DISTRICT}",
+                1,
+            )
+            if district == DEFAULT_MAP_DISTRICT
+            else value
+        )
+    return f"{DEFAULT_MAP_CITY}{DEFAULT_MAP_DISTRICT}{value}"
 
 
 def order_display_address(order: Order) -> str | None:

@@ -18,7 +18,6 @@ from app.maps.contracts import (
 
 AMAP_API_BASE = "https://restapi.amap.com"
 AMAP_NAVIGATION_URL = "https://uri.amap.com/navigation"
-MAX_WAYPOINTS_PER_REQUEST = 16
 AMAP_ERROR_CATEGORIES = {
     "10001": "Web 服务 Key 无效",
     "10002": "Key 未开通当前服务",
@@ -64,6 +63,7 @@ class AmapProvider:
             configured=not missing,
             coordinate_system="GCJ-02",
             message=f"请在本机 .env 配置{'和'.join(missing)}" if missing else None,
+            transport_mode="electrobike",
         )
 
     def home_point(self) -> GeoPoint | None:
@@ -138,42 +138,45 @@ class AmapProvider:
             result.append(point)
         return tuple(result)
 
-    def _route_chunk(
+    def _route_leg(
         self,
         origin: GeoPoint,
-        stops: list[RouteStop],
+        destination: GeoPoint,
     ) -> RouteResult:
-        destination = stops[-1].position
         parameters = {
             "origin": self._point_value(origin),
             "destination": self._point_value(destination),
-            "strategy": "10",
-            "extensions": "all",
+            "show_fields": "cost,navi,polyline",
         }
-        if len(stops) > 1:
-            parameters["waypoints"] = ";".join(
-                self._point_value(stop.position) for stop in stops[:-1]
-            )
-        payload = self._request("/v3/direction/driving", parameters)
+        payload = self._request("/v5/direction/electrobike", parameters)
         route = payload.get("route")
         paths = route.get("paths") if isinstance(route, dict) else None
         if not isinstance(paths, list) or not paths or not isinstance(paths[0], dict):
-            raise MapProviderError("地图服务没有返回可用驾车路线")
+            raise MapProviderError("地图服务没有返回可用电动车路线")
         path = paths[0]
+        cost = path.get("cost")
+        duration_value = cost.get("duration") if isinstance(cost, dict) else None
+        if duration_value is None:
+            duration_value = path.get("duration")
         try:
             distance = int(float(path["distance"]))
-            duration = int(float(path["duration"]))
+            duration = int(float(duration_value))
         except (KeyError, TypeError, ValueError) as cause:
             raise MapProviderError("地图服务返回了无效路线指标") from cause
 
         points = [origin]
-        steps = path.get("steps")
-        if isinstance(steps, list):
-            for step in steps:
-                if not isinstance(step, dict) or not step.get("polyline"):
-                    continue
-                for value in str(step["polyline"]).split(";"):
-                    points.append(self._parse_point(value))
+        path_polyline = path.get("polyline")
+        if path_polyline:
+            for value in str(path_polyline).split(";"):
+                points.append(self._parse_point(value))
+        else:
+            steps = path.get("steps")
+            if isinstance(steps, list):
+                for step in steps:
+                    if not isinstance(step, dict) or not step.get("polyline"):
+                        continue
+                    for value in str(step["polyline"]).split(";"):
+                        points.append(self._parse_point(value))
         points.append(destination)
         return RouteResult(
             distance_meters=max(distance, 0),
@@ -189,22 +192,16 @@ class AmapProvider:
         if not stops:
             return RouteResult(0, 0, (origin,))
 
-        # AMap accepts at most 16 waypoints. Split larger days at a destination
-        # boundary while preserving the exact user-provided order.
-        maximum_stops = MAX_WAYPOINTS_PER_REQUEST + 1
         current_origin = origin
-        remaining = list(stops)
         total_distance = 0
         total_duration = 0
         combined_points: list[GeoPoint] = []
-        while remaining:
-            chunk = remaining[:maximum_stops]
-            remaining = remaining[maximum_stops:]
-            chunk_result = self._route_chunk(current_origin, chunk)
-            total_distance += chunk_result.distance_meters
-            total_duration += chunk_result.duration_seconds
-            combined_points.extend(chunk_result.polyline)
-            current_origin = chunk[-1].position
+        for stop in stops:
+            leg_result = self._route_leg(current_origin, stop.position)
+            total_distance += leg_result.distance_meters
+            total_duration += leg_result.duration_seconds
+            combined_points.extend(leg_result.polyline)
+            current_origin = stop.position
         return RouteResult(
             distance_meters=total_distance,
             duration_seconds=total_duration,
@@ -223,10 +220,10 @@ class AmapProvider:
         origin: GeoPoint,
         stops: list[RouteStop],
     ) -> list[RouteStop]:
-        """Return a small deterministic nearest-neighbour recommendation.
+        """Return a deterministic nearest-neighbour candidate order.
 
-        This only chooses candidate order. Displayed distance and duration are
-        always recalculated by ``plan_route`` using the real driving API.
+        Displayed metrics are always recalculated by ``plan_route`` using the
+        real electric-bicycle road API.
         """
 
         remaining = list(stops)
@@ -251,42 +248,8 @@ class AmapProvider:
         origin: GeoPoint,
         stops: list[RouteStop],
     ) -> list[MatrixEntry]:
-        nodes = [("HOME", origin), *[(str(stop.task_id), stop.position) for stop in stops]]
-        entries: list[MatrixEntry] = []
-        for destination_id, destination in nodes:
-            origins = [node for node in nodes if node[0] != destination_id]
-            if not origins:
-                continue
-            payload = self._request(
-                "/v3/distance",
-                {
-                    "origins": "|".join(
-                        self._point_value(point) for _, point in origins
-                    ),
-                    "destination": self._point_value(destination),
-                    "type": "1",
-                },
-            )
-            results = payload.get("results")
-            if not isinstance(results, list) or len(results) != len(origins):
-                raise MapProviderError("高德距离矩阵返回数量不完整")
-            for (origin_id, _), result in zip(origins, results, strict=True):
-                if not isinstance(result, dict):
-                    raise MapProviderError("高德距离矩阵返回格式无效")
-                try:
-                    distance = int(float(result["distance"]))
-                    duration = int(float(result["duration"]))
-                except (KeyError, TypeError, ValueError) as cause:
-                    raise MapProviderError("高德距离矩阵返回指标无效") from cause
-                entries.append(
-                    MatrixEntry(
-                        origin_id=origin_id,
-                        destination_id=destination_id,
-                        distance_meters=max(distance, 0),
-                        duration_seconds=max(duration, 0),
-                    )
-                )
-        return entries
+        del origin, stops
+        raise MapProviderError("电动车路线不提供批量距离矩阵")
 
     def navigation_url(
         self,
@@ -299,8 +262,7 @@ class AmapProvider:
                 f"{self._point_value(origin)},家" if origin is not None else ""
             ),
             "to": f"{self._point_value(destination)},{destination_name}",
-            "mode": "car",
-            "policy": "1",
+            "mode": "ride",
             "src": "CatCareHub",
             "callnative": "1",
         }

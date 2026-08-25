@@ -122,20 +122,21 @@ export function RouteWorkspace({
             <h2 id="route-map-title" className="text-sm font-semibold text-slate-950">路线地图</h2>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.provider.configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>高德后端：{workspace ? (workspace.provider.configured ? "已配置" : "未配置") : "状态未知"}</span>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${browserMapConfigured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>街道底图：{browserMapConfigured ? "已配置" : "未配置"}</span>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.recommendation_provider?.configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>GPT 建议：{workspace ? (workspace.recommendation_provider?.configured ? "已配置" : "未配置") : "状态未知"}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.transport_mode === "electrobike" ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>路线方式：{workspace?.transport_mode === "electrobike" ? "电动自行车" : "状态未知"}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.transport_mode === "electrobike" ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>顺序建议：{workspace?.transport_mode === "electrobike" ? "本地快速" : "状态未知"}</span>
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">任务已同步：{activeTaskCount} 个</span>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.unresolved_tasks.length ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>地址定位：{workspace ? (workspace.unresolved_tasks.length ? `${workspace.unresolved_tasks.length} 个待处理` : "已完成") : "状态未知"}</span>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.current_route ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>路线：{workspace?.current_route ? "已生成" : "待生成"}</span>
             {dirty ? <span className="ml-auto text-xs font-medium text-amber-700">顺序待保存</span> : null}
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            订单保存时只把上门地址发送给地图服务完成定位；点击“生成路线”后才请求道路路线。姓名、电话、微信、门禁、钥匙和备注始终不会发送。
+            订单保存时只把上门地址发送给地图服务完成定位；点击“生成路线”后才逐段请求电动车道路路线。姓名、电话、微信、门禁、钥匙和备注始终不会发送。
           </p>
           {!workspace?.provider.configured && workspace?.provider.message ? (
             <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">{workspace.provider.message}</p>
           ) : null}
           {!browserMapConfigured ? <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">街道底图缺少 JS API Key 或安全密钥；补充 Vite 环境变量后必须重启前端。</p> : null}
-          {workspace?.recommendation_message ? <p className={`mt-2 rounded-md px-3 py-2 text-xs leading-5 ${workspace.recommendation_source === "openai" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{workspace.recommendation_message}</p> : null}
+          {workspace?.recommendation_message ? <p className={`mt-2 rounded-md px-3 py-2 text-xs leading-5 ${workspace.recommendation_source === "openai" ? "bg-emerald-50 text-emerald-800" : workspace.recommendation_source === "local" ? "bg-blue-50 text-blue-800" : "bg-amber-50 text-amber-800"}`}>{workspace.recommendation_message}</p> : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"

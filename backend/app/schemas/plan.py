@@ -173,6 +173,7 @@ class PlanRouteWorkspace(BaseModel):
     service_date: date
     revision: str
     schedule_locked: bool
+    transport_mode: Literal["electrobike", "unknown"]
     provider: PlanMapProviderRead
     recommendation_provider: PlanRecommendationProviderRead
     start: PlanRouteStart | None

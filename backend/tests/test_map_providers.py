@@ -18,7 +18,9 @@ def test_amap_adapter_parses_geocode_route_and_builds_keyless_navigation() -> No
                     "geocodes": [{"location": "120.123456,30.123456"}],
                 },
             )
-        if request.url.path == "/v3/direction/driving":
+        if request.url.path == "/v5/direction/electrobike":
+            destination = request.url.params["destination"]
+            is_second_stop = destination == "120.200000,30.200000"
             return httpx.Response(
                 200,
                 json={
@@ -26,35 +28,17 @@ def test_amap_adapter_parses_geocode_route_and_builds_keyless_navigation() -> No
                     "route": {
                         "paths": [
                             {
-                                "distance": "12600",
-                                "duration": "2880",
-                                "steps": [
-                                    {
-                                        "polyline": (
-                                            "120.100000,30.100000;"
-                                            "120.110000,30.110000;"
-                                            "120.123456,30.123456"
-                                        )
-                                    }
-                                ],
+                                "distance": "2000" if is_second_stop else "12600",
+                                "cost": {
+                                    "duration": "400" if is_second_stop else "2880",
+                                },
+                                "polyline": (
+                                    f"{request.url.params['origin']};"
+                                    f"{destination}"
+                                ),
                             }
                         ]
                     },
-                },
-            )
-        if request.url.path == "/v3/distance":
-            origin_count = len(request.url.params["origins"].split("|"))
-            return httpx.Response(
-                200,
-                json={
-                    "status": "1",
-                    "results": [
-                        {
-                            "distance": str((index + 1) * 1000),
-                            "duration": str((index + 1) * 300),
-                        }
-                        for index in range(origin_count)
-                    ],
                 },
             )
         raise AssertionError(f"unexpected provider path: {request.url.path}")
@@ -86,27 +70,34 @@ def test_amap_adapter_parses_geocode_route_and_builds_keyless_navigation() -> No
     assert route.polyline[-1] == geocoded
     assert requests[0].url.params["address"] == "虚构小区 虚构路 1 号"
     assert requests[0].url.params["city"] == "虚构城市"
-    assert requests[1].url.params["strategy"] == "10"
+    assert requests[1].url.path == "/v5/direction/electrobike"
+    assert requests[1].url.params["show_fields"] == "cost,navi,polyline"
+    assert "strategy" not in requests[1].url.params
+    assert "waypoints" not in requests[1].url.params
 
-    matrix_stops = [
-        RouteStop(1, "虚构站点一", geocoded, 0),
-        RouteStop(2, "虚构站点二", GeoPoint(30.2, 120.2), 1),
+    multi_stop_route = provider.plan_route(
+        provider.home_point(),  # type: ignore[arg-type]
+        [
+            RouteStop(1, "虚构站点一", geocoded, 0),
+            RouteStop(2, "虚构站点二", GeoPoint(30.2, 120.2), 1),
+        ],
+    )
+    assert multi_stop_route.distance_meters == 14600
+    assert multi_stop_route.duration_seconds == 3280
+    assert multi_stop_route.polyline[0] == provider.home_point()
+    assert multi_stop_route.polyline[-1] == GeoPoint(30.2, 120.2)
+    route_requests = [
+        request
+        for request in requests
+        if request.url.path == "/v5/direction/electrobike"
     ]
-    matrix = provider.distance_matrix(provider.home_point(), matrix_stops)  # type: ignore[arg-type]
-    assert len(matrix) == 6
-    assert {(entry.origin_id, entry.destination_id) for entry in matrix} == {
-        ("1", "HOME"),
-        ("2", "HOME"),
-        ("HOME", "1"),
-        ("2", "1"),
-        ("HOME", "2"),
-        ("1", "2"),
-    }
-    distance_requests = [
-        request for request in requests if request.url.path == "/v3/distance"
-    ]
-    assert len(distance_requests) == 3
-    assert all(request.url.params["type"] == "1" for request in distance_requests)
+    assert len(route_requests) == 3
+    assert route_requests[-1].url.params["origin"] == "120.123456,30.123456"
+    assert all(request.url.path != "/v3/direction/driving" for request in requests)
+    assert all(request.url.path != "/v3/distance" for request in requests)
+
+    with pytest.raises(MapProviderError, match="不提供批量距离矩阵"):
+        provider.distance_matrix(provider.home_point(), [])  # type: ignore[arg-type]
 
     navigation_url = provider.navigation_url(
         provider.home_point(),
@@ -115,6 +106,8 @@ def test_amap_adapter_parses_geocode_route_and_builds_keyless_navigation() -> No
     )
     assert navigation_url.startswith("https://uri.amap.com/navigation?")
     assert "fake-web-key" not in navigation_url
+    assert "mode=ride" in navigation_url
+    assert "policy=" not in navigation_url
     client.close()
 
 

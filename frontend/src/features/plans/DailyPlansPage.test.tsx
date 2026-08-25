@@ -80,6 +80,7 @@ const routeWorkspace: PlanRouteWorkspace = {
   service_date: "2034-10-01",
   revision: revisionA,
   schedule_locked: false,
+  transport_mode: "electrobike",
   provider: {
     name: "amap",
     configured: true,
@@ -125,8 +126,8 @@ const previewWorkspace: PlanRouteWorkspace = {
     polyline: [routeWorkspace.start!.position, ...[...routeWorkspace.markers].reverse().map((marker) => marker.position)],
   },
   recommended_task_ids: [3, 2, 1],
-  recommendation_source: "openai",
-  recommendation_message: "GPT-5.6 Sol 已根据高德行车矩阵生成建议",
+  recommendation_source: "local",
+  recommendation_message: "已使用本地快速推荐；最终距离、时间和路线由高德电动车路线逐段计算",
   can_adopt_recommendation: true,
 };
 
@@ -201,7 +202,8 @@ it("shows date tasks, route workspace, and a privacy-minimized selected detail",
   expect(screen.getByRole("heading", { name: "路线地图" })).toBeInTheDocument();
   expect(screen.getByText("高德后端：已配置")).toBeInTheDocument();
   expect(screen.getByText("街道底图：未配置")).toBeInTheDocument();
-  expect(screen.getByText("GPT 建议：已配置")).toBeInTheDocument();
+  expect(screen.getByText("路线方式：电动自行车")).toBeInTheDocument();
+  expect(screen.getByText("顺序建议：本地快速")).toBeInTheDocument();
   expect(screen.getByText(/订单保存时只把上门地址/)).toBeInTheDocument();
   expect(await screen.findByText("未配置街道底图，按真实坐标展示")).toBeInTheDocument();
   expect(await screen.findByRole("link", { name: "打开高德导航" })).toHaveAttribute(
@@ -237,7 +239,7 @@ it("ends route loading after failure, reports unknown status, and retries", asyn
   expect(await screen.findByRole("alert")).toHaveTextContent("路线服务暂时断开");
   expect(screen.queryByText("正在加载路线数据…")).not.toBeInTheDocument();
   expect(screen.getByText("高德后端：状态未知")).toBeInTheDocument();
-  expect(screen.getByText("GPT 建议：状态未知")).toBeInTheDocument();
+  expect(screen.getByText("路线方式：状态未知")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "重试" }));
 
@@ -316,7 +318,7 @@ it("previews real route metrics and adopts the revision-protected recommendation
   ));
   expect(await screen.findByText("12.6 km · 48 分钟")).toBeInTheDocument();
   expect(screen.getByText("9.8 km · 37 分钟")).toBeInTheDocument();
-  expect(screen.getByText("GPT-5.6 Sol 已根据高德行车矩阵生成建议")).toBeInTheDocument();
+  expect(screen.getByText("已使用本地快速推荐；最终距离、时间和路线由高德电动车路线逐段计算")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "推荐" }));
   expect(screen.getByRole("button", { name: "地图任务 1：P4 第三位虚构客户" })).toBeInTheDocument();

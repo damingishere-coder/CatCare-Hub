@@ -280,6 +280,23 @@ it("parses a pasted residential address locally and uses five editable fields", 
   expect(apiMocks.createOrder).not.toHaveBeenCalled();
 });
 
+it("adds the default Shenzhen Longgang prefix to a local pasted address", async () => {
+  apiMocks.listOrders.mockResolvedValue({ items: [], total: 0 });
+  renderPage();
+  expect(await screen.findByText("还没有订单")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "新建订单" }));
+  const dialog = screen.getByRole("dialog", { name: "新建订单" });
+  const smartPaste = within(dialog).getByLabelText("粘贴地址智能填写");
+
+  fireEvent.paste(smartPaste, {
+    clipboardData: { getData: () => "长坑三巷21号1312房" },
+  });
+
+  expect(within(dialog).getByLabelText("详细地址"))
+    .toHaveValue("深圳市龙岗区长坑三巷21号");
+  expect(within(dialog).getByLabelText("单元 / 房间")).toHaveValue("1312房");
+});
+
 it("steps the unit price by five while preserving decimals and allowing manual input", async () => {
   apiMocks.listOrders.mockResolvedValue({ items: [], total: 0 });
   renderPage();

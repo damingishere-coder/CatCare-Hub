@@ -116,7 +116,7 @@ def test_direct_order_matches_restores_and_only_fills_empty_customer_fields(
     assert order["pending_cat_profile_count"] == 2
     assert order["cats"] == []
     assert order["route_geocode_status"] == "resolved"
-    assert p18_context.geocoder.calls == ["P18 虚构路 18 号"]
+    assert p18_context.geocoder.calls == ["深圳市龙岗区P18 虚构路 18 号"]
 
     profile = client.get(f"/api/admin/customers/{created['id']}").json()
     assert profile["archived_at"] is None
@@ -152,7 +152,9 @@ def test_order_geocoding_excludes_unit_and_room_and_their_edits_keep_coordinates
     )
     assert created.status_code == 201
     order = created.json()
-    assert p18_context.geocoder.calls == ["P19 虚构花园 P19 虚构路 19 号 3栋"]
+    assert p18_context.geocoder.calls == [
+        "深圳市龙岗区P19 虚构路 19 号 P19 虚构花园 3栋"
+    ]
     assert "2单元" not in p18_context.geocoder.calls[0]
     assert "1901室" not in p18_context.geocoder.calls[0]
 
@@ -169,7 +171,27 @@ def test_order_geocoding_excludes_unit_and_room_and_their_edits_keep_coordinates
     assert patched.json()["service_contact"]["unit"] == "5单元"
     assert patched.json()["service_contact"]["room"] == "2502室"
     assert patched.json()["route_geocode_status"] == "resolved"
-    assert p18_context.geocoder.calls == ["P19 虚构花园 P19 虚构路 19 号 3栋"]
+    assert p18_context.geocoder.calls == [
+        "深圳市龙岗区P19 虚构路 19 号 P19 虚构花园 3栋"
+    ]
+
+
+def test_legacy_room_text_is_removed_from_the_virtual_geocode_address(
+    p18_context: P18Context,
+) -> None:
+    created = p18_context.client.post(
+        "/api/admin/orders",
+        json=direct_order_payload(
+            service_contact={
+                "name": "P20 旧地址客户（虚构）",
+                "address": "长坑三巷21号 2单元 1312房",
+            }
+        ),
+    )
+
+    assert created.status_code == 201
+    assert created.json()["service_contact"]["address"] == "长坑三巷21号 2单元 1312房"
+    assert p18_context.geocoder.calls == ["深圳市龙岗区长坑三巷21号"]
 
 
 def test_daily_adjustment_partial_payments_and_financial_lock(
@@ -298,7 +320,10 @@ def test_failed_auto_geocode_does_not_rollback_and_retry_resolves(
     retried = p18_context.client.post(f"/api/admin/orders/{order['id']}/geocode")
     assert retried.status_code == 200
     assert retried.json()["route_geocode_status"] == "resolved"
-    assert p18_context.geocoder.calls == ["P18 虚构路 20 号", "P18 虚构路 20 号"]
+    assert p18_context.geocoder.calls == [
+        "深圳市龙岗区P18 虚构路 20 号",
+        "深圳市龙岗区P18 虚构路 20 号",
+    ]
 
 
 def test_demo_cleanup_is_exact_and_seed_tombstone_prevents_recreation(

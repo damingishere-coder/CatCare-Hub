@@ -159,6 +159,7 @@ export interface PlanRouteWorkspace {
   service_date: string;
   revision: string;
   schedule_locked: boolean;
+  transport_mode: "electrobike" | "unknown";
   provider: PlanMapProvider;
   recommendation_provider: PlanRecommendationProvider;
   start: PlanRouteStart | null;

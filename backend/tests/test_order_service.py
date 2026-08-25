@@ -1,7 +1,31 @@
 from datetime import date
 from decimal import Decimal
 
-from app.services.orders import calculate_order_pricing
+from app.services.orders import calculate_order_pricing, default_geocode_service_area
+
+
+def test_default_geocode_service_area_only_fills_missing_local_regions() -> None:
+    assert default_geocode_service_area("长坑三巷21号") == "深圳市龙岗区长坑三巷21号"
+    assert (
+        default_geocode_service_area("深圳市坂田街道长坑三巷21号")
+        == "深圳市龙岗区坂田街道长坑三巷21号"
+    )
+    assert (
+        default_geocode_service_area("龙岗区坂田街道长坑三巷21号")
+        == "深圳市龙岗区坂田街道长坑三巷21号"
+    )
+    assert (
+        default_geocode_service_area("深圳市龙岗区坂田街道长坑三巷21号")
+        == "深圳市龙岗区坂田街道长坑三巷21号"
+    )
+    assert (
+        default_geocode_service_area("深圳市宝安区新安街道1号")
+        == "深圳市宝安区新安街道1号"
+    )
+    assert (
+        default_geocode_service_area("广州市天河区体育西路1号")
+        == "广州市天河区体育西路1号"
+    )
 
 
 def test_seven_day_two_cat_order_pricing() -> None:

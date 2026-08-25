@@ -44,7 +44,12 @@ class FakeMapProvider:
     home: GeoPoint = GeoPoint(latitude=30.0, longitude=120.0)
 
     def provider_state(self) -> ProviderState:
-        return ProviderState("amap", True, "GCJ-02")
+        return ProviderState(
+            "amap",
+            True,
+            "GCJ-02",
+            transport_mode="electrobike",
+        )
 
     def home_point(self) -> GeoPoint:
         return self.home
@@ -112,6 +117,7 @@ def test_order_save_geocodes_before_explicit_route_preview_and_adopts_recommenda
     local_response = client.get("/api/admin/plans/2033-10-01/route")
     assert local_response.status_code == 200
     local = local_response.json()
+    assert local["transport_mode"] == "electrobike"
     assert local["provider"] == {
         "name": "amap",
         "configured": True,
@@ -148,6 +154,10 @@ def test_order_save_geocodes_before_explicit_route_preview_and_adopts_recommenda
         reversed([task["id"] for task in day["tasks"]])
     )
     assert preview["revision"] == day["revision"]
+    assert preview["recommendation_source"] == "local"
+    assert preview["recommendation_message"] == (
+        "已使用本地快速推荐；最终距离、时间和路线由高德电动车路线逐段计算"
+    )
 
     serialized = preview_response.text
     for forbidden in (

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from math import isfinite
-from typing import Protocol
+from typing import Literal, Protocol
 
 
 class MapProviderError(RuntimeError):
@@ -28,6 +28,7 @@ class ProviderState:
     configured: bool
     coordinate_system: str
     message: str | None = None
+    transport_mode: Literal["electrobike", "unknown"] = "unknown"
 
 
 @dataclass(frozen=True)

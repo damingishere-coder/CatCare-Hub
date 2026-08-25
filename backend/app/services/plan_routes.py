@@ -99,6 +99,10 @@ def _provider_read(services: MapServices) -> PlanMapProviderRead:
     )
 
 
+def _transport_mode(services: MapServices) -> str:
+    return services.map_provider.provider_state().transport_mode
+
+
 def _recommendation_provider_read(
     recommender: OpenAIRouteRecommender,
 ) -> PlanRecommendationProviderRead:
@@ -204,6 +208,7 @@ def _empty_workspace(
         service_date=service_date,
         revision=day_plan_revision(tasks),
         schedule_locked=schedule_is_locked(tasks),
+        transport_mode=_transport_mode(services),
         provider=_provider_read(services),
         recommendation_provider=_recommendation_provider_read(recommender),
         start=(
@@ -406,26 +411,33 @@ def preview_day_route(
             )
             return workspace
 
-        try:
-            matrix = services.route_provider.distance_matrix(home, stops)
-            recommended = route_recommender.recommend(
-                tasks=tasks,
-                stops=stops,
-                matrix=matrix,
-            )
-            workspace.recommendation_source = "openai"
-            workspace.recommendation_message = "GPT-5.6 Sol 已根据高德行车矩阵生成建议"
-        except (MapProviderError, RouteRecommendationError, AttributeError) as cause:
+        if workspace.transport_mode == "electrobike":
             recommended = services.route_provider.recommend_order(home, stops)
             workspace.recommendation_source = "local"
-            fallback_reason = (
-                str(cause)
-                if not isinstance(cause, AttributeError)
-                else "地图 Provider 不支持距离矩阵"
-            )
             workspace.recommendation_message = (
-                f"GPT 不可用，已使用本地推荐：{fallback_reason}"
+                "已使用本地快速推荐；最终距离、时间和路线由高德电动车路线逐段计算"
             )
+        else:
+            try:
+                matrix = services.route_provider.distance_matrix(home, stops)
+                recommended = route_recommender.recommend(
+                    tasks=tasks,
+                    stops=stops,
+                    matrix=matrix,
+                )
+                workspace.recommendation_source = "openai"
+                workspace.recommendation_message = "GPT-5.6 Sol 已根据高德路线矩阵生成建议"
+            except (MapProviderError, RouteRecommendationError, AttributeError) as cause:
+                recommended = services.route_provider.recommend_order(home, stops)
+                workspace.recommendation_source = "local"
+                fallback_reason = (
+                    str(cause)
+                    if not isinstance(cause, AttributeError)
+                    else "地图 Provider 不支持距离矩阵"
+                )
+                workspace.recommendation_message = (
+                    f"GPT 不可用，已使用本地推荐：{fallback_reason}"
+                )
         current_ids = [stop.task_id for stop in stops]
         recommended_ids = [stop.task_id for stop in recommended]
         if (

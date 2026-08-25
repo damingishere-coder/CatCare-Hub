@@ -122,7 +122,7 @@ class OpenAIRouteRecommender:
             "reasoning": {"effort": "medium"},
             "instructions": (
                 "你是上门服务路线排序器。只根据匿名任务编号、计划时间、"
-                "服务事项标志和高德真实行车矩阵，输出完整且无重复的任务编号顺序。"
+                "服务事项标志和地图服务真实路线矩阵，输出完整且无重复的任务编号顺序。"
             ),
             "input": json.dumps(
                 self._anonymous_input(tasks, matrix),

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizePastedAddress, parseOrderAddress } from "./addressParser";
+import {
+  applyDefaultServiceArea,
+  normalizePastedAddress,
+  parseOrderAddress,
+} from "./addressParser";
 
 describe("parseOrderAddress", () => {
   it("parses a common residential address into existing order fields", () => {
@@ -43,6 +47,30 @@ describe("parseOrderAddress", () => {
       room: null,
       recognizedParts: 0,
     });
+  });
+
+  it("fills the default Shenzhen Longgang service area when it is missing", () => {
+    expect(parseOrderAddress("长坑三巷21号1312房")).toEqual({
+      community: null,
+      address: "深圳市龙岗区长坑三巷21号",
+      building: null,
+      unit: null,
+      room: "1312房",
+      recognizedParts: 1,
+    });
+    expect(applyDefaultServiceArea("深圳市坂田街道长坑三巷21号"))
+      .toBe("深圳市龙岗区坂田街道长坑三巷21号");
+    expect(applyDefaultServiceArea("龙岗区坂田街道长坑三巷21号"))
+      .toBe("深圳市龙岗区坂田街道长坑三巷21号");
+  });
+
+  it("does not duplicate Longgang or overwrite another explicit region", () => {
+    expect(applyDefaultServiceArea("深圳市龙岗区坂田街道长坑三巷21号"))
+      .toBe("深圳市龙岗区坂田街道长坑三巷21号");
+    expect(applyDefaultServiceArea("深圳市宝安区新安街道1号"))
+      .toBe("深圳市宝安区新安街道1号");
+    expect(applyDefaultServiceArea("广州市天河区体育西路1号"))
+      .toBe("广州市天河区体育西路1号");
   });
 
   it("removes a labeled phone number without returning contact fields", () => {

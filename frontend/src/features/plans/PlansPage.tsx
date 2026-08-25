@@ -14,7 +14,7 @@ export function PlansPage() {
         eyebrow="智能排程"
         title="路线图"
         headingId="plans-page-title"
-        description="按日期安排任务，由 GPT 结合高德真实行车矩阵给出顺序建议，并由高德绘制路线。"
+        description="按日期安排任务，本地快速给出顺序建议，并由高德逐段计算真实电动车路线。"
       />
       {scheduleDirty ? <p className="mt-3 text-right text-xs text-amber-700">当前排程尚未保存。</p> : null}
       <div className="mt-6">

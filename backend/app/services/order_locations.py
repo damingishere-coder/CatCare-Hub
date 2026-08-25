@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.maps import MapProviderError, MapServices
 from app.models.order import Order
 from app.models.task import Task
-from app.services.orders import order_geocode_address
+from app.services.orders import default_geocode_service_area, order_geocode_address
 
 
 def _normalized(value: str | None) -> str:
@@ -17,8 +17,8 @@ def _customer_address(order: Order) -> str | None:
     if order.customer is None:
         return None
     parts = [
-        order.customer.community,
         order.customer.address,
+        order.customer.community,
         order.customer.building,
     ]
     values: list[str] = []
@@ -78,7 +78,7 @@ def geocode_order(session: Session, order_id: int, services: MapServices) -> str
         task.planned_lat = latitude
         task.planned_lng = longitude
 
-    customer_address = _customer_address(order)
+    customer_address = default_geocode_service_area(_customer_address(order))
     if order.customer is not None and _normalized(customer_address) == _normalized(address):
         order.customer.latitude = latitude
         order.customer.longitude = longitude

@@ -113,7 +113,7 @@ def get_map_services() -> MapServices:
     provider = AmapProvider(
         web_key=os.getenv("CATCARE_AMAP_WEB_KEY", ""),
         home=home,
-        city=os.getenv("CATCARE_MAP_CITY"),
+        city=os.getenv("CATCARE_MAP_CITY", "").strip() or "深圳市",
         timeout_seconds=_timeout_seconds(),
     )
     return MapServices(provider, provider, provider, provider)

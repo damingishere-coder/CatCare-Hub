@@ -7,6 +7,42 @@ export interface ParsedOrderAddress {
   recognizedParts: number;
 }
 
+const DEFAULT_CITY = "深圳市";
+const DEFAULT_DISTRICT = "龙岗区";
+
+function explicitCity(value: string): string | null {
+  const match = /(?:^|省|\s)([^省区县乡镇街道路\s]{2,8}市)/u.exec(value);
+  return match?.[1] ?? null;
+}
+
+function explicitDistrict(value: string): string | null {
+  const matches = value.matchAll(/(?:^|省|市|\s)([^省市\s]{1,8}(?:区|县))/gu);
+  for (const match of matches) {
+    const candidate = match[1];
+    if (candidate && !candidate.endsWith("小区") && !candidate.endsWith("社区")) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+export function applyDefaultServiceArea(value: string): string {
+  const city = explicitCity(value);
+  const district = explicitDistrict(value);
+  if (city && district) return value;
+  if (city) {
+    return city === DEFAULT_CITY
+      ? value.replace(DEFAULT_CITY, `${DEFAULT_CITY}${DEFAULT_DISTRICT}`)
+      : value;
+  }
+  if (district) {
+    return district === DEFAULT_DISTRICT
+      ? value.replace(DEFAULT_DISTRICT, `${DEFAULT_CITY}${DEFAULT_DISTRICT}`)
+      : value;
+  }
+  return `${DEFAULT_CITY}${DEFAULT_DISTRICT}${value}`;
+}
+
 function toHalfWidth(value: string): string {
   return [...value].map((character) => {
     const code = character.charCodeAt(0);
@@ -70,7 +106,8 @@ function extractCommunity(input: string): { value: string | null; remaining: str
 }
 
 export function parseOrderAddress(value: string): ParsedOrderAddress {
-  const normalized = normalizePastedAddress(value);
+  const rawNormalized = normalizePastedAddress(value);
+  const normalized = rawNormalized ? applyDefaultServiceArea(rawNormalized) : "";
   if (!normalized) {
     return {
       community: null,
