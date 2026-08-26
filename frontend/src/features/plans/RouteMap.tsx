@@ -89,7 +89,7 @@ function CoordinateCanvas({
       </svg>
       {start ? (() => {
         const projected = project(start.position);
-        return <span className="absolute flex size-8 -translate-1/2 items-center justify-center rounded-full border-2 border-white bg-emerald-700 text-xs font-bold text-white shadow-md" style={{ left: `${projected.left}%`, top: `${projected.top}%` }} title={start.label}>起</span>;
+        return <span className="absolute flex -translate-1/2 items-center gap-1 rounded-full border-2 border-white bg-emerald-700 px-2 py-1 text-xs font-bold whitespace-nowrap text-white shadow-md" style={{ left: `${projected.left}%`, top: `${projected.top}%` }} title={`${start.label}（起点与终点）`}>家 · 起终点</span>;
       })() : null}
       {markers.map((marker, index) => {
         const projected = project(marker.position);
@@ -98,7 +98,7 @@ function CoordinateCanvas({
           <button
             key={marker.task_id}
             type="button"
-            className={`absolute flex size-8 -translate-1/2 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white shadow-md ${selectedTaskId === marker.task_id ? "bg-orange-700 ring-2 ring-orange-300" : "bg-[#FF9500]"}`}
+            className={`absolute flex max-w-36 -translate-1/2 items-center gap-1 rounded-full border-2 border-white px-2 py-1 text-xs font-bold whitespace-nowrap text-white shadow-md ${selectedTaskId === marker.task_id ? "bg-orange-700 ring-2 ring-orange-300" : "bg-[#FF9500]"}`}
             style={{
               left: `${projected.left}%`,
               top: `${projected.top}%`,
@@ -108,7 +108,8 @@ function CoordinateCanvas({
             title={marker.address || marker.community || marker.customer_name}
             onClick={() => onSelectTask(marker.task_id)}
           >
-            {marker.sequence}
+            <span>{marker.sequence}</span>
+            <span className="hidden max-w-24 truncate md:inline">{marker.customer_name}</span>
           </button>
         );
       })}

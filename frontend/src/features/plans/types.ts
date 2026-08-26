@@ -58,6 +58,7 @@ export interface PlanDaySummary {
   task_count: number;
   order_count: number;
   cat_count: number;
+  customer_names: string[];
 }
 
 export interface PlanDaysResponse {
@@ -113,12 +114,6 @@ export interface PlanMapProvider {
   message: string | null;
 }
 
-export interface PlanRecommendationProvider {
-  name: string;
-  configured: boolean;
-  message: string | null;
-}
-
 export interface PlanRouteStart {
   label: string;
   position: PlanGeoPoint;
@@ -138,6 +133,8 @@ export type PlanRouteIssueReason =
   | "missing_address"
   | "not_geocoded"
   | "geocode_failed"
+  | "stale_geocode"
+  | "geocode_mismatch"
   | "execution_location_missing";
 
 export interface PlanRouteIssue {
@@ -155,21 +152,34 @@ export interface PlanRoutePath {
   polyline: PlanGeoPoint[];
 }
 
+export interface PlanRouteOptimization {
+  method: "exact" | "two_opt" | "none";
+  planned_time_policy: "precedence";
+  baseline_task_ids: number[];
+  optimized_task_ids: number[];
+  baseline_estimated_distance_meters: number;
+  optimized_estimated_distance_meters: number;
+  estimated_savings_percent: number;
+}
+
+export interface PlanRoadRoute {
+  status: "not_generated" | "ready" | "degraded";
+  path: PlanRoutePath | null;
+  message: string | null;
+}
+
 export interface PlanRouteWorkspace {
   service_date: string;
   revision: string;
   schedule_locked: boolean;
   transport_mode: "electrobike" | "unknown";
   provider: PlanMapProvider;
-  recommendation_provider: PlanRecommendationProvider;
+  route_mode: "round_trip";
   start: PlanRouteStart | null;
   markers: PlanRouteMarker[];
   unresolved_tasks: PlanRouteIssue[];
-  current_route: PlanRoutePath | null;
-  recommended_route: PlanRoutePath | null;
-  recommended_task_ids: number[];
-  recommendation_source: "none" | "openai" | "local";
-  recommendation_message: string | null;
+  optimization: PlanRouteOptimization | null;
+  road_route: PlanRoadRoute;
   can_adopt_recommendation: boolean;
 }
 

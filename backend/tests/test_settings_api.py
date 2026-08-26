@@ -4,7 +4,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.maps import GeoPoint, MapServices, ProviderState
+from app.maps import (
+    GeoPoint,
+    GeocodeResult,
+    MapServices,
+    ProviderState,
+    RouteResult,
+    RouteStop,
+)
 from app.maps.factory import get_map_services
 from app.services.route_recommendation import (
     RecommendationProviderState,
@@ -28,9 +35,22 @@ class FakeMapProvider:
     def home_point(self) -> GeoPoint | None:
         return GeoPoint(latitude=30.0, longitude=120.0) if self.configured else None
 
-    def geocode(self, address: str) -> GeoPoint | None:
+    def geocode(self, address: str) -> GeocodeResult | None:
         self.geocode_calls.append(address)
-        return GeoPoint(latitude=30.27, longitude=120.15)
+        return GeocodeResult(
+            GeoPoint(latitude=22.72, longitude=114.25),
+            "深圳市",
+            "龙岗区",
+            "440307",
+            "兴趣点",
+        )
+
+    def plan_route(self, origin: GeoPoint, stops: list[RouteStop]) -> RouteResult:
+        return RouteResult(
+            distance_meters=1000,
+            duration_seconds=300,
+            polyline=tuple([origin, *(stop.position for stop in stops)]),
+        )
 
 
 class FakeRouteRecommender:
@@ -112,7 +132,7 @@ def test_settings_manual_connection_tests_use_public_place_and_each_provider(
 
     assert amap_response.status_code == 200
     assert amap_response.json()["connected"] is True
-    assert map_provider.geocode_calls == ["杭州市民中心"]
+    assert map_provider.geocode_calls == ["深圳市龙岗区龙岗区政府"]
     assert openai_response.status_code == 200
     assert openai_response.json()["connected"] is True
     assert recommender.test_calls == 1

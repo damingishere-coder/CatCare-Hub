@@ -61,6 +61,13 @@ function displayDate(value: string): string {
   return `${Number(month)}月${Number(day)}日`;
 }
 
+function dayCustomerLabel(customerNames: string[]): string {
+  if (!customerNames.length) return "客户待确认";
+  const visibleNames = customerNames.slice(0, 2).join("、");
+  const hiddenCount = customerNames.length - 2;
+  return hiddenCount > 0 ? `${visibleNames} · 另 ${hiddenCount} 位` : visibleNames;
+}
+
 function timeValue(value: string | null): string {
   return value?.slice(0, 5) ?? "";
 }
@@ -233,23 +240,31 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
     setDirty(true);
   }
 
+  function invalidateRouteWorkspace() {
+    setRouteWorkspace((current) => current ? {
+      ...current,
+      optimization: null,
+      road_route: {
+        status: "not_generated",
+        path: null,
+        message: null,
+      },
+      can_adopt_recommendation: false,
+    } : current);
+  }
+
   function moveTask(index: number, direction: -1 | 1) {
     const destination = index + direction;
     if (destination < 0 || destination >= draftTasks.length || plan?.schedule_locked || routeBusy) return;
     const next = [...draftTasks];
     [next[index], next[destination]] = [next[destination], next[index]];
-    setRouteWorkspace((current) => current ? {
-      ...current,
-      current_route: null,
-      recommended_route: null,
-      recommended_task_ids: [],
-      can_adopt_recommendation: false,
-    } : current);
+    invalidateRouteWorkspace();
     updateDraft(next);
   }
 
   function updateTime(taskId: number, value: string) {
     if (routeBusy) return;
+    invalidateRouteWorkspace();
     updateDraft(
       draftTasks.map((task) =>
         task.id === taskId ? { ...task, planned_time: value || null } : task,
@@ -329,9 +344,10 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
   }
 
   async function handleAdoptRecommendation() {
-    if (!plan || !routeWorkspace?.can_adopt_recommendation || dirty) return;
+    const optimizedTaskIds = routeWorkspace?.optimization?.optimized_task_ids;
+    if (!plan || !routeWorkspace?.can_adopt_recommendation || !optimizedTaskIds || dirty) return;
     const tasksById = new Map(draftTasks.map((task) => [task.id, task]));
-    const recommendedTasks = routeWorkspace.recommended_task_ids.map((taskId) => tasksById.get(taskId));
+    const recommendedTasks = optimizedTaskIds.map((taskId) => tasksById.get(taskId));
     if (recommendedTasks.some((task) => !task)) {
       setRouteError("推荐路线已过期，请重新生成后再采用。");
       return;
@@ -350,18 +366,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
       setPlan(saved);
       setDraftTasks(saved.tasks);
       setDirty(false);
-      setRouteWorkspace({
-        ...routeWorkspace,
-        revision: saved.revision,
-        current_route: routeWorkspace.recommended_route,
-        recommended_route: null,
-        recommended_task_ids: [],
-        can_adopt_recommendation: false,
-        markers: routeWorkspace.markers.map((marker) => ({
-          ...marker,
-          sequence: saved.tasks.findIndex((task) => task.id === marker.task_id) + 1,
-        })),
-      });
+      await loadRoute(selectedDate, saved.tasks.length > 0);
       await refreshDays();
       if (selectedTaskId) setTaskDetail(await getPlanTask(selectedTaskId));
     } catch (cause) {
@@ -409,12 +414,17 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                 <button
                   key={day.service_date}
                   type="button"
-                  className={`flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${selectedDate === day.service_date ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
+                  className={`flex min-h-14 w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm ${selectedDate === day.service_date ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
                   onClick={() => selectDate(day.service_date)}
                   disabled={dirty || routeBusy}
                 >
-                  <span className="font-medium">{displayDate(day.service_date)}</span>
-                  <span className={selectedDate === day.service_date ? "text-orange-950/70" : "text-slate-500"}>
+                  <span className="min-w-0">
+                    <span className="block font-medium">{displayDate(day.service_date)}</span>
+                    <span className={`mt-0.5 block truncate text-xs ${selectedDate === day.service_date ? "text-orange-950/75" : "text-slate-500"}`} title={day.customer_names.join("、")}>
+                      {dayCustomerLabel(day.customer_names)}
+                    </span>
+                  </span>
+                  <span className={`shrink-0 pt-0.5 text-xs ${selectedDate === day.service_date ? "text-orange-950/70" : "text-slate-500"}`}>
                     {day.order_count} 单 / {day.cat_count} 只猫
                   </span>
                 </button>

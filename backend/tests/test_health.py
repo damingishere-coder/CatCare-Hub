@@ -8,6 +8,7 @@ from sqlalchemy import Engine, text
 import app.main as main_module
 from app.db.session import build_engine
 from app.main import app
+from app.services.readiness import expected_schema_heads
 
 
 client = TestClient(app)
@@ -45,11 +46,12 @@ def test_ready_check_reports_current_database_revision(
     response = test_client.get("/api/ready")
 
     assert response.status_code == 200
+    expected_revision = ",".join(sorted(expected_schema_heads()))
     assert response.json() == {
         "status": "ready",
         "service": "catcare-hub-api",
         "database": "ready",
-        "schema_revision": "0010_payment_void_audit",
+        "schema_revision": expected_revision,
     }
 
 

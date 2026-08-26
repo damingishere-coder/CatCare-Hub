@@ -2,6 +2,7 @@
 
 from app.maps.contracts import (
     GeoPoint,
+    GeocodeResult,
     GeocodeProvider,
     MapProvider,
     MapProviderError,
@@ -17,6 +18,7 @@ from app.maps.contracts import (
 
 __all__ = [
     "GeoPoint",
+    "GeocodeResult",
     "GeocodeProvider",
     "MapProvider",
     "MapProviderError",

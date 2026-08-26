@@ -10,7 +10,15 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.session import build_engine, get_db
 from app.main import app
-from app.maps import GeoPoint, MapServices, ProviderState, RouteResult, RouteStop
+from app.maps import (
+    GeoPoint,
+    GeocodeResult,
+    MapProviderError,
+    MapServices,
+    ProviderState,
+    RouteResult,
+    RouteStop,
+)
 from app.maps.factory import UnavailableMapProvider, get_map_services
 from app.models import Customer, Order, Task
 from tests.test_plan_api import PlanApiContext, create_three_task_plan
@@ -38,9 +46,10 @@ def plan_api_context(
 
 @dataclass
 class FakeMapProvider:
-    geocode_results: list[GeoPoint | None]
+    geocode_results: list[GeocodeResult | None]
     geocode_calls: list[str] = field(default_factory=list)
     route_calls: list[list[int]] = field(default_factory=list)
+    route_error: str | None = None
     home: GeoPoint = GeoPoint(latitude=30.0, longitude=120.0)
 
     def provider_state(self) -> ProviderState:
@@ -54,12 +63,14 @@ class FakeMapProvider:
     def home_point(self) -> GeoPoint:
         return self.home
 
-    def geocode(self, address: str) -> GeoPoint | None:
+    def geocode(self, address: str) -> GeocodeResult | None:
         self.geocode_calls.append(address)
         return self.geocode_results[len(self.geocode_calls) - 1]
 
     def plan_route(self, origin: GeoPoint, stops: list[RouteStop]) -> RouteResult:
         self.route_calls.append([stop.task_id for stop in stops])
+        if self.route_error:
+            raise MapProviderError(self.route_error)
         distance = 12600 if len(self.route_calls) == 1 else 9800
         duration = 2880 if len(self.route_calls) == 1 else 2220
         return RouteResult(
@@ -93,9 +104,9 @@ class FakeMapProvider:
 def fake_map_provider() -> FakeMapProvider:
     provider = FakeMapProvider(
         geocode_results=[
-            GeoPoint(latitude=30.10, longitude=120.10),
-            GeoPoint(latitude=30.20, longitude=120.20),
-            GeoPoint(latitude=30.30, longitude=120.30),
+            GeocodeResult(GeoPoint(30.10, 120.10), "深圳市", "龙岗区", "440307", "门牌号"),
+            GeocodeResult(GeoPoint(30.20, 120.20), "深圳市", "龙岗区", "440307", "门牌号"),
+            GeocodeResult(GeoPoint(30.30, 120.30), "深圳市", "龙岗区", "440307", "门牌号"),
         ]
     )
     services = MapServices(provider, provider, provider, provider)
@@ -106,7 +117,7 @@ def fake_map_provider() -> FakeMapProvider:
         app.dependency_overrides.pop(get_map_services, None)
 
 
-def test_order_save_geocodes_before_explicit_route_preview_and_adopts_recommendation(
+def test_order_save_geocodes_before_explicit_round_trip_preview(
     plan_api_context: PlanApiContext,
     fake_map_provider: FakeMapProvider,
 ) -> None:
@@ -127,7 +138,13 @@ def test_order_save_geocodes_before_explicit_route_preview_and_adopts_recommenda
     assert local["start"]["label"] == "家"
     assert len(local["markers"]) == 3
     assert local["unresolved_tasks"] == []
-    assert local["current_route"] is None
+    assert local["route_mode"] == "round_trip"
+    assert local["optimization"] is None
+    assert local["road_route"] == {
+        "status": "not_generated",
+        "path": None,
+        "message": None,
+    }
     assert len(fake_map_provider.geocode_calls) == 2
 
     preview_response = client.post(
@@ -145,19 +162,25 @@ def test_order_save_geocodes_before_explicit_route_preview_and_adopts_recommenda
     assert all("2 单元" not in marker["navigation_url"] for marker in preview["markers"])
     assert all("1602" not in marker["navigation_url"] for marker in preview["markers"])
     assert preview["unresolved_tasks"] == []
-    assert preview["current_route"]["distance_meters"] == 12600
-    assert preview["current_route"]["duration_seconds"] == 2880
-    assert preview["recommended_route"]["distance_meters"] == 9800
-    assert preview["recommended_route"]["duration_seconds"] == 2220
+    assert preview["road_route"]["status"] == "ready"
+    assert preview["road_route"]["path"]["distance_meters"] == 12600
+    assert preview["road_route"]["path"]["duration_seconds"] == 2880
+    assert preview["optimization"]["method"] == "exact"
+    assert preview["optimization"]["planned_time_policy"] == "precedence"
+    assert preview["optimization"]["baseline_task_ids"] == [
+        task["id"] for task in day["tasks"]
+    ]
+    optimized_task_ids = [
+        day["tasks"][0]["id"],
+        day["tasks"][2]["id"],
+        day["tasks"][1]["id"],
+    ]
+    assert preview["optimization"]["optimized_task_ids"] == optimized_task_ids
     assert preview["can_adopt_recommendation"] is True
-    assert preview["recommended_task_ids"] == list(
-        reversed([task["id"] for task in day["tasks"]])
-    )
+    assert fake_map_provider.route_calls == [
+        optimized_task_ids + [0]
+    ]
     assert preview["revision"] == day["revision"]
-    assert preview["recommendation_source"] == "local"
-    assert preview["recommendation_message"] == (
-        "已使用本地快速推荐；最终距离、时间和路线由高德电动车路线逐段计算"
-    )
 
     serialized = preview_response.text
     for forbidden in (
@@ -178,22 +201,23 @@ def test_order_save_geocodes_before_explicit_route_preview_and_adopts_recommenda
     assert len(fake_map_provider.geocode_calls) == 2
 
     current_day = client.get("/api/admin/plans/2033-10-01").json()
-    times = {task["id"]: task["planned_time"] for task in current_day["tasks"]}
+    planned_times = {
+        task["id"]: task["planned_time"] for task in current_day["tasks"]
+    }
     adopted_response = client.put(
         "/api/admin/plans/2033-10-01/schedule",
         json={
             "expected_revision": current_day["revision"],
             "tasks": [
-                {"task_id": task_id, "planned_time": times[task_id]}
-                for task_id in preview["recommended_task_ids"]
+                {"task_id": task_id, "planned_time": planned_times[task_id]}
+                for task_id in optimized_task_ids
             ],
         },
     )
     assert adopted_response.status_code == 200
-    adopted = adopted_response.json()
-    assert [task["id"] for task in adopted["tasks"]] == preview["recommended_task_ids"]
-    assert [task["sort_order"] for task in adopted["tasks"]] == [0, 1, 2]
-
+    assert [
+        task["id"] for task in adopted_response.json()["tasks"]
+    ] == optimized_task_ids
 
 def test_route_preview_caches_order_coordinates_and_ignores_later_profile_changes(
     plan_api_context: PlanApiContext,
@@ -287,7 +311,10 @@ def test_partial_geocode_failure_disables_recommendation_and_disabled_provider_i
     day = client.get("/api/admin/plans/2033-10-01").json()
 
     partial_provider = FakeMapProvider(
-        geocode_results=[GeoPoint(latitude=30.1, longitude=120.1), None]
+        geocode_results=[
+            GeocodeResult(GeoPoint(30.1, 120.1), "深圳市", "龙岗区", "440307", "门牌号"),
+            None,
+        ]
     )
     services = MapServices(
         partial_provider,
@@ -306,9 +333,8 @@ def test_partial_geocode_failure_disables_recommendation_and_disabled_provider_i
         assert len(payload["markers"]) == 2
         assert len(payload["unresolved_tasks"]) == 1
         assert payload["unresolved_tasks"][0]["reason"] == "geocode_failed"
-        assert payload["current_route"] is not None
-        assert payload["recommended_route"] is None
-        assert payload["recommended_task_ids"] == []
+        assert payload["optimization"] is None
+        assert payload["road_route"]["status"] == "not_generated"
         assert payload["can_adopt_recommendation"] is False
     finally:
         app.dependency_overrides.pop(get_map_services, None)
@@ -438,8 +464,8 @@ def test_cancelled_tasks_are_excluded_and_missing_address_is_not_guessed(
     assert response.status_code == 200
     workspace = response.json()
     assert workspace["markers"] == []
-    assert workspace["current_route"] is None
-    assert workspace["recommended_route"] is None
+    assert workspace["optimization"] is None
+    assert workspace["road_route"]["status"] == "not_generated"
     assert workspace["unresolved_tasks"] == [
         {
             "task_id": active_tasks[0]["id"],
@@ -450,3 +476,115 @@ def test_cancelled_tasks_are_excluded_and_missing_address_is_not_guessed(
         }
     ]
     assert len(fake_map_provider.geocode_calls) == 2
+
+
+def test_stale_cached_coordinates_are_revalidated_before_route_planning(
+    plan_api_context: PlanApiContext,
+    fake_map_provider: FakeMapProvider,
+) -> None:
+    client = plan_api_context.client
+    create_three_task_plan(client)
+    day = client.get("/api/admin/plans/2033-10-01").json()
+    order_id = day["tasks"][0]["order_id"]
+
+    with plan_api_context.session_factory.begin() as session:
+        order = session.get(Order, order_id)
+        assert order is not None
+        order.route_latitude = Decimal("47.1166480")
+        order.route_longitude = Decimal("124.8523860")
+        order.route_geocode_fingerprint = None
+
+    stale = client.get("/api/admin/plans/2033-10-01/route").json()
+    stale_task_ids = {
+        task["id"] for task in day["tasks"] if task["order_id"] == order_id
+    }
+    assert {issue["task_id"] for issue in stale["unresolved_tasks"]} == stale_task_ids
+    assert {issue["reason"] for issue in stale["unresolved_tasks"]} == {
+        "stale_geocode"
+    }
+    assert stale_task_ids.isdisjoint(
+        marker["task_id"] for marker in stale["markers"]
+    )
+
+    current = client.get("/api/admin/plans/2033-10-01").json()
+    preview = client.post(
+        "/api/admin/plans/2033-10-01/route/preview",
+        json={"expected_revision": current["revision"], "geocode_missing": True},
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["unresolved_tasks"] == []
+    with plan_api_context.session_factory() as session:
+        order = session.get(Order, order_id)
+        assert order is not None
+        assert order.route_latitude == Decimal("30.3000000")
+        assert order.route_longitude == Decimal("120.3000000")
+        assert order.route_geocode_fingerprint is not None
+
+
+def test_geocode_region_mismatch_blocks_incomplete_route(
+    plan_api_context: PlanApiContext,
+    fake_map_provider: FakeMapProvider,
+) -> None:
+    client = plan_api_context.client
+    create_three_task_plan(client)
+    day = client.get("/api/admin/plans/2033-10-01").json()
+    order_id = day["tasks"][0]["order_id"]
+
+    with plan_api_context.session_factory.begin() as session:
+        order = session.get(Order, order_id)
+        assert order is not None
+        order.route_geocode_fingerprint = None
+
+    fake_map_provider.geocode_calls.clear()
+    fake_map_provider.geocode_results = [
+        GeocodeResult(
+            GeoPoint(23.129112, 113.264385),
+            "广州市",
+            "越秀区",
+            "440104",
+            "门牌号",
+        )
+    ]
+    fake_map_provider.route_calls.clear()
+    current = client.get("/api/admin/plans/2033-10-01").json()
+
+    response = client.post(
+        "/api/admin/plans/2033-10-01/route/preview",
+        json={"expected_revision": current["revision"]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    mismatch_task_ids = {
+        task["id"] for task in day["tasks"] if task["order_id"] == order_id
+    }
+    assert {issue["task_id"] for issue in payload["unresolved_tasks"]} == mismatch_task_ids
+    assert {issue["reason"] for issue in payload["unresolved_tasks"]} == {
+        "geocode_mismatch"
+    }
+    assert payload["optimization"] is None
+    assert payload["road_route"]["status"] == "not_generated"
+    assert fake_map_provider.route_calls == []
+
+
+def test_road_route_failure_degrades_without_discarding_local_optimization(
+    plan_api_context: PlanApiContext,
+    fake_map_provider: FakeMapProvider,
+) -> None:
+    client = plan_api_context.client
+    create_three_task_plan(client)
+    fake_map_provider.route_error = "高德服务端繁忙（UNKNOWN / 10016）"
+    day = client.get("/api/admin/plans/2033-10-01").json()
+
+    response = client.post(
+        "/api/admin/plans/2033-10-01/route/preview",
+        json={"expected_revision": day["revision"]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["optimization"] is not None
+    assert payload["road_route"]["status"] == "degraded"
+    assert payload["road_route"]["path"] is None
+    assert "10016" in payload["road_route"]["message"]

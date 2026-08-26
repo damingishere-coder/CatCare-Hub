@@ -87,7 +87,7 @@ const routeWorkspace: PlanRouteWorkspace = {
     coordinate_system: "GCJ-02",
     message: null,
   },
-  recommendation_provider: { name: "openai", configured: true, message: null },
+  route_mode: "round_trip",
   start: {
     label: "家",
     position: { latitude: 30, longitude: 120 },
@@ -102,32 +102,37 @@ const routeWorkspace: PlanRouteWorkspace = {
     navigation_url: `https://uri.amap.com/navigation?to=${index + 1}`,
   })),
   unresolved_tasks: [],
-  current_route: null,
-  recommended_route: null,
-  recommended_task_ids: [],
-  recommendation_source: "none",
-  recommendation_message: null,
+  optimization: null,
+  road_route: {
+    status: "not_generated",
+    path: null,
+    message: null,
+  },
   can_adopt_recommendation: false,
 };
 
 const previewWorkspace: PlanRouteWorkspace = {
   ...routeWorkspace,
   revision: revisionB,
-  current_route: {
-    task_ids: [1, 2, 3],
-    distance_meters: 12600,
-    duration_seconds: 2880,
-    polyline: [routeWorkspace.start!.position, ...routeWorkspace.markers.map((marker) => marker.position)],
+  optimization: {
+    method: "exact",
+    planned_time_policy: "precedence",
+    baseline_task_ids: [1, 2, 3],
+    optimized_task_ids: [3, 2, 1],
+    baseline_estimated_distance_meters: 12600,
+    optimized_estimated_distance_meters: 9800,
+    estimated_savings_percent: 22.2,
   },
-  recommended_route: {
-    task_ids: [3, 2, 1],
-    distance_meters: 9800,
-    duration_seconds: 2220,
-    polyline: [routeWorkspace.start!.position, ...[...routeWorkspace.markers].reverse().map((marker) => marker.position)],
+  road_route: {
+    status: "ready",
+    path: {
+      task_ids: [3, 2, 1],
+      distance_meters: 9800,
+      duration_seconds: 2220,
+      polyline: [routeWorkspace.start!.position, ...[...routeWorkspace.markers].reverse().map((marker) => marker.position), routeWorkspace.start!.position],
+    },
+    message: "高德已计算优化顺序的真实电动车闭环路线",
   },
-  recommended_task_ids: [3, 2, 1],
-  recommendation_source: "local",
-  recommendation_message: "已使用本地快速推荐；最终距离、时间和路线由高德电动车路线逐段计算",
   can_adopt_recommendation: true,
 };
 
@@ -168,6 +173,7 @@ beforeEach(() => {
         task_count: 3,
         order_count: 3,
         cat_count: 3,
+        customer_names: tasks.map((entry) => entry.customer.name),
       },
     ],
     total: 1,
@@ -198,13 +204,13 @@ beforeEach(() => {
 it("shows date tasks, route workspace, and a privacy-minimized selected detail", async () => {
   renderPage();
 
-  expect(await screen.findByText("P4 第一位虚构客户")).toBeInTheDocument();
+  expect((await screen.findAllByText("P4 第一位虚构客户")).length).toBeGreaterThan(0);
   expect(screen.getByRole("heading", { name: "路线地图" })).toBeInTheDocument();
   expect(screen.getByText("高德后端：已配置")).toBeInTheDocument();
   expect(screen.getByText("街道底图：未配置")).toBeInTheDocument();
-  expect(screen.getByText("路线方式：电动自行车")).toBeInTheDocument();
-  expect(screen.getByText("顺序建议：本地快速")).toBeInTheDocument();
-  expect(screen.getByText(/订单保存时只把上门地址/)).toBeInTheDocument();
+  expect(screen.getByText("闭环：家 → 客户 → 家")).toBeInTheDocument();
+  expect(screen.getByText(/先用当天全部已验证地址做闭环全局优化/)).toBeInTheDocument();
+  expect(screen.getByText(/另 1 位/)).toBeInTheDocument();
   expect(await screen.findByText("未配置街道底图，按真实坐标展示")).toBeInTheDocument();
   expect(await screen.findByRole("link", { name: "打开高德导航" })).toHaveAttribute(
     "href",
@@ -225,7 +231,7 @@ it("shows date tasks, route workspace, and a privacy-minimized selected detail",
 it("opens the exact service date and task from an order route link", async () => {
   renderPage(vi.fn(), "/admin/routes?date=2034-10-01&task_id=2");
 
-  expect(await screen.findByText("P4 第二位虚构客户")).toBeInTheDocument();
+  expect((await screen.findAllByText("P4 第二位虚构客户")).length).toBeGreaterThan(0);
   await waitFor(() => expect(apiMocks.getDayPlan).toHaveBeenCalledWith("2034-10-01"));
   await waitFor(() => expect(apiMocks.getPlanTask).toHaveBeenCalledWith(2));
 });
@@ -239,7 +245,7 @@ it("ends route loading after failure, reports unknown status, and retries", asyn
   expect(await screen.findByRole("alert")).toHaveTextContent("路线服务暂时断开");
   expect(screen.queryByText("正在加载路线数据…")).not.toBeInTheDocument();
   expect(screen.getByText("高德后端：状态未知")).toBeInTheDocument();
-  expect(screen.getByText("路线方式：状态未知")).toBeInTheDocument();
+  expect(screen.getByText("真实道路：待规划")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "重试" }));
 
@@ -250,7 +256,7 @@ it("ends route loading after failure, reports unknown status, and retries", asyn
 it("moves tasks, edits time, and saves one revision-protected day schedule", async () => {
   const onDirtyChange = vi.fn();
   renderPage(onDirtyChange);
-  expect(await screen.findByText("P4 第二位虚构客户")).toBeInTheDocument();
+  expect((await screen.findAllByText("P4 第二位虚构客户")).length).toBeGreaterThan(0);
 
   fireEvent.click(screen.getByRole("button", { name: "上移 P4 第二位虚构客户 任务" }));
   fireEvent.change(screen.getByLabelText("任务 #2 计划时间"), {
@@ -309,20 +315,19 @@ it("locks schedule and status controls when execution history exists", async () 
 
 it("previews real route metrics and adopts the revision-protected recommendation", async () => {
   renderPage();
-  await screen.findByRole("button", { name: "生成路线" });
+  await screen.findByRole("button", { name: "规划当天路线" });
 
-  fireEvent.click(screen.getByRole("button", { name: "生成路线" }));
+  fireEvent.click(screen.getByRole("button", { name: "规划当天路线" }));
   await waitFor(() => expect(apiMocks.previewPlanRoute).toHaveBeenCalledWith(
     "2034-10-01",
     { expected_revision: revisionA, geocode_missing: true },
   ));
-  expect(await screen.findByText("12.6 km · 48 分钟")).toBeInTheDocument();
+  expect(await screen.findByText("12.6 km → 9.8 km")).toBeInTheDocument();
   expect(screen.getByText("9.8 km · 37 分钟")).toBeInTheDocument();
-  expect(screen.getByText("已使用本地快速推荐；最终距离、时间和路线由高德电动车路线逐段计算")).toBeInTheDocument();
+  expect(screen.getByText("家 → P4 第三位虚构客户 → P4 第二位虚构客户 → P4 第一位虚构客户 → 家")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "推荐" }));
   expect(screen.getByRole("button", { name: "地图任务 1：P4 第三位虚构客户" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "一键采用推荐" }));
+  fireEvent.click(screen.getByRole("button", { name: "采用优化顺序" }));
 
   await waitFor(() => expect(apiMocks.saveDaySchedule).toHaveBeenCalledWith(
     "2034-10-01",
@@ -335,22 +340,26 @@ it("previews real route metrics and adopts the revision-protected recommendation
       ],
     },
   ));
-  expect(await screen.findByText("P4 第三位虚构客户")).toBeInTheDocument();
+  expect((await screen.findAllByText("P4 第三位虚构客户")).length).toBeGreaterThan(0);
 });
 
-it("labels the deterministic fallback when GPT is unavailable", async () => {
+it("keeps the optimized order and omits road metrics when AMap degrades", async () => {
   apiMocks.previewPlanRoute.mockResolvedValue({
     ...previewWorkspace,
-    recommendation_source: "local",
-    recommendation_message: "GPT 不可用，已使用本地推荐：GPT 路线建议超时",
+    road_route: {
+      status: "degraded",
+      path: null,
+      message: "顺序已完成本地规划；真实电动车道路暂不可用：高德服务端繁忙",
+    },
   });
   renderPage();
-  fireEvent.click(await screen.findByRole("button", { name: "生成路线" }));
+  fireEvent.click(await screen.findByRole("button", { name: "规划当天路线" }));
 
   expect(
-    await screen.findByText("GPT 不可用，已使用本地推荐：GPT 路线建议超时"),
+    await screen.findByText(/真实电动车道路暂不可用：高德服务端繁忙/),
   ).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "一键采用推荐" })).toBeInTheDocument();
+  expect(screen.queryByText("9.8 km · 37 分钟")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "采用优化顺序" })).toBeInTheDocument();
 });
 
 it("keeps manual scheduling available when the map provider is not configured", async () => {
@@ -375,7 +384,7 @@ it("keeps manual scheduling available when the map provider is not configured", 
   renderPage();
 
   expect(await screen.findByText(/请参考 .env.example/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "生成路线" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "规划当天路线" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "保存排程" })).toBeInTheDocument();
   expect(apiMocks.previewPlanRoute).not.toHaveBeenCalled();
 });

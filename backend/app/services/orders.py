@@ -281,9 +281,6 @@ def apply_service_contact(order: Order, contact: OrderServiceContact) -> None:
     order.contact_key_code = contact.key_code
     order.contact_notes = contact.notes
     order.contact_is_repeat_customer = contact.is_repeat_customer
-    order.route_latitude = contact.latitude
-    order.route_longitude = contact.longitude
-    order.route_geocode_status = contact.geocode_status
 
 
 def order_service_contact(order: Order) -> OrderServiceContact:
@@ -370,11 +367,9 @@ _CITY_PATTERN = re.compile(r"(?:^|省|\s)([^省区县乡镇街道路\s]{2,8}市)
 _DISTRICT_PATTERN = re.compile(r"(?:^|省|市|\s)([^省市\s]{1,8}(?:区|县))")
 
 
-def default_geocode_service_area(value: str | None) -> str | None:
-    """Fill the local service area without overwriting an explicit region."""
-
+def geocode_address_region(value: str | None) -> tuple[str | None, str | None]:
     if not value:
-        return None
+        return None, None
     city_match = _CITY_PATTERN.search(value)
     district = next(
         (
@@ -384,7 +379,15 @@ def default_geocode_service_area(value: str | None) -> str | None:
         ),
         None,
     )
-    city = city_match.group(1) if city_match else None
+    return city_match.group(1) if city_match else None, district
+
+
+def default_geocode_service_area(value: str | None) -> str | None:
+    """Fill the local service area without overwriting an explicit region."""
+
+    if not value:
+        return None
+    city, district = geocode_address_region(value)
     if city and district:
         return value
     if city:

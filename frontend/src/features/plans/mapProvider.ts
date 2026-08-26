@@ -48,7 +48,12 @@ interface AMapOverlay {
 
 interface AMapMap {
   add: (overlays: AMapOverlay[]) => void;
-  setFitView: (overlays?: AMapOverlay[]) => void;
+  setFitView: (
+    overlays?: AMapOverlay[],
+    immediately?: boolean,
+    avoid?: [number, number, number, number],
+    maxZoom?: number,
+  ) => void;
   destroy: () => void;
 }
 
@@ -100,16 +105,25 @@ function position(point: PlanGeoPoint): [number, number] {
 
 function markerContent(
   label: string,
+  name: string | null = null,
   selected = false,
   offset: MarkerDisplayOffset = { x: 0, y: 0 },
 ): HTMLDivElement {
   const content = document.createElement("div");
   content.className = [
-    "flex size-8 items-center justify-center rounded-full border-2 border-white",
-    "text-xs font-bold text-white shadow-md",
+    "flex items-center gap-1 rounded-full border-2 border-white px-2 py-1",
+    "max-w-36 text-xs font-bold whitespace-nowrap text-white shadow-md",
     selected ? "bg-amber-600 ring-2 ring-amber-300" : "bg-slate-900",
   ].join(" ");
-  content.textContent = label;
+  const sequence = document.createElement("span");
+  sequence.textContent = label;
+  content.append(sequence);
+  if (name) {
+    const customerName = document.createElement("span");
+    customerName.className = "max-w-24 truncate";
+    customerName.textContent = name;
+    content.append(customerName);
+  }
   content.style.transform = `translate(${offset.x}px, ${offset.y}px)`;
   return content;
 }
@@ -136,7 +150,7 @@ export class AmapMapProvider implements MapProvider {
           position: position(model.start.position),
           title: model.start.label,
           anchor: "center",
-          content: markerContent("起"),
+          content: markerContent("家", "起终点"),
         }),
       );
     }
@@ -147,6 +161,7 @@ export class AmapMapProvider implements MapProvider {
         anchor: "center",
         content: markerContent(
           String(item.sequence),
+          item.customer_name,
           item.task_id === model.selectedTaskId,
           markerDisplayOffset(model.markers, index),
         ),
@@ -169,7 +184,7 @@ export class AmapMapProvider implements MapProvider {
 
     if (overlays.length) {
       map.add(overlays);
-      map.setFitView(overlays);
+      map.setFitView(overlays, false, [60, 60, 60, 60], 15);
     }
     return () => map.destroy();
   }

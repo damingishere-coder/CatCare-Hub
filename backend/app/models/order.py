@@ -80,6 +80,9 @@ class Order(TimestampMixin, Base):
     route_latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     route_longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     route_geocode_status: Mapped[str | None] = mapped_column(String(32), index=True)
+    route_geocode_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    route_geocode_adcode: Mapped[str | None] = mapped_column(String(20))
+    route_geocode_level: Mapped[str | None] = mapped_column(String(32))
     cat_snapshot: Mapped[list[dict[str, object]]] = mapped_column(
         JSON, nullable=False, default=list
     )

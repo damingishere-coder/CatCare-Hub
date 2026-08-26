@@ -176,6 +176,55 @@ def test_p19_payment_void_migration_upgrades_and_downgrades_0009(tmp_path) -> No
         engine.dispose()
 
 
+def test_p21_route_geocode_provenance_upgrades_and_downgrades_0010(tmp_path) -> None:
+    database_path = tmp_path / "p21-from-0010.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = alembic_config(database_url)
+    command.upgrade(config, "0010_payment_void_audit")
+    engine = build_engine(database_url)
+    customer_columns = {
+        "geocode_fingerprint",
+        "geocode_adcode",
+        "geocode_level",
+    }
+    order_columns = {
+        "route_geocode_fingerprint",
+        "route_geocode_adcode",
+        "route_geocode_level",
+    }
+    try:
+        assert customer_columns.isdisjoint(
+            column["name"] for column in inspect(engine).get_columns("customers")
+        )
+        assert order_columns.isdisjoint(
+            column["name"] for column in inspect(engine).get_columns("orders")
+        )
+
+        command.upgrade(config, "0011_route_geocode_provenance")
+        assert customer_columns <= {
+            column["name"] for column in inspect(engine).get_columns("customers")
+        }
+        assert order_columns <= {
+            column["name"] for column in inspect(engine).get_columns("orders")
+        }
+        with engine.connect() as connection:
+            assert connection.execute(text("PRAGMA integrity_check")).scalar_one() == "ok"
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+
+        command.downgrade(config, "0010_payment_void_audit")
+        assert customer_columns.isdisjoint(
+            column["name"] for column in inspect(engine).get_columns("customers")
+        )
+        assert order_columns.isdisjoint(
+            column["name"] for column in inspect(engine).get_columns("orders")
+        )
+        with engine.connect() as connection:
+            assert connection.execute(text("PRAGMA integrity_check")).scalar_one() == "ok"
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+    finally:
+        engine.dispose()
+
+
 def test_p16_migration_upgrades_explicit_0007_database_and_preserves_history(
     tmp_path,
 ) -> None:

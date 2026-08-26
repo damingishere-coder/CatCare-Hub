@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.maps import MapProviderError, MapServices
+from app.maps import MapProviderError, MapServices, RouteStop
 from app.maps.factory import get_map_services
 from app.db.session import get_db
 from app.schemas.settings import (
@@ -70,12 +70,31 @@ def test_integration(
             state = services.map_provider.provider_state()
             if not state.configured:
                 raise MapProviderError(state.message or "高德后端尚未配置")
-            if services.geocode_provider.geocode("杭州市民中心") is None:
+            geocoded = services.geocode_provider.geocode("深圳市龙岗区龙岗区政府")
+            home = services.map_provider.home_point()
+            if geocoded is None or home is None:
                 raise MapProviderError("高德未返回公开测试地点的坐标")
+            services.route_provider.plan_route(
+                home,
+                [
+                    RouteStop(
+                        task_id=0,
+                        label="公开测试地点",
+                        position=geocoded.point,
+                        original_index=0,
+                    ),
+                    RouteStop(
+                        task_id=0,
+                        label="家",
+                        position=home,
+                        original_index=1,
+                    ),
+                ],
+            )
             return IntegrationTestResult(
                 target="amap",
                 connected=True,
-                message="高德 Web 服务连接测试通过",
+                message="高德地理编码与电动车闭环路线测试通过",
             )
         recommender.test_connection()
         return IntegrationTestResult(

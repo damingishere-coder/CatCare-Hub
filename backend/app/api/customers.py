@@ -191,6 +191,9 @@ def update_customer(
     if address_changed:
         customer.latitude = None
         customer.longitude = None
+        customer.geocode_fingerprint = None
+        customer.geocode_adcode = None
+        customer.geocode_level = None
         customer.geocode_status = (
             "pending"
             if any(

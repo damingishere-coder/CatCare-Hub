@@ -558,6 +558,7 @@ def update_order(
     order_id: int,
     payload: OrderWrite,
     session: DatabaseSession,
+    services: MapServicesDependency,
 ) -> OrderDetail:
     order = _load_order(session, order_id)
     existing_cat_ids = {link.cat_id for link in order.cat_links}
@@ -648,6 +649,7 @@ def update_order(
         order.order_status = payload.order_status
 
     session.commit()
+    geocode_order(session, order.id, services)
     return _order_detail(_load_order(session, order.id))
 
 

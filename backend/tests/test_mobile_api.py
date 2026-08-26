@@ -7,7 +7,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.maps import GeoPoint, MapServices, ProviderState, RouteResult, RouteStop
+from app.maps import (
+    GeoPoint,
+    GeocodeResult,
+    MapServices,
+    ProviderState,
+    RouteResult,
+    RouteStop,
+)
 from app.maps.factory import UnavailableMapProvider, get_map_services
 from app.models import OrderStatus, Task, TaskStatus
 from app.api import mobile as mobile_api
@@ -30,10 +37,16 @@ class MobileMapProvider:
     def home_point(self) -> GeoPoint:
         return GeoPoint(latitude=30.0, longitude=120.0)
 
-    def geocode(self, address: str) -> GeoPoint | None:
+    def geocode(self, address: str) -> GeocodeResult | None:
         del address
         self.geocode_calls += 1
-        return None
+        return GeocodeResult(
+            GeoPoint(30.1234567, 120.7654321),
+            "深圳市",
+            "龙岗区",
+            "440307",
+            "门牌号",
+        )
 
     def plan_route(self, origin: GeoPoint, stops: list[RouteStop]) -> RouteResult:
         del origin, stops
@@ -139,14 +152,16 @@ def test_mobile_today_is_ordered_privacy_minimized_and_uses_cached_navigation(
         "https://uri.amap.com/navigation?"
     )
     assert "key=" not in payload["tasks"][0]["navigation_url"]
-    assert payload["tasks"][1]["navigation_state"] == "missing_coordinates"
-    assert payload["tasks"][1]["navigation_url"] is None
+    assert payload["tasks"][1]["navigation_state"] == "ready"
+    assert payload["tasks"][1]["navigation_url"].startswith(
+        "https://uri.amap.com/navigation?"
+    )
     assert all(
         task["address"] == "P6 虚构小区 P6 虚构路 6 号 6 栋 6 单元 606"
         for task in payload["tasks"]
     )
     assert mobile_map_provider.geocode_calls == 0
-    assert mobile_map_provider.navigation_calls == 1
+    assert mobile_map_provider.navigation_calls == 2
 
     serialized = response.text
     for forbidden in (

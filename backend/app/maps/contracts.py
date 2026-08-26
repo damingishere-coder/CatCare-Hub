@@ -23,6 +23,15 @@ class GeoPoint:
 
 
 @dataclass(frozen=True)
+class GeocodeResult:
+    point: GeoPoint
+    city: str | None = None
+    district: str | None = None
+    adcode: str | None = None
+    level: str | None = None
+
+
+@dataclass(frozen=True)
 class ProviderState:
     name: str
     configured: bool
@@ -61,7 +70,7 @@ class MapProvider(Protocol):
 
 
 class GeocodeProvider(Protocol):
-    def geocode(self, address: str) -> GeoPoint | None: ...
+    def geocode(self, address: str) -> GeocodeResult | None: ...
 
 
 class RouteProvider(Protocol):

@@ -1,5 +1,4 @@
 from datetime import date
-from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -10,13 +9,15 @@ from app.models.task import Task
 from app.schemas.plan import (
     PlanGeoPoint,
     PlanMapProviderRead,
-    PlanRecommendationProviderRead,
+    PlanRoadRoute,
     PlanRouteIssue,
     PlanRouteMarker,
+    PlanRouteOptimization,
     PlanRoutePath,
     PlanRouteStart,
     PlanRouteWorkspace,
 )
+from app.services.order_locations import geocode_order, trusted_order_point
 from app.services.orders import (
     order_display_address,
     order_geocode_address,
@@ -28,14 +29,7 @@ from app.services.plans import (
     require_current_revision,
     schedule_is_locked,
 )
-from app.services.route_recommendation import (
-    OpenAIRouteRecommender,
-    RouteRecommendationError,
-    get_route_recommender,
-)
-
-
-VALID_CACHED_GEOCODE_STATUSES = {None, "manual", "resolved"}
+from app.services.route_optimizer import RouteCandidate, optimize_closed_route
 
 
 def _operational_state(tasks: list[Task]) -> tuple:
@@ -76,15 +70,6 @@ def _require_route_state_unchanged(
         )
 
 
-def _geo_point(latitude: object, longitude: object) -> GeoPoint | None:
-    if latitude is None or longitude is None:
-        return None
-    try:
-        return GeoPoint(latitude=float(latitude), longitude=float(longitude))
-    except (TypeError, ValueError):
-        return None
-
-
 def _point_read(point: GeoPoint) -> PlanGeoPoint:
     return PlanGeoPoint(latitude=point.latitude, longitude=point.longitude)
 
@@ -103,42 +88,36 @@ def _transport_mode(services: MapServices) -> str:
     return services.map_provider.provider_state().transport_mode
 
 
-def _recommendation_provider_read(
-    recommender: OpenAIRouteRecommender,
-) -> PlanRecommendationProviderRead:
-    state = recommender.provider_state()
-    return PlanRecommendationProviderRead(
-        name=state.name,
-        configured=state.configured,
-        message=state.message,
-    )
-
-
-def _geocode_address(task: Task) -> str | None:
-    return order_geocode_address(task.order)
-
-
-def _cached_task_point(task: Task) -> GeoPoint | None:
-    task_point = _geo_point(task.planned_lat, task.planned_lng)
-    if task_point is not None:
-        return task_point
+def _task_route_point(task: Task, services: MapServices) -> GeoPoint | None:
     if task_has_execution_history(task):
-        return None
-    if task.order.route_geocode_status not in VALID_CACHED_GEOCODE_STATUSES:
-        return None
-    return _geo_point(
-        task.order.route_latitude,
-        task.order.route_longitude,
-    )
+        if task.planned_lat is None or task.planned_lng is None:
+            return None
+        try:
+            return GeoPoint(
+                latitude=float(task.planned_lat),
+                longitude=float(task.planned_lng),
+            )
+        except (TypeError, ValueError):
+            return None
+    return trusted_order_point(task.order, services)
 
 
-def _issue_for_task(task: Task) -> PlanRouteIssue:
-    if task_has_execution_history(task):
-        reason = "execution_location_missing"
-    elif not _geocode_address(task):
+def _issue_for_task(task: Task, services: MapServices) -> PlanRouteIssue:
+    address = order_geocode_address(task.order)
+    if not address:
         reason = "missing_address"
+    elif task_has_execution_history(task):
+        reason = "execution_location_missing"
+    elif task.order.route_geocode_status == "geocode_mismatch":
+        reason = "geocode_mismatch"
     elif task.order.route_geocode_status == "failed":
         reason = "geocode_failed"
+    elif (
+        task.order.route_latitude is not None
+        and task.order.route_longitude is not None
+        and trusted_order_point(task.order, services) is None
+    ):
+        reason = "stale_geocode"
     else:
         reason = "not_geocoded"
     return PlanRouteIssue(
@@ -156,7 +135,6 @@ def _marker(
     point: GeoPoint,
     services: MapServices,
 ) -> PlanRouteMarker:
-    navigation_url: str | None
     try:
         navigation_url = services.navigation_provider.navigation_url(
             services.map_provider.home_point(),
@@ -185,23 +163,27 @@ def _path_read(result: RouteResult, task_ids: list[int]) -> PlanRoutePath:
     )
 
 
-def _empty_workspace(
+def _workspace(
     service_date: date,
     tasks: list[Task],
     services: MapServices,
-    recommender: OpenAIRouteRecommender,
+    *,
+    ordered_active_ids: list[int] | None = None,
 ) -> PlanRouteWorkspace:
     home = services.map_provider.home_point()
+    active_tasks = [task for task in tasks if task.status != TaskStatus.CANCELLED]
+    tasks_by_id = {task.id: task for task in active_tasks}
+    ordered_tasks = (
+        [tasks_by_id[task_id] for task_id in ordered_active_ids]
+        if ordered_active_ids is not None
+        else active_tasks
+    )
     markers: list[PlanRouteMarker] = []
     unresolved: list[PlanRouteIssue] = []
-    sequence = 0
-    for task in tasks:
-        if task.status == TaskStatus.CANCELLED:
-            continue
-        sequence += 1
-        point = _cached_task_point(task)
+    for sequence, task in enumerate(ordered_tasks, start=1):
+        point = _task_route_point(task, services)
         if point is None:
-            unresolved.append(_issue_for_task(task))
+            unresolved.append(_issue_for_task(task, services))
         else:
             markers.append(_marker(task, sequence, point, services))
     return PlanRouteWorkspace(
@@ -210,7 +192,7 @@ def _empty_workspace(
         schedule_locked=schedule_is_locked(tasks),
         transport_mode=_transport_mode(services),
         provider=_provider_read(services),
-        recommendation_provider=_recommendation_provider_read(recommender),
+        route_mode="round_trip",
         start=(
             PlanRouteStart(label="家", position=_point_read(home))
             if home is not None
@@ -218,11 +200,12 @@ def _empty_workspace(
         ),
         markers=markers,
         unresolved_tasks=unresolved,
-        current_route=None,
-        recommended_route=None,
-        recommended_task_ids=[],
-        recommendation_source="none",
-        recommendation_message=None,
+        optimization=None,
+        road_route=PlanRoadRoute(
+            status="not_generated",
+            path=None,
+            message=None,
+        ),
         can_adopt_recommendation=False,
     )
 
@@ -232,17 +215,11 @@ def load_route_workspace(
     *,
     service_date: date,
     services: MapServices,
-    recommender: OpenAIRouteRecommender | None = None,
 ) -> PlanRouteWorkspace:
     tasks = load_day_tasks(session, service_date)
     if not tasks:
         raise HTTPException(status_code=404, detail="当天没有可规划任务")
-    return _empty_workspace(
-        service_date,
-        tasks,
-        services,
-        recommender or get_route_recommender(),
-    )
+    return _workspace(service_date, tasks, services)
 
 
 def _resolve_task_points(
@@ -252,95 +229,50 @@ def _resolve_task_points(
     *,
     geocode_missing: bool,
 ) -> None:
-    resolved_orders: dict[int, GeoPoint | None] = {}
-    changed = False
+    if not geocode_missing:
+        return
+    tasks_by_order: dict[int, list[Task]] = {}
     for task in tasks:
-        if task.status == TaskStatus.CANCELLED or task_has_execution_history(task):
+        if task.status != TaskStatus.CANCELLED:
+            tasks_by_order.setdefault(task.order_id, []).append(task)
+    for order_id, order_tasks in tasks_by_order.items():
+        order = order_tasks[0].order
+        if trusted_order_point(order, services) is not None:
             continue
-
-        order = task.order
-        if order.id in resolved_orders:
-            point = resolved_orders[order.id]
-        else:
-            point = None
-            if order.route_geocode_status in VALID_CACHED_GEOCODE_STATUSES:
-                point = _geo_point(order.route_latitude, order.route_longitude)
-            if point is not None and order.route_geocode_status is None:
-                order.route_geocode_status = "manual"
-                changed = True
-            if point is None and geocode_missing:
-                address = _geocode_address(task)
-                if address is None:
-                    previous_state = (
-                        order.route_latitude,
-                        order.route_longitude,
-                        order.route_geocode_status,
-                    )
-                    order.route_latitude = None
-                    order.route_longitude = None
-                    order.route_geocode_status = "missing"
-                    changed = changed or previous_state != (None, None, "missing")
-                else:
-                    point = services.geocode_provider.geocode(address)
-                    previous_state = (
-                        order.route_latitude,
-                        order.route_longitude,
-                        order.route_geocode_status,
-                    )
-                    if point is None:
-                        order.route_latitude = None
-                        order.route_longitude = None
-                        order.route_geocode_status = "failed"
-                    else:
-                        order.route_latitude = Decimal(str(point.latitude))
-                        order.route_longitude = Decimal(str(point.longitude))
-                        order.route_geocode_status = "resolved"
-                    changed = changed or previous_state != (
-                        order.route_latitude,
-                        order.route_longitude,
-                        order.route_geocode_status,
-                    )
-            resolved_orders[order.id] = point
-
-        if point is not None:
-            latitude = Decimal(str(point.latitude))
-            longitude = Decimal(str(point.longitude))
-            if task.planned_lat != latitude or task.planned_lng != longitude:
-                task.planned_lat = latitude
-                task.planned_lng = longitude
-                changed = True
-
-    if changed:
-        session.commit()
-        session.expire_all()
+        if all(task_has_execution_history(task) for task in order.tasks):
+            continue
+        geocode_order(
+            session,
+            order_id,
+            services,
+            raise_provider_errors=True,
+        )
+    session.expire_all()
 
 
-def _route_stops(tasks: list[Task]) -> list[RouteStop]:
-    stops: list[RouteStop] = []
-    for index, task in enumerate(tasks):
+def _route_candidates(tasks: list[Task], services: MapServices) -> list[RouteCandidate]:
+    candidates: list[RouteCandidate] = []
+    for original_index, task in enumerate(tasks):
         if task.status == TaskStatus.CANCELLED:
             continue
-        point = _cached_task_point(task)
+        point = _task_route_point(task, services)
         if point is None:
             continue
-        stops.append(
-            RouteStop(
+        candidates.append(
+            RouteCandidate(
                 task_id=task.id,
-                label=order_geocode_address(task.order) or f"任务 #{task.id}",
                 position=point,
-                original_index=index,
+                original_index=original_index,
+                planned_time=task.planned_time,
             )
         )
-    return stops
+    return candidates
 
 
-def _merge_recommendation(
-    tasks: list[Task],
-    recommended: list[RouteStop],
-) -> list[int]:
-    recommended_ids = iter(stop.task_id for stop in recommended)
+def _merged_schedule_task_ids(tasks: list[Task], optimized_ids: list[int]) -> list[int]:
+    active_ids = iter(optimized_ids)
     return [
-        task.id if task.status == TaskStatus.CANCELLED else next(recommended_ids)
+        task.id if task.status == TaskStatus.CANCELLED else next(active_ids)
         for task in tasks
     ]
 
@@ -352,14 +284,12 @@ def preview_day_route(
     expected_revision: str,
     geocode_missing: bool,
     services: MapServices,
-    recommender: OpenAIRouteRecommender | None = None,
 ) -> PlanRouteWorkspace:
     tasks = load_day_tasks(session, service_date)
     if not tasks:
         raise HTTPException(status_code=404, detail="当天没有可规划任务")
     require_current_revision(tasks, expected_revision)
     initial_operational_state = _operational_state(tasks)
-    route_recommender = recommender or get_route_recommender()
 
     state = services.map_provider.provider_state()
     home = services.map_provider.home_point()
@@ -373,96 +303,88 @@ def preview_day_route(
             services,
             geocode_missing=geocode_missing,
         )
-        tasks = load_day_tasks(session, service_date)
-        if _operational_state(tasks) != initial_operational_state:
-            raise HTTPException(
-                status_code=409,
-                detail="路线生成期间当日计划已经变化，请刷新后重试",
-            )
-        workspace = _empty_workspace(
-            service_date,
-            tasks,
-            services,
-            route_recommender,
-        )
-        route_revision = workspace.revision
-        stops = _route_stops(tasks)
-        if not stops:
-            _require_route_state_unchanged(
-                session,
-                service_date,
-                initial_operational_state,
-                route_revision,
-            )
-            return workspace
-
-        current_result = services.route_provider.plan_route(home, stops)
-        workspace.current_route = _path_read(
-            current_result,
-            [stop.task_id for stop in stops],
+    except MapProviderError as cause:
+        raise HTTPException(status_code=502, detail=str(cause)) from cause
+    tasks = load_day_tasks(session, service_date)
+    if _operational_state(tasks) != initial_operational_state:
+        raise HTTPException(
+            status_code=409,
+            detail="路线生成期间当日计划已经变化，请刷新后重试",
         )
 
-        if workspace.unresolved_tasks:
-            _require_route_state_unchanged(
-                session,
-                service_date,
-                initial_operational_state,
-                route_revision,
-            )
-            return workspace
-
-        if workspace.transport_mode == "electrobike":
-            recommended = services.route_provider.recommend_order(home, stops)
-            workspace.recommendation_source = "local"
-            workspace.recommendation_message = (
-                "已使用本地快速推荐；最终距离、时间和路线由高德电动车路线逐段计算"
-            )
-        else:
-            try:
-                matrix = services.route_provider.distance_matrix(home, stops)
-                recommended = route_recommender.recommend(
-                    tasks=tasks,
-                    stops=stops,
-                    matrix=matrix,
-                )
-                workspace.recommendation_source = "openai"
-                workspace.recommendation_message = "GPT-5.6 Sol 已根据高德路线矩阵生成建议"
-            except (MapProviderError, RouteRecommendationError, AttributeError) as cause:
-                recommended = services.route_provider.recommend_order(home, stops)
-                workspace.recommendation_source = "local"
-                fallback_reason = (
-                    str(cause)
-                    if not isinstance(cause, AttributeError)
-                    else "地图 Provider 不支持距离矩阵"
-                )
-                workspace.recommendation_message = (
-                    f"GPT 不可用，已使用本地推荐：{fallback_reason}"
-                )
-        current_ids = [stop.task_id for stop in stops]
-        recommended_ids = [stop.task_id for stop in recommended]
-        if (
-            len(recommended_ids) != len(current_ids)
-            or set(recommended_ids) != set(current_ids)
-        ):
-            raise MapProviderError("地图 Provider 返回了无效推荐顺序")
-        recommended_result = (
-            current_result
-            if recommended_ids == current_ids
-            else services.route_provider.plan_route(home, recommended)
-        )
-        workspace.recommended_route = _path_read(recommended_result, recommended_ids)
-        workspace.recommended_task_ids = _merge_recommendation(tasks, recommended)
-        workspace.can_adopt_recommendation = (
-            not workspace.schedule_locked
-            and workspace.recommended_task_ids != [task.id for task in tasks]
-        )
+    base_workspace = _workspace(service_date, tasks, services)
+    route_revision = base_workspace.revision
+    if base_workspace.unresolved_tasks:
         _require_route_state_unchanged(
             session,
             service_date,
             initial_operational_state,
             route_revision,
         )
-        return workspace
+        return base_workspace
+
+    candidates = _route_candidates(tasks, services)
+    optimization = optimize_closed_route(home, candidates)
+    optimized_active_ids = [candidate.task_id for candidate in optimization.optimized]
+    optimized_schedule_ids = _merged_schedule_task_ids(tasks, optimized_active_ids)
+    workspace = _workspace(
+        service_date,
+        tasks,
+        services,
+        ordered_active_ids=optimized_active_ids,
+    )
+    workspace.optimization = PlanRouteOptimization(
+        method=optimization.method,
+        planned_time_policy="precedence",
+        baseline_task_ids=[task.id for task in tasks],
+        optimized_task_ids=optimized_schedule_ids,
+        baseline_estimated_distance_meters=optimization.baseline_distance_meters,
+        optimized_estimated_distance_meters=optimization.optimized_distance_meters,
+        estimated_savings_percent=optimization.estimated_savings_percent,
+    )
+    workspace.can_adopt_recommendation = (
+        not workspace.schedule_locked
+        and optimized_schedule_ids != [task.id for task in tasks]
+    )
+
+    tasks_by_id = {task.id: task for task in tasks}
+    route_stops = [
+        RouteStop(
+            task_id=candidate.task_id,
+            label=order_geocode_address(tasks_by_id[candidate.task_id].order)
+            or f"任务 #{candidate.task_id}",
+            position=candidate.position,
+            original_index=index,
+        )
+        for index, candidate in enumerate(optimization.optimized)
+    ]
+    route_stops.append(
+        RouteStop(
+            task_id=0,
+            label="家",
+            position=home,
+            original_index=len(route_stops),
+        )
+    )
+    try:
+        road_result = services.route_provider.plan_route(home, route_stops)
     except MapProviderError as cause:
-        session.rollback()
-        raise HTTPException(status_code=502, detail=str(cause)) from cause
+        workspace.road_route = PlanRoadRoute(
+            status="degraded",
+            path=None,
+            message=f"顺序已完成本地规划；真实电动车道路暂不可用：{cause}",
+        )
+    else:
+        workspace.road_route = PlanRoadRoute(
+            status="ready",
+            path=_path_read(road_result, optimized_active_ids),
+            message="高德已计算优化顺序的真实电动车闭环路线",
+        )
+
+    _require_route_state_unchanged(
+        session,
+        service_date,
+        initial_operational_state,
+        route_revision,
+    )
+    return workspace

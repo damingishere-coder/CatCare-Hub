@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.seed import seed_database
 from app.db.session import build_engine, get_db
 from app.main import app
-from app.maps import GeoPoint, MapServices
+from app.maps import GeoPoint, GeocodeResult, MapServices
 from app.maps.factory import UnavailableMapProvider, get_map_services
 from app.models import Cat, Customer, Order, Payment, SystemFlag, Task
 from app.services.demo_data import DEMO_CLEARED_FLAG
@@ -17,10 +17,10 @@ from app.services.demo_data import DEMO_CLEARED_FLAG
 
 @dataclass
 class SequenceGeocoder:
-    results: list[GeoPoint | None]
+    results: list[GeocodeResult | None]
     calls: list[str] = field(default_factory=list)
 
-    def geocode(self, address: str) -> GeoPoint | None:
+    def geocode(self, address: str) -> GeocodeResult | None:
         self.calls.append(address)
         return self.results[min(len(self.calls) - 1, len(self.results) - 1)]
 
@@ -39,9 +39,9 @@ def p18_context(migrated_database_url: str) -> Generator[P18Context, None, None]
     testing_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     geocoder = SequenceGeocoder(
         [
-            GeoPoint(latitude=30.1234567, longitude=120.1234567),
-            GeoPoint(latitude=30.2234567, longitude=120.2234567),
-            GeoPoint(latitude=30.3234567, longitude=120.3234567),
+            GeocodeResult(GeoPoint(30.1234567, 120.1234567), "深圳市", "龙岗区", "440307", "门牌号"),
+            GeocodeResult(GeoPoint(30.2234567, 120.2234567), "深圳市", "龙岗区", "440307", "门牌号"),
+            GeocodeResult(GeoPoint(30.3234567, 120.3234567), "深圳市", "龙岗区", "440307", "门牌号"),
         ]
     )
     unavailable = UnavailableMapProvider("test", "路线不在本测试范围")
@@ -301,7 +301,10 @@ def test_daily_adjustment_partial_payments_and_financial_lock(
 def test_failed_auto_geocode_does_not_rollback_and_retry_resolves(
     p18_context: P18Context,
 ) -> None:
-    p18_context.geocoder.results[:] = [None, GeoPoint(30.5, 120.5)]
+    p18_context.geocoder.results[:] = [
+        None,
+        GeocodeResult(GeoPoint(30.5, 120.5), "深圳市", "龙岗区", "440307", "门牌号"),
+    ]
     created = p18_context.client.post(
         "/api/admin/orders",
         json=direct_order_payload(

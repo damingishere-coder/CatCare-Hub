@@ -74,6 +74,9 @@ def day_plan_revision(tasks: Sequence[Task]) -> str:
             "customer_map_state": {
                 "id": task.order.customer_id,
                 "geocode_status": task.order.route_geocode_status,
+                "geocode_fingerprint": task.order.route_geocode_fingerprint,
+                "geocode_adcode": task.order.route_geocode_adcode,
+                "geocode_level": task.order.route_geocode_level,
                 "latitude": (
                     str(task.order.route_latitude)
                     if task.order.route_latitude is not None

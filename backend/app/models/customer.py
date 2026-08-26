@@ -52,6 +52,9 @@ class Customer(TimestampMixin, Base):
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     geocode_status: Mapped[str | None] = mapped_column(String(32), index=True)
+    geocode_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    geocode_adcode: Mapped[str | None] = mapped_column(String(20))
+    geocode_level: Mapped[str | None] = mapped_column(String(32))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     cats: Mapped[list["Cat"]] = relationship(

@@ -1,11 +1,13 @@
 import os
 from pathlib import Path
+from functools import lru_cache
 
 from dotenv import load_dotenv
 
 from app.maps.amap import AmapProvider
 from app.maps.contracts import (
     GeoPoint,
+    GeocodeResult,
     MapProviderError,
     MapServices,
     MatrixEntry,
@@ -35,7 +37,7 @@ class UnavailableMapProvider:
     def home_point(self) -> GeoPoint | None:
         return None
 
-    def geocode(self, address: str) -> GeoPoint | None:
+    def geocode(self, address: str) -> GeocodeResult | None:
         del address
         raise MapProviderError(self._message)
 
@@ -90,6 +92,7 @@ def _timeout_seconds() -> float:
     return min(max(value, 1.0), 30.0)
 
 
+@lru_cache(maxsize=1)
 def get_map_services() -> MapServices:
     provider_name = os.getenv("CATCARE_MAP_PROVIDER", "disabled").strip().lower()
     if provider_name != "amap":

@@ -60,6 +60,7 @@ class PlanDaySummary(BaseModel):
     task_count: int
     order_count: int
     cat_count: int
+    customer_names: list[str]
 
 
 class PlanDaysResponse(BaseModel):
@@ -128,12 +129,6 @@ class PlanMapProviderRead(BaseModel):
     message: str | None
 
 
-class PlanRecommendationProviderRead(BaseModel):
-    name: str
-    configured: bool
-    message: str | None
-
-
 class PlanRouteStart(BaseModel):
     label: str
     position: PlanGeoPoint
@@ -158,6 +153,8 @@ class PlanRouteIssue(BaseModel):
         "missing_address",
         "not_geocoded",
         "geocode_failed",
+        "stale_geocode",
+        "geocode_mismatch",
         "execution_location_missing",
     ]
 
@@ -169,21 +166,34 @@ class PlanRoutePath(BaseModel):
     polyline: list[PlanGeoPoint]
 
 
+class PlanRouteOptimization(BaseModel):
+    method: Literal["exact", "two_opt", "none"]
+    planned_time_policy: Literal["precedence"] = "precedence"
+    baseline_task_ids: list[int]
+    optimized_task_ids: list[int]
+    baseline_estimated_distance_meters: int = Field(ge=0)
+    optimized_estimated_distance_meters: int = Field(ge=0)
+    estimated_savings_percent: float
+
+
+class PlanRoadRoute(BaseModel):
+    status: Literal["not_generated", "ready", "degraded"]
+    path: PlanRoutePath | None
+    message: str | None
+
+
 class PlanRouteWorkspace(BaseModel):
     service_date: date
     revision: str
     schedule_locked: bool
     transport_mode: Literal["electrobike", "unknown"]
     provider: PlanMapProviderRead
-    recommendation_provider: PlanRecommendationProviderRead
+    route_mode: Literal["round_trip"] = "round_trip"
     start: PlanRouteStart | None
     markers: list[PlanRouteMarker]
     unresolved_tasks: list[PlanRouteIssue]
-    current_route: PlanRoutePath | None
-    recommended_route: PlanRoutePath | None
-    recommended_task_ids: list[int]
-    recommendation_source: Literal["none", "openai", "local"]
-    recommendation_message: str | None
+    optimization: PlanRouteOptimization | None
+    road_route: PlanRoadRoute
     can_adopt_recommendation: bool
 
 

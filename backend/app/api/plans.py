@@ -37,19 +37,11 @@ from app.services.plans import (
     schedule_is_locked,
     update_task_planning_status,
 )
-from app.services.route_recommendation import (
-    OpenAIRouteRecommender,
-    get_route_recommender,
-)
 
 
 router = APIRouter(prefix="/api/admin/plans", tags=["admin-plans"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 MapServicesDependency = Annotated[MapServices, Depends(get_map_services)]
-RouteRecommenderDependency = Annotated[
-    OpenAIRouteRecommender,
-    Depends(get_route_recommender),
-]
 
 
 def _cat_summaries(task: Task) -> list[PlanCatSummary]:
@@ -188,12 +180,24 @@ def list_plan_days(session: DatabaseSession) -> PlanDaysResponse:
         cat_counts_by_date[service_date] = (
             cat_counts_by_date.get(service_date, 0) + order_counts.get(order_id, 0)
         )
+    customer_names_by_date: dict[date, list[str]] = {}
+    name_rows = session.execute(
+        select(Task.service_date, Order.contact_name)
+        .join(Order, Order.id == Task.order_id)
+        .where(Task.status != TaskStatus.CANCELLED)
+        .order_by(Task.service_date, Task.sort_order, Task.id)
+    ).all()
+    for service_date, customer_name in name_rows:
+        names = customer_names_by_date.setdefault(service_date, [])
+        if customer_name not in names:
+            names.append(customer_name)
     items = [
         PlanDaySummary(
             service_date=service_date,
             task_count=int(task_count),
             order_count=int(order_count),
             cat_count=cat_counts_by_date.get(service_date, int(cat_count)),
+            customer_names=customer_names_by_date.get(service_date, []),
         )
         for service_date, task_count, order_count, cat_count in rows
     ]
@@ -211,13 +215,11 @@ def get_plan_route(
     service_date: date,
     session: DatabaseSession,
     services: MapServicesDependency,
-    recommender: RouteRecommenderDependency,
 ) -> PlanRouteWorkspace:
     return load_route_workspace(
         session,
         service_date=service_date,
         services=services,
-        recommender=recommender,
     )
 
 
@@ -227,7 +229,6 @@ def preview_plan_route(
     payload: PlanRoutePreviewRequest,
     session: DatabaseSession,
     services: MapServicesDependency,
-    recommender: RouteRecommenderDependency,
 ) -> PlanRouteWorkspace:
     return preview_day_route(
         session,
@@ -235,7 +236,6 @@ def preview_plan_route(
         expected_revision=payload.expected_revision,
         geocode_missing=payload.geocode_missing,
         services=services,
-        recommender=recommender,
     )
 
 
