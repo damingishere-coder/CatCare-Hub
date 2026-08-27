@@ -183,6 +183,49 @@ def fill_payload() -> dict[str, object]:
     }
 
 
+def public_fill_payload() -> dict[str, object]:
+    payload = fill_payload()
+    customer = payload["customer"]
+    cats = payload["cats"]
+    service = payload["service"]
+    assert isinstance(customer, dict)
+    assert isinstance(cats, list)
+    assert isinstance(service, dict)
+    return {
+        "customer": {
+            key: customer[key]
+            for key in (
+                "name",
+                "wechat_name",
+                "phone",
+                "address",
+                "access_method",
+                "key_status",
+                "notes",
+            )
+        },
+        "cats": [
+            {
+                key: cat[key]
+                for key in (
+                    "name",
+                    "food",
+                    "medication_required",
+                    "medication_notes",
+                )
+                if key in cat
+            }
+            for cat in cats
+            if isinstance(cat, dict)
+        ],
+        "service": {
+            key: service[key]
+            for key in ("start_date", "end_date", "visits_per_day")
+        },
+        "notes": payload["notes"],
+    }
+
+
 def test_p13_local_business_lifecycle(p13_context: P13Context) -> None:
     client = p13_context.client
     assert client.get("/api/admin/customers").status_code == 200
@@ -382,19 +425,30 @@ def test_p13_fill_token_lifecycle(p13_context: P13Context) -> None:
         "fill_path"
     ] is None
     assert client.get(f"/api/fill/{'x' * 43}").status_code == 404
-    draft_response = client.put(f"/api/fill/{raw_token}", json=fill_payload())
+    draft_response = client.put(
+        f"/api/fill/{raw_token}",
+        json={
+            "expected_revision": created["revision"],
+            "draft": public_fill_payload(),
+        },
+    )
     assert draft_response.status_code == 200
     assert len(draft_response.json()["draft"]["cats"]) == 2
+    submit_command = {
+        "expected_revision": draft_response.json()["revision"],
+        "idempotency_key": "p13-submit-idempotency-0001",
+        "payload": public_fill_payload(),
+    }
     submitted_response = client.post(
         f"/api/fill/{raw_token}/submit",
-        json=fill_payload(),
+        json=submit_command,
     )
     assert submitted_response.status_code == 200
     assert submitted_response.json()["status"] == "submitted"
     assert client.post(
         f"/api/fill/{raw_token}/submit",
-        json=fill_payload(),
-    ).status_code == 409
+        json=submit_command,
+    ).status_code == 200
 
     summaries = client.get("/api/admin/intake/submissions").json()["items"]
     summary = next(item for item in summaries if item["customer_name"].startswith("P13"))
@@ -416,7 +470,7 @@ def test_p13_fill_token_lifecycle(p13_context: P13Context) -> None:
     )
     assert converted_response.status_code == 200
     conversion = converted_response.json()
-    assert conversion["status"] == "converted"
+    assert conversion["status"] == "archived_order"
     repeated = client.post(
         f"/api/admin/intake/submissions/{summary['id']}/convert",
         json={"expected_revision": reviewed["revision"]},
@@ -455,7 +509,7 @@ def test_p13_fill_token_lifecycle(p13_context: P13Context) -> None:
     with p13_context.session_factory() as session:
         converted_submission = session.get(CustomerFormSubmission, summary["id"])
         assert converted_submission is not None
-        assert converted_submission.status is FormSubmissionStatus.CONVERTED
+        assert converted_submission.status is FormSubmissionStatus.ARCHIVED_ORDER
         converted_order = session.get(Order, conversion["order_id"])
         assert converted_order is not None
         assert converted_order.total_amount == 210

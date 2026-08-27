@@ -1,6 +1,17 @@
 export type FormTokenStatus = "active" | "disabled" | "expired";
-export type FormSubmissionStatus = "draft" | "submitted" | "reviewed" | "converted" | "expired";
-export type PublicIntakeState = "editable" | "submitted" | "reviewed" | "converted";
+export type FormSubmissionStatus =
+  | "draft"
+  | "submitted"
+  | "reviewed"
+  | "processing"
+  | "archived_customer"
+  | "archived_order"
+  | "voided"
+  | "redacted"
+  | "converted"
+  | "expired";
+export type PublicIntakeState = "editable" | "submitted" | "reviewed" | "archived" | "voided";
+export type IntakeDecisionMode = "customer" | "order" | "void";
 export type TaskItemType =
   | "feed"
   | "water"
@@ -57,10 +68,43 @@ export interface IntakeDraftPayload {
   notes: string | null;
 }
 
+export interface PublicIntakeCustomerDraft {
+  name: string | null;
+  wechat_name: string | null;
+  phone: string | null;
+  address: string | null;
+  access_method: string | null;
+  key_status: string | null;
+  notes: string | null;
+}
+
+export interface PublicIntakeCatDraft {
+  name: string | null;
+  food: string | null;
+  litter_type: string | null;
+  medication_required: boolean;
+  medication_notes: string | null;
+  special_notes: string | null;
+}
+
+export interface PublicIntakeServiceDraft {
+  start_date: string | null;
+  end_date: string | null;
+  visits_per_day: number | null;
+}
+
+export interface PublicIntakeDraftPayload {
+  customer: PublicIntakeCustomerDraft;
+  cats: PublicIntakeCatDraft[];
+  service: PublicIntakeServiceDraft;
+  notes: string | null;
+}
+
 export interface PublicIntakeRead {
   status: PublicIntakeState;
   expires_at: string;
-  draft: IntakeDraftPayload | null;
+  draft: PublicIntakeDraftPayload | null;
+  revision: string | null;
 }
 
 export interface IntakeTokenRead {
@@ -81,6 +125,7 @@ export interface IntakeTokenList {
 
 export interface IntakeSubmissionSummary {
   id: number;
+  submission_uuid: string;
   status: FormSubmissionStatus;
   customer_name: string | null;
   community: string | null;
@@ -97,20 +142,46 @@ export interface IntakeSubmissionList {
   total: number;
 }
 
+export interface IntakeAuditEvent {
+  id: number;
+  event_type: string;
+  actor: string;
+  revision_number: number | null;
+  decision_mode: IntakeDecisionMode | null;
+  details: Record<string, number | string | boolean | null>;
+  created_at: string;
+}
+
 export interface IntakeSubmissionDetail extends IntakeSubmissionSummary {
   payload: IntakeDraftPayload;
   review_payload: IntakeDraftPayload | null;
   review_unit_price: string | null;
   reviewed_at: string | null;
   converted_at: string | null;
+  voided_at: string | null;
+  purge_after: string | null;
+  redacted_at: string | null;
+  decision_mode: IntakeDecisionMode | null;
+  decision_idempotency_key: string | null;
   converted_customer_id: number | null;
   converted_order_id: number | null;
+  audit_events: IntakeAuditEvent[];
 }
 
 export interface IntakeConversionRead {
   submission_id: number;
-  status: "converted";
+  status: FormSubmissionStatus;
   customer_id: number;
-  order_id: number;
+  order_id: number | null;
+  revision: string;
+}
+
+export interface IntakeDecisionRead {
+  submission_id: number;
+  submission_uuid: string;
+  status: FormSubmissionStatus;
+  decision_mode: IntakeDecisionMode;
+  customer_id: number | null;
+  order_id: number | null;
   revision: string;
 }

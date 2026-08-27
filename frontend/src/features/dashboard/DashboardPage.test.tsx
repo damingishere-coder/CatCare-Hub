@@ -10,6 +10,9 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./api", () => apiMocks);
+vi.mock("../intake/AdminIntakePage", () => ({
+  IntakeWorkspace: () => <section aria-label="客户资料决策区">客户资料决策区</section>,
+}));
 
 const dashboard: DashboardResponse = {
   business_date: "2035-10-06",
@@ -101,7 +104,8 @@ it("shows real metrics, schedule, reminders, and working quick links", async () 
     "href",
     "/admin/customers?action=create",
   );
-  expect(screen.getByRole("link", { name: /客户填写入口/ })).toHaveAttribute("href", "/fill");
+  expect(screen.getByRole("link", { name: /客户填写入口/ })).toHaveAttribute("href", "/admin/intake#links");
+  expect(screen.getByLabelText("客户资料决策区")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "查看收款" })).toHaveAttribute(
     "href",
     "/admin/payments?action=create&order_id=8",

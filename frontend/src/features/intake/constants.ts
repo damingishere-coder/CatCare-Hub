@@ -1,4 +1,11 @@
-import type { IntakeCatDraft, IntakeCustomerDraft, IntakeDraftPayload, TaskItemType } from "./types";
+import type {
+  IntakeCatDraft,
+  IntakeCustomerDraft,
+  IntakeDraftPayload,
+  PublicIntakeCatDraft,
+  PublicIntakeDraftPayload,
+  TaskItemType,
+} from "./types";
 
 export const serviceItemOptions: Array<{ value: TaskItemType; label: string }> = [
   { value: "feed", label: "添粮 / 喂食" },
@@ -68,5 +75,38 @@ export function editableDraft(draft: IntakeDraftPayload | null): IntakeDraftPayl
         ? draft.service.service_items
         : ["feed", "water", "litter", "photo"],
     },
+  };
+}
+
+export const emptyPublicCat = (): PublicIntakeCatDraft => ({
+  name: null,
+  food: null,
+  litter_type: null,
+  medication_required: false,
+  medication_notes: null,
+  special_notes: null,
+});
+
+export function publicEditableDraft(
+  draft: PublicIntakeDraftPayload | null,
+): PublicIntakeDraftPayload {
+  if (draft) return draft;
+  return {
+    customer: {
+      name: null,
+      wechat_name: null,
+      phone: null,
+      address: null,
+      access_method: null,
+      key_status: null,
+      notes: null,
+    },
+    cats: [],
+    service: {
+      start_date: null,
+      end_date: null,
+      visits_per_day: null,
+    },
+    notes: null,
   };
 }

@@ -2,10 +2,13 @@ import type {
   FormTokenStatus,
   IntakeConversionRead,
   IntakeDraftPayload,
+  IntakeDecisionMode,
+  IntakeDecisionRead,
   IntakeSubmissionDetail,
   IntakeSubmissionList,
   IntakeTokenList,
   IntakeTokenRead,
+  PublicIntakeDraftPayload,
   PublicIntakeRead,
 } from "./types";
 import { requestJson } from "../../lib/api";
@@ -39,21 +42,28 @@ export function getPublicIntake(token: string): Promise<PublicIntakeRead> {
 
 export function savePublicDraft(
   token: string,
-  payload: IntakeDraftPayload,
+  payload: PublicIntakeDraftPayload,
+  expectedRevision: string,
 ): Promise<PublicIntakeRead> {
   return request<PublicIntakeRead>(publicPath(token), {
     method: "PUT",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ draft: payload, expected_revision: expectedRevision }),
   });
 }
 
 export function submitPublicIntake(
   token: string,
-  payload: IntakeDraftPayload,
+  payload: PublicIntakeDraftPayload,
+  expectedRevision: string,
+  idempotencyKey: string,
 ): Promise<PublicIntakeRead> {
   return request<PublicIntakeRead>(`${publicPath(token)}/submit`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      payload,
+      expected_revision: expectedRevision,
+      idempotency_key: idempotencyKey,
+    }),
   });
 }
 
@@ -100,7 +110,7 @@ export function reviewIntakeSubmission(
 export function saveIntakeReviewDraft(
   submissionId: number,
   reviewPayload: IntakeDraftPayload,
-  unitPrice: string,
+  unitPrice: string | null,
   expectedRevision: string,
 ): Promise<IntakeSubmissionDetail> {
   return request<IntakeSubmissionDetail>(`${adminPath}/submissions/${submissionId}/review-draft`, {
@@ -120,5 +130,21 @@ export function convertIntakeSubmission(
   return request<IntakeConversionRead>(`${adminPath}/submissions/${submissionId}/convert`, {
     method: "POST",
     body: JSON.stringify({ expected_revision: expectedRevision }),
+  });
+}
+
+export function decideIntakeSubmission(
+  submissionId: number,
+  mode: IntakeDecisionMode,
+  expectedRevision: string,
+  idempotencyKey: string,
+): Promise<IntakeDecisionRead> {
+  const endpoint = mode === "customer" ? "archive-customer" : mode === "order" ? "archive-order" : "void";
+  return request<IntakeDecisionRead>(`${adminPath}/submissions/${submissionId}/${endpoint}`, {
+    method: "POST",
+    body: JSON.stringify({
+      expected_revision: expectedRevision,
+      idempotency_key: idempotencyKey,
+    }),
   });
 }

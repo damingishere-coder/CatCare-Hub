@@ -4,34 +4,35 @@ import {
   submitPublicIntake,
   updateIntakeToken,
 } from "./api";
-import { editableDraft } from "./constants";
+import { publicEditableDraft } from "./constants";
 
 beforeEach(() => {
   vi.restoreAllMocks();
 });
 
 it("saves and submits a public draft only within the encoded token path", async () => {
-  const response = { status: "editable", expires_at: "2031-01-01T00:00:00Z", draft: editableDraft(null) };
+  const revision = "a".repeat(64);
+  const response = { status: "editable", expires_at: "2031-01-01T00:00:00Z", draft: publicEditableDraft(null), revision };
   const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => Promise.resolve(
     new Response(JSON.stringify(response), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     }),
   ));
-  const payload = editableDraft(null);
+  const payload = publicEditableDraft(null);
 
-  await savePublicDraft("safe_token-value", payload);
-  await submitPublicIntake("safe_token-value", payload);
+  await savePublicDraft("safe_token-value", payload, revision);
+  await submitPublicIntake("safe_token-value", payload, revision, "submit-idempotency-key-0001");
 
   expect(fetchMock).toHaveBeenNthCalledWith(
     1,
     "/api/fill/safe_token-value",
-    expect.objectContaining({ method: "PUT", body: JSON.stringify(payload) }),
+    expect.objectContaining({ method: "PUT", body: JSON.stringify({ draft: payload, expected_revision: revision }) }),
   );
   expect(fetchMock).toHaveBeenNthCalledWith(
     2,
     "/api/fill/safe_token-value/submit",
-    expect.objectContaining({ method: "POST", body: JSON.stringify(payload) }),
+    expect.objectContaining({ method: "POST", body: JSON.stringify({ payload, expected_revision: revision, idempotency_key: "submit-idempotency-key-0001" }) }),
   );
 });
 

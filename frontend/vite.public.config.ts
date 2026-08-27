@@ -10,17 +10,24 @@ const apiProxy = {
 };
 
 export default defineConfig({
+  root: "public-entry",
   envDir: "..",
   plugins: [react(), tailwindcss()],
+  build: {
+    outDir: "../dist-public",
+    emptyOutDir: true,
+    sourcemap: false,
+  },
   server: {
     host: "127.0.0.1",
-    port: 5180,
+    port: 5181,
     strictPort: true,
     proxy: apiProxy,
+    fs: { allow: [".."] },
   },
   preview: {
     host: "127.0.0.1",
-    port: 5180,
+    port: 5181,
     strictPort: true,
     proxy: apiProxy,
   },

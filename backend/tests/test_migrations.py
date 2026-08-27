@@ -16,6 +16,7 @@ BUSINESS_TABLES = {
     "cats",
     "customer_form_submissions",
     "customer_form_tokens",
+    "intake_audit_events",
     "customers",
     "order_cats",
     "order_service_dates",
@@ -70,6 +71,7 @@ def test_intake_conversion_migration_adds_a_single_submission_contract(
             "converted_customer_id",
             "converted_order_id",
         } <= columns
+        assert "intake_audit_events" in inspector.get_table_names()
         unique_constraints = inspector.get_unique_constraints(
             "customer_form_submissions"
         )
@@ -172,6 +174,79 @@ def test_p19_payment_void_migration_upgrades_and_downgrades_0009(tmp_path) -> No
         assert "voided_at" not in downgraded_columns
         assert "voided_reason" not in downgraded_columns
         command.upgrade(config, "head")
+    finally:
+        engine.dispose()
+
+
+def test_p22_intake_migration_upgrades_0010_and_preserves_submission(tmp_path) -> None:
+    database_path = tmp_path / "p22-from-0010.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = alembic_config(database_url)
+    command.upgrade(config, "0010_payment_void_audit")
+    engine = build_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            token_id = connection.execute(
+                text(
+                    "INSERT INTO customer_form_tokens "
+                    "(token_hash, status, expires_at, created_at, updated_at) "
+                    "VALUES (:token_hash, 'active', '2035-01-01', "
+                    "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id"
+                ),
+                {"token_hash": "f" * 64},
+            ).scalar_one()
+            connection.execute(
+                text(
+                    "INSERT INTO customer_form_submissions "
+                    "(token_id, payload, status, created_at, updated_at) "
+                    "VALUES (:token_id, :payload, 'submitted', "
+                    "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                ),
+                {
+                    "token_id": token_id,
+                    "payload": json.dumps(
+                        {
+                            "customer": {
+                                "name": "迁移测试客户",
+                                "phone": "TEST-CONTACT",
+                            },
+                            "cats": [],
+                            "service": {"service_items": []},
+                            "notes": None,
+                        }
+                    ),
+                },
+            )
+
+        command.upgrade(config, "head")
+        inspector = inspect(engine)
+        columns = {
+            column["name"]
+            for column in inspector.get_columns("customer_form_submissions")
+        }
+        assert {
+            "submission_uuid",
+            "revision_number",
+            "submit_payload_hash",
+            "decision_mode",
+            "idempotency_key",
+            "receipt_customer_id",
+            "receipt_order_id",
+            "purge_after",
+            "redacted_at",
+        } <= columns
+        with engine.connect() as connection:
+            migrated = connection.execute(
+                text(
+                    "SELECT submission_uuid, revision_number, payload "
+                    "FROM customer_form_submissions"
+                )
+            ).one()
+            assert len(migrated.submission_uuid) == 36
+            assert migrated.revision_number == 0
+            assert json.loads(migrated.payload)["customer"]["name"] == "迁移测试客户"
+            assert connection.execute(text("PRAGMA integrity_check")).scalar_one() == "ok"
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
     finally:
         engine.dispose()
 

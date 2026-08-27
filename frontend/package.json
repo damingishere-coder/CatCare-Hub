@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
+    "preview:public": "vite preview --config vite.public.config.ts",
     "build": "tsc -b && vite build",
+    "build:public": "tsc -b && vite build --config vite.public.config.ts",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest"

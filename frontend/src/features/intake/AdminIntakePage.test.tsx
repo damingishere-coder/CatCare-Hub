@@ -11,9 +11,8 @@ const apiMocks = vi.hoisted(() => ({
   updateIntakeToken: vi.fn(),
   listIntakeSubmissions: vi.fn(),
   getIntakeSubmission: vi.fn(),
-  reviewIntakeSubmission: vi.fn(),
   saveIntakeReviewDraft: vi.fn(),
-  convertIntakeSubmission: vi.fn(),
+  decideIntakeSubmission: vi.fn(),
 }));
 
 vi.mock("./api", () => apiMocks);
@@ -32,6 +31,7 @@ const token: IntakeTokenRead = {
 };
 const summary: IntakeSubmissionSummary = {
   id: 9,
+  submission_uuid: "00000000-0000-4000-8000-000000000009",
   status: "submitted",
   customer_name: "P10 后台虚构客户",
   community: "P10 后台虚构小区",
@@ -68,8 +68,22 @@ const detail: IntakeSubmissionDetail = {
   review_unit_price: null,
   reviewed_at: null,
   converted_at: null,
+  voided_at: null,
+  purge_after: null,
+  redacted_at: null,
+  decision_mode: null,
+  decision_idempotency_key: null,
   converted_customer_id: null,
   converted_order_id: null,
+  audit_events: [{
+    id: 1,
+    event_type: "submitted",
+    actor: "customer",
+    revision_number: 1,
+    decision_mode: null,
+    details: {},
+    created_at: "2026-08-26T08:00:00Z",
+  }],
 };
 
 function renderPage() {
@@ -83,9 +97,8 @@ beforeEach(() => {
   apiMocks.getIntakeSubmission.mockResolvedValue(detail);
   apiMocks.createIntakeToken.mockResolvedValue({ ...token, id: 8, fill_path: "/fill/P10-test-token", submitted_at: null, submission_status: null });
   apiMocks.updateIntakeToken.mockResolvedValue({ ...token, status: "disabled", submitted_at: null, submission_status: null });
-  apiMocks.reviewIntakeSubmission.mockResolvedValue({ ...detail, status: "reviewed", reviewed_at: timestamp, revision: "b".repeat(64) });
   apiMocks.saveIntakeReviewDraft.mockResolvedValue({ ...detail, status: "reviewed", review_payload: payload, review_unit_price: "30.00", reviewed_at: timestamp, revision: "b".repeat(64) });
-  apiMocks.convertIntakeSubmission.mockResolvedValue({ submission_id: 9, status: "converted", customer_id: 3, order_id: 4, revision: "c".repeat(64) });
+  apiMocks.decideIntakeSubmission.mockResolvedValue({ submission_id: 9, submission_uuid: summary.submission_uuid, status: "archived_order", decision_mode: "order", customer_id: 3, order_id: 4, revision: "c".repeat(64) });
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -98,13 +111,15 @@ it("shows the full editable review while keeping the submission list privacy-min
   expect(await screen.findByLabelText("详细地址", {}, { timeout: 5_000 })).toHaveValue("虚构后台测试地址");
   expect(screen.getByLabelText("门禁说明")).toHaveValue("虚构敏感入户说明");
   expect(screen.getByLabelText("钥匙编号")).toHaveValue("TEST-KEY");
-  expect(screen.getByText("查看客户原始提交（只读）")).toBeInTheDocument();
+  expect(screen.getByText("查看客户原始提交（永久只读）")).toBeInTheDocument();
+  expect(screen.getByText("处理记录")).toBeInTheDocument();
+  expect(screen.getByText("客户提交资料")).toBeInTheDocument();
   const list = screen.getByLabelText("提交记录列表");
   expect(within(list).getByText("P10 后台虚构客户")).toBeInTheDocument();
   expect(within(list).queryByText("TEST-CONTACT")).not.toBeInTheDocument();
   expect(within(list).queryByText("虚构敏感入户说明")).not.toBeInTheDocument();
   expect(within(list).queryByText("TEST-KEY")).not.toBeInTheDocument();
-  expect(screen.getByText(/填写链接只在生成时显示一次/)).toBeInTheDocument();
+  expect(screen.getByText(/链接原文只在生成时返回/)).toBeInTheDocument();
   expect(screen.getByText(/链接原文未保存/)).toBeInTheDocument();
 });
 
@@ -124,16 +139,18 @@ it("creates a link and copies the browser-origin URL", async () => {
   ));
 });
 
-it("reviews and converts only through explicit admin actions", async () => {
+it("saves a review and archives an order only through explicit admin actions", async () => {
   const convertedDetail: IntakeSubmissionDetail = {
     ...detail,
-    status: "converted",
+    status: "archived_order",
     review_payload: payload,
     review_unit_price: "30.00",
     reviewed_at: timestamp,
     converted_at: timestamp,
     converted_customer_id: 3,
     converted_order_id: 4,
+    decision_mode: "order",
+    decision_idempotency_key: "decision-test-key-0001",
     revision: "c".repeat(64),
   };
   apiMocks.getIntakeSubmission
@@ -155,13 +172,13 @@ it("reviews and converts only through explicit admin actions", async () => {
     revision,
   ));
 
-  fireEvent.click(await screen.findByRole("button", { name: "确认落档并生成订单" }));
-  const confirmDialog = screen.getByRole("alertdialog", { name: "确认落档并生成订单" });
-  expect(apiMocks.convertIntakeSubmission).not.toHaveBeenCalled();
-  fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认落档并生成订单" }));
-  await waitFor(() => expect(apiMocks.convertIntakeSubmission).toHaveBeenCalledWith(9, "b".repeat(64)));
+  fireEvent.click(await screen.findByRole("button", { name: "归档并生成订单" }));
+  const confirmDialog = screen.getByRole("alertdialog", { name: "确认审核动作" });
+  expect(apiMocks.decideIntakeSubmission).not.toHaveBeenCalled();
+  fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认执行" }));
+  await waitFor(() => expect(apiMocks.decideIntakeSubmission).toHaveBeenCalledWith(9, "order", "b".repeat(64), expect.any(String)));
   await waitFor(() => expect(apiMocks.getIntakeSubmission).toHaveBeenCalledTimes(2));
-  expect(await screen.findByText(/已完成落档和订单生成/)).toBeInTheDocument();
+  expect(await screen.findByText(/已完成本机幂等归档/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "查看客户 #3" })).toHaveAttribute("href", "/admin/customers");
   expect(screen.getByRole("link", { name: "查看订单 #4" })).toHaveAttribute("href", "/admin/orders");
 });

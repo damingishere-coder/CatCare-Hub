@@ -1,7 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -9,26 +9,38 @@ from app.db.session import get_db
 from app.models.enums import FormSubmissionStatus
 from app.models.intake import CustomerFormSubmission, CustomerFormToken
 from app.schemas.intake import (
+    IntakeClaimCommand,
+    IntakeClaimRead,
+    IntakeCompleteCommand,
     IntakeConversionRead,
+    IntakeDecisionCommand,
+    IntakeDecisionRead,
     IntakeDraftPayload,
+    IntakeRedactionRead,
     IntakeReviewDraftUpdate,
     IntakeSubmissionDetail,
     IntakeSubmissionList,
-    IntakeSubmissionPayload,
     IntakeTokenList,
     IntakeTokenRead,
+    PublicDraftUpdate,
     PublicIntakeRead,
+    PublicSubmitCommand,
     RevisionCommand,
     TokenCreate,
     TokenStatusUpdate,
 )
 from app.services.intake import (
+    archive_customer_submission,
+    archive_order_submission,
+    claim_submission,
+    complete_claim,
     convert_submission,
     create_token,
     expire_loaded_tokens,
     load_public_token,
     mark_reviewed,
     public_read,
+    redact_due_submissions,
     save_draft,
     save_review_draft,
     submit_form,
@@ -36,11 +48,23 @@ from app.services.intake import (
     to_submission_summary,
     to_token_read,
     update_token_status,
+    void_submission,
+)
+from app.services.intake_remote import (
+    RemoteIntakeClient,
+    archive_remote_submission,
+    hydrate_remote_detail,
+    hydrate_remote_list,
+    remote_intake_enabled,
 )
 
 
 public_router = APIRouter(prefix="/api/fill", tags=["customer-fill"])
 admin_router = APIRouter(prefix="/api/admin/intake", tags=["admin-intake"])
+relay_admin_router = APIRouter(
+    prefix="/api/admin/intake",
+    tags=["intake-relay-sync"],
+)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
@@ -60,7 +84,10 @@ def _load_admin_token(session: Session, token_id: int) -> CustomerFormToken:
 
 
 def _submission_options():
-    return (selectinload(CustomerFormSubmission.token),)
+    return (
+        selectinload(CustomerFormSubmission.token),
+        selectinload(CustomerFormSubmission.audit_events),
+    )
 
 
 def _load_submission(session: Session, submission_id: int) -> CustomerFormSubmission:
@@ -105,11 +132,18 @@ def get_public_form(token: str, session: DatabaseSession) -> PublicIntakeRead:
 @public_router.put("/{token}", response_model=PublicIntakeRead)
 def put_public_draft(
     token: str,
-    payload: IntakeDraftPayload,
+    payload: PublicDraftUpdate,
     session: DatabaseSession,
 ) -> PublicIntakeRead:
     form_token = _load_public_token(session, token)
-    session.add(save_draft(form_token, payload))
+    session.add(
+        save_draft(
+            session,
+            form_token,
+            payload.draft,
+            expected_revision=payload.expected_revision,
+        )
+    )
     _commit_public_form(session)
     return public_read(form_token)
 
@@ -117,17 +151,28 @@ def put_public_draft(
 @public_router.post("/{token}/submit", response_model=PublicIntakeRead)
 def post_public_submission(
     token: str,
-    payload: IntakeSubmissionPayload,
+    payload: PublicSubmitCommand,
     session: DatabaseSession,
 ) -> PublicIntakeRead:
     form_token = _load_public_token(session, token)
-    session.add(submit_form(form_token, payload))
+    session.add(
+        submit_form(
+            session,
+            form_token,
+            payload.payload,
+            expected_revision=payload.expected_revision,
+            idempotency_key=payload.idempotency_key,
+        )
+    )
     _commit_public_form(session)
     return public_read(form_token)
 
 
 @admin_router.get("/tokens", response_model=IntakeTokenList)
+@relay_admin_router.get("/tokens", response_model=IntakeTokenList)
 def list_tokens(session: DatabaseSession) -> IntakeTokenList:
+    if remote_intake_enabled():
+        return RemoteIntakeClient().list_tokens()
     tokens = session.scalars(
         select(CustomerFormToken)
         .options(*_token_options())
@@ -143,20 +188,37 @@ def list_tokens(session: DatabaseSession) -> IntakeTokenList:
     response_model=IntakeTokenRead,
     status_code=status.HTTP_201_CREATED,
 )
+@relay_admin_router.post(
+    "/tokens",
+    response_model=IntakeTokenRead,
+    status_code=status.HTTP_201_CREATED,
+)
 def post_token(payload: TokenCreate, session: DatabaseSession) -> IntakeTokenRead:
+    if remote_intake_enabled():
+        return RemoteIntakeClient().create_token(
+            expires_in_days=payload.expires_in_days
+        )
     token, raw_token = create_token(session, expires_in_days=payload.expires_in_days)
     session.commit()
     return to_token_read(token, raw_token=raw_token)
 
 
 @admin_router.patch("/tokens/{token_id}", response_model=IntakeTokenRead)
+@relay_admin_router.patch("/tokens/{token_id}", response_model=IntakeTokenRead)
 def patch_token(
     token_id: int,
     payload: TokenStatusUpdate,
     session: DatabaseSession,
 ) -> IntakeTokenRead:
+    if remote_intake_enabled():
+        return RemoteIntakeClient().update_token(
+            token_id,
+            status=payload.status.value,
+            expected_revision=payload.expected_revision,
+        )
     token = _load_admin_token(session, token_id)
     update_token_status(
+        session,
         token,
         target=payload.status,
         expected_revision=payload.expected_revision,
@@ -166,19 +228,35 @@ def patch_token(
 
 
 @admin_router.get("/submissions", response_model=IntakeSubmissionList)
-def list_submissions(session: DatabaseSession) -> IntakeSubmissionList:
+@relay_admin_router.get("/submissions", response_model=IntakeSubmissionList)
+def list_submissions(
+    session: DatabaseSession,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> IntakeSubmissionList:
+    if remote_intake_enabled():
+        return hydrate_remote_list(
+            session,
+            RemoteIntakeClient().list_submissions(limit=limit, offset=offset),
+        )
+    status_filter = CustomerFormSubmission.status != FormSubmissionStatus.DRAFT
+    total = session.scalar(
+        select(func.count(CustomerFormSubmission.id)).where(status_filter)
+    ) or 0
     submissions = session.scalars(
         select(CustomerFormSubmission)
         .options(*_submission_options())
-        .where(CustomerFormSubmission.status != FormSubmissionStatus.DRAFT)
+        .where(status_filter)
         .order_by(
             CustomerFormSubmission.updated_at.desc(),
             CustomerFormSubmission.id.desc(),
         )
+        .limit(limit)
+        .offset(offset)
     ).all()
     return IntakeSubmissionList(
         items=[to_submission_summary(item) for item in submissions],
-        total=len(submissions),
+        total=total,
     )
 
 
@@ -186,14 +264,27 @@ def list_submissions(session: DatabaseSession) -> IntakeSubmissionList:
     "/submissions/{submission_id}",
     response_model=IntakeSubmissionDetail,
 )
+@relay_admin_router.get(
+    "/submissions/{submission_id}",
+    response_model=IntakeSubmissionDetail,
+)
 def get_submission(
     submission_id: int,
     session: DatabaseSession,
 ) -> IntakeSubmissionDetail:
+    if remote_intake_enabled():
+        return hydrate_remote_detail(
+            session,
+            RemoteIntakeClient().get_submission(submission_id),
+        )
     return to_submission_detail(_load_submission(session, submission_id))
 
 
 @admin_router.put(
+    "/submissions/{submission_id}/review-draft",
+    response_model=IntakeSubmissionDetail,
+)
+@relay_admin_router.put(
     "/submissions/{submission_id}/review-draft",
     response_model=IntakeSubmissionDetail,
 )
@@ -202,8 +293,16 @@ def put_review_draft(
     payload: IntakeReviewDraftUpdate,
     session: DatabaseSession,
 ) -> IntakeSubmissionDetail:
+    if remote_intake_enabled():
+        return RemoteIntakeClient().save_review(
+            submission_id,
+            review_payload=payload.review_payload.model_dump(mode="json"),
+            unit_price=(str(payload.unit_price) if payload.unit_price is not None else None),
+            expected_revision=payload.expected_revision,
+        )
     submission = _load_submission(session, submission_id)
     save_review_draft(
+        session,
         submission,
         review_payload=payload.review_payload,
         unit_price=payload.unit_price,
@@ -222,6 +321,8 @@ def review_submission(
     payload: RevisionCommand,
     session: DatabaseSession,
 ) -> IntakeSubmissionDetail:
+    if remote_intake_enabled():
+        raise HTTPException(status_code=409, detail="云端审核请先保存审核稿")
     submission = _load_submission(session, submission_id)
     mark_reviewed(
         session,
@@ -241,6 +342,23 @@ def confirm_submission(
     payload: RevisionCommand,
     session: DatabaseSession,
 ) -> IntakeConversionRead:
+    if remote_intake_enabled():
+        result = archive_remote_submission(
+            session,
+            remote_submission_id=submission_id,
+            expected_revision=payload.expected_revision,
+            idempotency_key=f"legacy-convert-{submission_id:020d}",
+            decision_mode="order",
+        )
+        if result.customer_id is None:
+            raise HTTPException(status_code=409, detail="归档回执缺少客户 ID")
+        return IntakeConversionRead(
+            submission_id=result.submission_id,
+            status=result.status,
+            customer_id=result.customer_id,
+            order_id=result.order_id,
+            revision=result.revision,
+        )
     submission = _load_submission(session, submission_id)
     try:
         result = convert_submission(
@@ -253,3 +371,151 @@ def confirm_submission(
     except Exception:
         session.rollback()
         raise
+
+
+def _commit_decision(session: Session, operation) -> IntakeDecisionRead:
+    try:
+        result = operation()
+        session.commit()
+        return result
+    except Exception:
+        session.rollback()
+        raise
+
+
+@admin_router.post(
+    "/submissions/{submission_id}/archive-customer",
+    response_model=IntakeDecisionRead,
+)
+def archive_customer(
+    submission_id: int,
+    payload: IntakeDecisionCommand,
+    session: DatabaseSession,
+) -> IntakeDecisionRead:
+    if remote_intake_enabled():
+        return archive_remote_submission(
+            session,
+            remote_submission_id=submission_id,
+            expected_revision=payload.expected_revision,
+            idempotency_key=payload.idempotency_key,
+            decision_mode="customer",
+        )
+    submission = _load_submission(session, submission_id)
+    return _commit_decision(
+        session,
+        lambda: archive_customer_submission(
+            session,
+            submission,
+            expected_revision=payload.expected_revision,
+            idempotency_key=payload.idempotency_key,
+        ),
+    )
+
+
+@admin_router.post(
+    "/submissions/{submission_id}/archive-order",
+    response_model=IntakeDecisionRead,
+)
+def archive_order(
+    submission_id: int,
+    payload: IntakeDecisionCommand,
+    session: DatabaseSession,
+) -> IntakeDecisionRead:
+    if remote_intake_enabled():
+        return archive_remote_submission(
+            session,
+            remote_submission_id=submission_id,
+            expected_revision=payload.expected_revision,
+            idempotency_key=payload.idempotency_key,
+            decision_mode="order",
+        )
+    submission = _load_submission(session, submission_id)
+    return _commit_decision(
+        session,
+        lambda: archive_order_submission(
+            session,
+            submission,
+            expected_revision=payload.expected_revision,
+            idempotency_key=payload.idempotency_key,
+        ),
+    )
+
+
+@admin_router.post(
+    "/submissions/{submission_id}/void",
+    response_model=IntakeDecisionRead,
+)
+def void_intake(
+    submission_id: int,
+    payload: IntakeDecisionCommand,
+    session: DatabaseSession,
+) -> IntakeDecisionRead:
+    if remote_intake_enabled():
+        return archive_remote_submission(
+            session,
+            remote_submission_id=submission_id,
+            expected_revision=payload.expected_revision,
+            idempotency_key=payload.idempotency_key,
+            decision_mode="void",
+        )
+    submission = _load_submission(session, submission_id)
+    return _commit_decision(
+        session,
+        lambda: void_submission(
+            session,
+            submission,
+            expected_revision=payload.expected_revision,
+            idempotency_key=payload.idempotency_key,
+        ),
+    )
+
+
+@admin_router.post(
+    "/submissions/{submission_id}/claim",
+    response_model=IntakeClaimRead,
+)
+@relay_admin_router.post(
+    "/submissions/{submission_id}/claim",
+    response_model=IntakeClaimRead,
+)
+def claim_intake(
+    submission_id: int,
+    payload: IntakeClaimCommand,
+    session: DatabaseSession,
+) -> IntakeClaimRead:
+    submission = _load_submission(session, submission_id)
+    result = claim_submission(
+        session,
+        submission,
+        expected_revision=payload.expected_revision,
+        idempotency_key=payload.idempotency_key,
+        decision_mode=payload.decision_mode,
+    )
+    session.commit()
+    return result
+
+
+@admin_router.post(
+    "/submissions/{submission_id}/complete",
+    response_model=IntakeDecisionRead,
+)
+@relay_admin_router.post(
+    "/submissions/{submission_id}/complete",
+    response_model=IntakeDecisionRead,
+)
+def complete_intake(
+    submission_id: int,
+    payload: IntakeCompleteCommand,
+    session: DatabaseSession,
+) -> IntakeDecisionRead:
+    submission = _load_submission(session, submission_id)
+    result = complete_claim(session, submission, command=payload)
+    session.commit()
+    return result
+
+
+@relay_admin_router.post("/maintenance/redact", response_model=IntakeRedactionRead)
+def redact_intake(session: DatabaseSession) -> IntakeRedactionRead:
+    count = redact_due_submissions(session)
+    session.commit()
+    return IntakeRedactionRead(redacted_count=count)

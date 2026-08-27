@@ -75,6 +75,11 @@ class FormSubmissionStatus(str, Enum):
     DRAFT = "draft"
     SUBMITTED = "submitted"
     REVIEWED = "reviewed"
+    PROCESSING = "processing"
+    ARCHIVED_CUSTOMER = "archived_customer"
+    ARCHIVED_ORDER = "archived_order"
+    VOIDED = "voided"
+    REDACTED = "redacted"
     CONVERTED = "converted"
     EXPIRED = "expired"
 

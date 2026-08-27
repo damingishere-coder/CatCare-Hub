@@ -20,6 +20,7 @@ import { Link } from "react-router-dom";
 import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import { PageHeader } from "../../components/ui/PageHeader";
 import type { TaskStatus } from "../orders/types";
+import { IntakeWorkspace } from "../intake/AdminIntakePage";
 import { getDashboard, markTaskPhotosSent } from "./api";
 import type {
   DashboardReminder,
@@ -179,7 +180,7 @@ export function DashboardPage() {
               <div className="flex flex-wrap gap-2">
                 <Link className="cc-button cc-button--primary" to="/admin/orders?action=create"><Plus size={15} />新增订单</Link>
                 <Link className="cc-button cc-button--secondary" to="/admin/customers?action=create"><UserPlus size={15} />新增客户</Link>
-                <Link className="cc-button cc-button--secondary" to="/fill"><Rocket size={15} />客户填写入口</Link>
+                <Link className="cc-button cc-button--secondary" to="/admin/intake#links"><Rocket size={15} />客户填写入口</Link>
               </div>
             </div>
           </section>
@@ -235,6 +236,8 @@ export function DashboardPage() {
           <p className="mt-4 text-xs leading-5 text-slate-500">工作台仅展示客户名称、地址和数量摘要；门禁、钥匙编号及照片请进入单任务详情查看。当前后台仍只限本机或可信私网使用。</p>
         </>
       ) : null}
+
+      <IntakeWorkspace embedded />
     </section>
   );
 }

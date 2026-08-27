@@ -11,7 +11,7 @@ from app.models.enums import (
     TaskItemType,
     TaskStatus,
 )
-from app.models.intake import CustomerFormSubmission, CustomerFormToken
+from app.models.intake import CustomerFormSubmission, CustomerFormToken, IntakeAuditEvent
 from app.models.order import Order, OrderCat, OrderServiceDate
 from app.models.payment import Payment
 from app.models.system import SystemFlag
@@ -23,6 +23,7 @@ __all__ = [
     "Customer",
     "CustomerFormSubmission",
     "CustomerFormToken",
+    "IntakeAuditEvent",
     "FormSubmissionStatus",
     "FormTokenStatus",
     "OrderAdjustmentType",
