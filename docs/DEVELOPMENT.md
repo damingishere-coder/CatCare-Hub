@@ -4,7 +4,7 @@
 
 - Windows 10/11
 - Python 3.12+
-- Node.js 20.19+
+- Node.js 24.15.x（推荐）或 26+
 - npm（随 Node.js 安装）
 
 项目提供 Windows 批处理与 PowerShell 脚本。默认管理端地址是 `http://127.0.0.1:5180/admin`，API ready 地址是 `http://127.0.0.1:8000/api/ready`。

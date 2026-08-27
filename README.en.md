@@ -86,7 +86,7 @@ The admin workspace, mobile workspace, and business API listen on loopback by de
 
 ## Windows Quick Start
 
-Requirements: Windows 10/11, Python 3.12+, and Node.js 20.19+.
+Requirements: Windows 10/11, Python 3.12+, and Node.js 24.15.x (recommended) or 26+.
 
 ```powershell
 git clone https://github.com/damingishere-coder/CatCare-Hub.git

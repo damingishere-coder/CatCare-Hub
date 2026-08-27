@@ -86,7 +86,7 @@ flowchart LR
 
 ## Windows Quick Start
 
-要求：Windows 10/11、Python 3.12+、Node.js 20.19+。
+要求：Windows 10/11、Python 3.12+、Node.js 24.15.x（推荐）或 26+。
 
 ```powershell
 git clone https://github.com/damingishere-coder/CatCare-Hub.git
