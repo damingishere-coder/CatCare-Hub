@@ -1,5 +1,3 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
-
 import { FillPage } from "./pages/FillPage";
 
 function PublicNotFound() {
@@ -7,11 +5,9 @@ function PublicNotFound() {
 }
 
 export function PublicApp() {
-  return <BrowserRouter>
-    <Routes>
-      <Route path="/fill/:token" element={<FillPage />} />
-      <Route path="/fill" element={<FillPage />} />
-      <Route path="*" element={<PublicNotFound />} />
-    </Routes>
-  </BrowserRouter>;
+  const path = window.location.pathname;
+  const match = path.match(/^\/(?:f|fill)\/([A-Za-z0-9_-]+)\/?$/);
+  if (match) return <FillPage token={match[1]} />;
+  if (/^\/(?:f|fill)\/?$/.test(path)) return <FillPage token={null} />;
+  return <PublicNotFound />;
 }

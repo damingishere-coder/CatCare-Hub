@@ -419,7 +419,7 @@ def test_p13_fill_token_lifecycle(p13_context: P13Context) -> None:
     assert created_response.status_code == 201
     created = created_response.json()
     raw_token = created["fill_path"].rsplit("/", 1)[-1]
-    assert len(raw_token) >= 40
+    assert len(raw_token) == 22
     listed = client.get("/api/admin/intake/tokens").json()["items"]
     assert next(item for item in listed if item["id"] == created["id"])[
         "fill_path"

@@ -120,8 +120,8 @@ describe("P0 application routes", () => {
     ).toBeInTheDocument();
   });
 
-  it("rejects the tokenless customer fill entry clearly", () => {
-    renderRoute("/fill");
+  it.each(["/f", "/fill"])("rejects the tokenless customer fill entry %s clearly", (path) => {
+    renderRoute(path);
     expect(screen.getByText(/当前链接缺少专属 Token/)).toBeInTheDocument();
   });
 

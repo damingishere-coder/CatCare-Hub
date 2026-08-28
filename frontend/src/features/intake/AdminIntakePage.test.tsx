@@ -44,6 +44,7 @@ const summary: IntakeSubmissionSummary = {
 };
 const payload = {
   ...editableDraft(null),
+  notes: "虚构待审核备注内容",
   customer: {
     ...editableDraft(null).customer,
     name: summary.customer_name,
@@ -95,7 +96,7 @@ beforeEach(() => {
   apiMocks.listIntakeTokens.mockResolvedValue({ items: [token], total: 1 });
   apiMocks.listIntakeSubmissions.mockResolvedValue({ items: [summary], total: 1 });
   apiMocks.getIntakeSubmission.mockResolvedValue(detail);
-  apiMocks.createIntakeToken.mockResolvedValue({ ...token, id: 8, fill_path: "/fill/P10-test-token", submitted_at: null, submission_status: null });
+  apiMocks.createIntakeToken.mockResolvedValue({ ...token, id: 8, fill_path: "/f/P10-test-token", submitted_at: null, submission_status: null });
   apiMocks.updateIntakeToken.mockResolvedValue({ ...token, status: "disabled", submitted_at: null, submission_status: null });
   apiMocks.saveIntakeReviewDraft.mockResolvedValue({ ...detail, status: "reviewed", review_payload: payload, review_unit_price: "30.00", reviewed_at: timestamp, revision: "b".repeat(64) });
   apiMocks.decideIntakeSubmission.mockResolvedValue({ submission_id: 9, submission_uuid: summary.submission_uuid, status: "archived_order", decision_mode: "order", customer_id: 3, order_id: 4, revision: "c".repeat(64) });
@@ -123,6 +124,32 @@ it("shows the full editable review while keeping the submission list privacy-min
   expect(screen.getByText(/链接原文未保存/)).toBeInTheDocument();
 });
 
+it("copies the public note into the chosen review destinations without changing the original", async () => {
+  renderPage();
+
+  expect(await screen.findByText("客户填写的待审核备注")).toBeInTheDocument();
+  const customerNotes = screen.getByRole("textbox", { name: "客户备注" });
+  const orderNotes = screen.getByRole("textbox", { name: "本次订单备注" });
+  expect(orderNotes).toHaveValue("");
+
+  fireEvent.click(screen.getByRole("button", { name: "填入客户长期备注" }));
+  fireEvent.click(screen.getByRole("button", { name: "填入本次订单备注" }));
+
+  expect(customerNotes).toHaveValue("虚构待审核备注内容");
+  expect(orderNotes).toHaveValue("虚构待审核备注内容");
+  fireEvent.click(screen.getByRole("button", { name: "保存审核稿" }));
+  await waitFor(() => expect(apiMocks.saveIntakeReviewDraft).toHaveBeenCalledWith(
+    9,
+    expect.objectContaining({
+      customer: expect.objectContaining({ notes: "虚构待审核备注内容" }),
+      notes: "虚构待审核备注内容",
+    }),
+    null,
+    revision,
+  ));
+  expect(detail.payload.customer.notes).toBeNull();
+});
+
 it("creates a link and copies the browser-origin URL", async () => {
   renderPage();
   await screen.findByText("链接 #7");
@@ -135,7 +162,7 @@ it("creates a link and copies the browser-origin URL", async () => {
 
   fireEvent.click(screen.getAllByRole("button", { name: "复制" })[0]);
   await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-    `${window.location.origin}/fill/P10-test-token`,
+    `${window.location.origin}/f/P10-test-token`,
   ));
 });
 

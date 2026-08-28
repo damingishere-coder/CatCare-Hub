@@ -43,11 +43,23 @@ from app.services.customers import build_customer
 from app.services.orders import build_order, reprice_order
 
 
-TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{40,128}$")
+PUBLIC_TOKEN_BYTES = 16
+TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{22,128}$")
 TOKEN_GENERATION_ATTEMPTS = 5
 CLAIM_TTL = timedelta(minutes=5)
 RELAY_RETENTION = timedelta(days=30)
 RELAY_SERVER_ENV = "CATCARE_INTAKE_RELAY_SERVER"
+PUBLIC_ACCESS_METHODS = {
+    "无",
+    "密码",
+    "门卡",
+    "钥匙开门",
+    "指纹或人脸",
+    "联系物业或门卫",
+}
+PUBLIC_ACCESS_PATTERN = re.compile(
+    r"^小区门禁：(?P<community>[^；]+)；楼下门禁：(?P<building>[^；]+)$"
+)
 
 
 def record_intake_audit_event(
@@ -224,9 +236,17 @@ def _stored_payload_from_public(
     payload: PublicIntakeDraftPayload | PublicIntakeSubmissionPayload,
 ) -> IntakeDraftPayload:
     public_data = payload.model_dump(mode="json")
+    customer = dict(public_data["customer"])
+    community_access = customer.pop("community_access_method", None)
+    building_access = customer.pop("building_access_method", None)
+    if community_access is not None or building_access is not None:
+        customer["access_method"] = (
+            f"小区门禁：{community_access or '待确认'}；"
+            f"楼下门禁：{building_access or '待确认'}"
+        )
     return IntakeDraftPayload.model_validate(
         {
-            "customer": public_data["customer"],
+            "customer": customer,
             "cats": public_data["cats"],
             "service": {
                 **public_data["service"],
@@ -237,8 +257,32 @@ def _stored_payload_from_public(
     )
 
 
+def _split_public_access_method(
+    value: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    if not value:
+        return None, None, None
+    match = PUBLIC_ACCESS_PATTERN.fullmatch(value)
+    if match is None:
+        return None, None, value
+    community = match.group("community")
+    building = match.group("building")
+    if community != "待确认" and community not in PUBLIC_ACCESS_METHODS:
+        return None, None, value
+    if building != "待确认" and building not in PUBLIC_ACCESS_METHODS:
+        return None, None, value
+    return (
+        None if community == "待确认" else community,
+        None if building == "待确认" else building,
+        None,
+    )
+
+
 def _public_payload_from_stored(payload: dict[str, object]) -> PublicIntakeDraftPayload:
     stored = IntakeDraftPayload.model_validate(payload or {})
+    community_access, building_access, legacy_access = _split_public_access_method(
+        stored.customer.access_method
+    )
     return PublicIntakeDraftPayload.model_validate(
         {
             "customer": {
@@ -248,10 +292,14 @@ def _public_payload_from_stored(payload: dict[str, object]) -> PublicIntakeDraft
                     "wechat_name",
                     "phone",
                     "address",
-                    "access_method",
                     "key_status",
                     "notes",
                 )
+            }
+            | {
+                "access_method": legacy_access,
+                "community_access_method": community_access,
+                "building_access_method": building_access,
             },
             "cats": [
                 {
@@ -412,7 +460,7 @@ def create_token(
 ) -> tuple[CustomerFormToken, str]:
     created_at = now or utc_now()
     for _ in range(TOKEN_GENERATION_ATTEMPTS):
-        raw_token = secrets.token_urlsafe(32)
+        raw_token = secrets.token_urlsafe(PUBLIC_TOKEN_BYTES)
         token = CustomerFormToken(
             token_hash=token_digest(raw_token),
             expires_at=created_at + timedelta(days=expires_in_days),
@@ -457,7 +505,7 @@ def to_token_read(
         status=token.status,
         expires_at=token.expires_at,
         submitted_at=token.submitted_at,
-        fill_path=f"/fill/{raw_token}" if raw_token else None,
+        fill_path=f"/f/{raw_token}" if raw_token else None,
         submission_status=submission.status if submission else None,
         revision=token_revision(token),
         created_at=token.created_at,

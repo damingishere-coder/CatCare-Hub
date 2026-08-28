@@ -1,0 +1,150 @@
+name: catcare-intake
+
+x-logging: &privacy-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: catcare/intake-postgres:2026.08.27
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: catcare_admin
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+    secrets:
+      - postgres_admin_password
+      - postgres_app_password
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catcare_admin -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    mem_limit: 768m
+    cpu_shares: 1024
+    pids_limit: 160
+    logging: *privacy-logging
+
+  relay:
+    image: catcare/intake-relay:2026.08.27
+    pull_policy: never
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CATCARE_INTAKE_RELAY_SERVER: "1"
+      CATCARE_RELAY_BACKGROUND_CLEANUP: "1"
+      CATCARE_RELAY_AUTO_MIGRATE: "1"
+      CATCARE_RELAY_ALLOWED_HOSTS: "${CATCARE_PUBLIC_HOST},${CATCARE_NAS_LAN_IP},relay,localhost,127.0.0.1"
+      CATCARE_PUBLIC_FILL_ORIGIN: "https://${CATCARE_PUBLIC_HOST}"
+      FORWARDED_ALLOW_IPS: "*"
+      PORT: "8080"
+    secrets:
+      - postgres_app_password
+      - relay_key
+    ports:
+      - "${CATCARE_NAS_LAN_IP}:${CATCARE_RELAY_LAN_PORT:-18081}:8080"
+    networks:
+      - edge
+      - data
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/ready', timeout=3).read()",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+    mem_limit: 512m
+    cpu_shares: 1024
+    pids_limit: 160
+    logging: *privacy-logging
+
+  gateway:
+    image: catcare/intake-gateway:2026.08.27
+    pull_policy: never
+    restart: unless-stopped
+    depends_on:
+      relay:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${CATCARE_FUNNEL_TARGET_PORT:-18080}:8080"
+    networks:
+      - edge
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    mem_limit: 128m
+    cpu_shares: 512
+    pids_limit: 80
+    logging: *privacy-logging
+
+  backup:
+    image: catcare/intake-backup:2026.08.27
+    pull_policy: never
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: catcare_relay
+      POSTGRES_USER: catcare_relay
+      BACKUP_RETENTION_DAYS: "7"
+      BACKUP_INTERVAL_SECONDS: "86400"
+    secrets:
+      - postgres_app_password
+    volumes:
+      - ./backups:/backups
+    networks:
+      - data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    healthcheck:
+      test: ["CMD-SHELL", "find /backups -maxdepth 1 -type f -name 'catcare-relay-*.dump' -mmin -1500 | grep -q ."]
+      interval: 30m
+      timeout: 10s
+      retries: 2
+      start_period: 10m
+    mem_limit: 256m
+    cpu_shares: 512
+    pids_limit: 80
+    logging: *privacy-logging
+
+networks:
+  edge:
+    driver: bridge
+  data:
+    driver: bridge
+    internal: true
+
+secrets:
+  postgres_admin_password:
+    file: ./secrets/postgres_admin_password
+  postgres_app_password:
+    file: ./secrets/postgres_app_password
+  relay_key:
+    file: ./secrets/relay_key

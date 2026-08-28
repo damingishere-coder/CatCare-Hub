@@ -80,10 +80,6 @@ export function editableDraft(draft: IntakeDraftPayload | null): IntakeDraftPayl
 
 export const emptyPublicCat = (): PublicIntakeCatDraft => ({
   name: null,
-  food: null,
-  litter_type: null,
-  medication_required: false,
-  medication_notes: null,
   special_notes: null,
 });
 
@@ -98,6 +94,8 @@ export function publicEditableDraft(
       phone: null,
       address: null,
       access_method: null,
+      community_access_method: null,
+      building_access_method: null,
       key_status: null,
       notes: null,
     },

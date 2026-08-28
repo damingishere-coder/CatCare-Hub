@@ -82,12 +82,24 @@ class IntakeDraftPayload(IntakeModel):
     notes: str | None = Field(default=None, max_length=4000)
 
 
+PublicAccessMethod = Literal[
+    "无",
+    "密码",
+    "门卡",
+    "钥匙开门",
+    "指纹或人脸",
+    "联系物业或门卫",
+]
+
+
 class PublicIntakeCustomerDraft(IntakeModel):
     name: str | None = Field(default=None, max_length=100)
     wechat_name: str | None = Field(default=None, max_length=100)
     phone: str | None = Field(default=None, max_length=32)
     address: str | None = Field(default=None, max_length=1000)
     access_method: str | None = Field(default=None, max_length=100)
+    community_access_method: PublicAccessMethod | None = None
+    building_access_method: PublicAccessMethod | None = None
     key_status: str | None = Field(default=None, max_length=50)
     notes: str | None = Field(default=None, max_length=4000)
 

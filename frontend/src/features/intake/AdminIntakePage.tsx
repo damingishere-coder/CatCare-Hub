@@ -158,8 +158,20 @@ function AuditTimeline({ events }: { events: IntakeAuditEvent[] }) {
 
 const reviewInputClass = "mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
 
-function ReviewEditor({ payload, unitPrice, disabled, onPayloadChange, onUnitPriceChange }: {
+function mergeNote(current: string | null, source: string): string {
+  if (!current) return source;
+  if (current.includes(source)) return current;
+  return `${current}\n${source}`;
+}
+
+function editableReviewPayload(detail: IntakeSubmissionDetail): IntakeDraftPayload {
+  if (detail.review_payload) return detail.review_payload;
+  return { ...detail.payload, notes: null };
+}
+
+function ReviewEditor({ payload, sourceNote, unitPrice, disabled, onPayloadChange, onUnitPriceChange }: {
   payload: IntakeDraftPayload;
+  sourceNote: string | null;
   unitPrice: string;
   disabled: boolean;
   onPayloadChange: (payload: IntakeDraftPayload) => void;
@@ -177,10 +189,26 @@ function ReviewEditor({ payload, unitPrice, disabled, onPayloadChange, onUnitPri
   function cat(index: number, field: keyof IntakeDraftPayload["cats"][number], value: string | boolean | null) {
     onPayloadChange({ ...payload, cats: payload.cats.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item) });
   }
+  function copySourceNote(target: "customer" | "order") {
+    if (!sourceNote) return;
+    if (target === "customer") {
+      customer("notes", mergeNote(payload.customer.notes, sourceNote));
+      return;
+    }
+    onPayloadChange({ ...payload, notes: mergeNote(payload.notes, sourceNote) });
+  }
   const optional = (value: string) => value.trim() || null;
   return <div className="space-y-4">
     <section className="rounded-lg border border-orange-200 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-semibold">后台审核稿</h3><p className="mt-1 text-xs text-slate-500">客户原始提交不会被覆盖；这里的修改只用于最终落档和生成订单。</p></div><label className="text-sm font-semibold text-orange-900">每次价格（元）<input className={`${reviewInputClass} w-40 border-orange-300`} type="number" min="0" step="0.01" value={unitPrice} disabled={disabled} onChange={(event) => onUnitPriceChange(event.target.value)} /></label></div>
+      {sourceNote ? <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+        <p className="text-xs font-semibold text-blue-900">客户填写的待审核备注</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-blue-950">{sourceNote}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" className="rounded-md border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-900 disabled:opacity-50" disabled={disabled} onClick={() => copySourceNote("customer")}>填入客户长期备注</button>
+          <button type="button" className="rounded-md border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-900 disabled:opacity-50" disabled={disabled} onClick={() => copySourceNote("order")}>填入本次订单备注</button>
+        </div>
+      </div> : null}
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="text-xs font-medium text-slate-600">联系人名称<input className={reviewInputClass} value={payload.customer.name ?? ""} disabled={disabled} onChange={(event) => customer("name", event.target.value)} /></label>
         <label className="flex items-end gap-2 pb-2 text-xs font-medium text-slate-600"><input type="checkbox" checked={payload.customer.is_repeat_customer} disabled={disabled} onChange={(event) => customer("is_repeat_customer", event.target.checked)} />标记为老客户</label>
@@ -213,7 +241,7 @@ function ReviewEditor({ payload, unitPrice, disabled, onPayloadChange, onUnitPri
         <label className="text-xs font-medium text-slate-600 sm:col-span-2">服务注意事项<textarea className={`${reviewInputClass} min-h-16`} value={item.service_notes ?? ""} disabled={disabled} onChange={(event) => cat(index, "service_notes", optional(event.target.value))} /></label>
       </div>)}</div>
     </section>
-    <section className="rounded-lg border border-slate-200 bg-white p-4"><h3 className="text-sm font-semibold">服务计划</h3><div className="mt-3 grid gap-4 sm:grid-cols-3"><label className="text-xs font-medium text-slate-600">开始日期<input className={reviewInputClass} type="date" value={payload.service.start_date ?? ""} disabled={disabled} onChange={(event) => service("start_date", optional(event.target.value))} /></label><label className="text-xs font-medium text-slate-600">结束日期<input className={reviewInputClass} type="date" value={payload.service.end_date ?? ""} disabled={disabled} onChange={(event) => service("end_date", optional(event.target.value))} /></label><label className="text-xs font-medium text-slate-600">每日次数<input className={reviewInputClass} type="number" min={1} max={10} value={payload.service.visits_per_day ?? 1} disabled={disabled} onChange={(event) => service("visits_per_day", Number(event.target.value))} /></label></div><fieldset className="mt-4"><legend className="text-xs font-medium text-slate-600">服务事项</legend><div className="mt-2 flex flex-wrap gap-2">{serviceItemOptions.map((option) => <label key={option.value} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs"><input className="mr-2" type="checkbox" checked={payload.service.service_items.includes(option.value)} disabled={disabled} onChange={() => service("service_items", payload.service.service_items.includes(option.value) ? payload.service.service_items.filter((item) => item !== option.value) : [...payload.service.service_items, option.value])} />{option.label}</label>)}</div></fieldset><label className="mt-4 block text-xs font-medium text-slate-600">订单备注<textarea className={`${reviewInputClass} min-h-20`} value={payload.notes ?? ""} disabled={disabled} onChange={(event) => onPayloadChange({ ...payload, notes: optional(event.target.value) })} /></label></section>
+    <section className="rounded-lg border border-slate-200 bg-white p-4"><h3 className="text-sm font-semibold">服务计划</h3><div className="mt-3 grid gap-4 sm:grid-cols-3"><label className="text-xs font-medium text-slate-600">开始日期<input className={reviewInputClass} type="date" value={payload.service.start_date ?? ""} disabled={disabled} onChange={(event) => service("start_date", optional(event.target.value))} /></label><label className="text-xs font-medium text-slate-600">结束日期<input className={reviewInputClass} type="date" value={payload.service.end_date ?? ""} disabled={disabled} onChange={(event) => service("end_date", optional(event.target.value))} /></label><label className="text-xs font-medium text-slate-600">每日次数<input className={reviewInputClass} type="number" min={1} max={10} value={payload.service.visits_per_day ?? 1} disabled={disabled} onChange={(event) => service("visits_per_day", Number(event.target.value))} /></label></div><fieldset className="mt-4"><legend className="text-xs font-medium text-slate-600">服务事项</legend><div className="mt-2 flex flex-wrap gap-2">{serviceItemOptions.map((option) => <label key={option.value} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs"><input className="mr-2" type="checkbox" checked={payload.service.service_items.includes(option.value)} disabled={disabled} onChange={() => service("service_items", payload.service.service_items.includes(option.value) ? payload.service.service_items.filter((item) => item !== option.value) : [...payload.service.service_items, option.value])} />{option.label}</label>)}</div></fieldset><label className="mt-4 block text-xs font-medium text-slate-600">本次订单备注<textarea className={`${reviewInputClass} min-h-20`} value={payload.notes ?? ""} disabled={disabled} onChange={(event) => onPayloadChange({ ...payload, notes: optional(event.target.value) })} /></label></section>
   </div>;
 }
 
@@ -254,7 +282,7 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
       if (!silent && activeId && submissionResponse.items.some((item) => item.id === activeId)) {
         const refreshedDetail = await getIntakeSubmission(activeId);
         setDetail(refreshedDetail);
-        setReviewDraft(refreshedDetail.review_payload ?? refreshedDetail.payload);
+        setReviewDraft(editableReviewPayload(refreshedDetail));
         setUnitPrice(refreshedDetail.review_unit_price ?? "");
       }
     } catch (cause) {
@@ -292,7 +320,7 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
       .then((response) => {
         if (active) {
           setDetail(response);
-          setReviewDraft(response.review_payload ?? response.payload);
+          setReviewDraft(editableReviewPayload(response));
           setUnitPrice(response.review_unit_price ?? "");
         }
       })
@@ -362,7 +390,7 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
         detail.revision,
       );
       setDetail(reviewed);
-      setReviewDraft(reviewed.review_payload ?? reviewed.payload);
+      setReviewDraft(editableReviewPayload(reviewed));
       setUnitPrice(reviewed.review_unit_price ?? "");
       setSubmissions((current) => replaceSubmission(current, reviewed));
     } catch (cause) {
@@ -390,7 +418,7 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
       );
       const updated = await getIntakeSubmission(detail.id);
       setDetail(updated);
-      setReviewDraft(updated.review_payload ?? updated.payload);
+      setReviewDraft(editableReviewPayload(updated));
       setUnitPrice(updated.review_unit_price ?? "");
       setSubmissions((current) => replaceSubmission(current, updated));
       setConfirmingDecision(null);
@@ -402,7 +430,7 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
       try {
         const latest = await getIntakeSubmission(detail.id);
         setDetail(latest);
-        setReviewDraft(latest.review_payload ?? latest.payload);
+        setReviewDraft(editableReviewPayload(latest));
         setUnitPrice(latest.review_unit_price ?? "");
         setSubmissions((current) => replaceSubmission(current, latest));
       } catch {
@@ -476,7 +504,7 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
                 {detail.status === "processing" ? <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">云端记录正在处理。如上次因回写失败中断，请使用同一动作重试；本机唯一回执会阻止重复建档。</div> : null}
                 {confirmingDecision ? <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4" role="alertdialog" aria-label="确认审核动作"><p className="text-sm font-semibold text-amber-950">{confirmingDecision === "customer" ? "确认新建客户档案（不会设置为已归档），并创建已补齐名称的猫咪？" : confirmingDecision === "order" ? "确认新建客户、猫咪、已确认订单和每日任务？" : "确认作废本次提交？"}</p><p className="mt-1 text-xs leading-5 text-amber-800">客户原稿保持只读；失败不会留下半套订单，重复重试不会重复建档。</p><div className="mt-3 flex justify-end gap-2"><button type="button" className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900" onClick={() => setConfirmingDecision(null)}>取消</button><button type="button" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white" onClick={() => void handleDecision(confirmingDecision)}>{action === `decision-${confirmingDecision}` ? <LoaderCircle className="inline animate-spin" size={14} /> : null}确认执行</button></div></div> : null}
                 {terminal ? <div className={`mb-4 rounded-lg border p-4 text-sm ${detail.status === "voided" ? "border-slate-300 bg-slate-100 text-slate-800" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}><p className="font-semibold">{detail.status === "voided" ? "该提交已作废。" : detail.status === "redacted" ? "云端敏感资料已按期限清理。" : "已完成本机幂等归档。"}</p><div className="mt-2 flex flex-wrap gap-3">{detail.converted_customer_id ? <Link className="font-medium underline underline-offset-4" to="/admin/customers">查看客户 #{detail.converted_customer_id}</Link> : null}{detail.converted_order_id ? <Link className="font-medium underline underline-offset-4" to="/admin/orders">查看订单 #{detail.converted_order_id}</Link> : null}</div></div> : null}
-                {terminal ? <PayloadDetail payload={detail.review_payload ?? detail.payload} /> : reviewDraft ? <><ReviewEditor payload={reviewDraft} unitPrice={unitPrice} disabled={action !== null || detail.status === "processing"} onPayloadChange={setReviewDraft} onUnitPriceChange={setUnitPrice} /><details className="mt-4 rounded-lg border border-slate-200 bg-white p-4"><summary className="cursor-pointer text-sm font-semibold">查看客户原始提交（永久只读）</summary><div className="mt-4"><PayloadDetail payload={detail.payload} /></div></details></> : null}
+                {terminal ? <PayloadDetail payload={detail.review_payload ?? detail.payload} /> : reviewDraft ? <><ReviewEditor payload={reviewDraft} sourceNote={detail.payload.notes} unitPrice={unitPrice} disabled={action !== null || detail.status === "processing"} onPayloadChange={setReviewDraft} onUnitPriceChange={setUnitPrice} /><details className="mt-4 rounded-lg border border-slate-200 bg-white p-4"><summary className="cursor-pointer text-sm font-semibold">查看客户原始提交（永久只读）</summary><div className="mt-4"><PayloadDetail payload={detail.payload} /></div></details></> : null}
                 <AuditTimeline events={detail.audit_events} />
               </div>}
             </div>

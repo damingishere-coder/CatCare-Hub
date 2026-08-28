@@ -40,7 +40,9 @@ async function installShell() {
 }
 
 function bypassCache(pathname) {
-  return pathname === "/fill"
+  return pathname === "/f"
+    || pathname.startsWith("/f/")
+    || pathname === "/fill"
     || pathname.startsWith("/fill/")
     || pathname.startsWith("/api/")
     || pathname.startsWith("/uploads/")

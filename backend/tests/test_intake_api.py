@@ -122,9 +122,9 @@ def test_token_generation_public_draft_and_data_isolation(
     first_value = token_value(first)
     second_value = token_value(second)
     assert first_value != second_value
-    assert len(first_value) >= 40
+    assert len(first_value) == 22
     assert first["status"] == "active"
-    assert first["fill_path"] == f"/fill/{first_value}"
+    assert first["fill_path"] == f"/f/{first_value}"
     assert len(first["revision"]) == 64
 
     draft = {
@@ -146,6 +146,16 @@ def test_token_generation_public_draft_and_data_isolation(
     assert "TEST-FIRST" not in other.text
     assert client.get("/api/fill/not-valid").status_code == 404
     assert client.get(f"/api/fill/{'x' * 43}").status_code == 404
+
+    legacy_value = "L" * 43
+    with intake_api_context.session_factory.begin() as session:
+        session.add(
+            CustomerFormToken(
+                token_hash=token_digest(legacy_value),
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+        )
+    assert client.get(f"/api/fill/{legacy_value}").status_code == 200
 
     listed = client.get("/api/admin/intake/tokens").json()["items"]
     assert all(item["fill_path"] is None for item in listed)
@@ -170,6 +180,89 @@ def test_token_generation_public_draft_and_data_isolation(
         },
     )
     assert unknown_field.status_code == 422
+
+
+def test_public_access_classification_and_hidden_legacy_cat_fields_round_trip(
+    intake_api_context: IntakeApiContext,
+) -> None:
+    client = intake_api_context.client
+    token = create_token(client)
+    value = token_value(token)
+    legacy = client.put(
+        f"/api/fill/{value}",
+        json={
+            "expected_revision": token["revision"],
+            "draft": {
+                "customer": {
+                    "name": "P25 虚构客户",
+                    "phone": "P25-TEST-CONTACT",
+                    "access_method": "旧门卡记录",
+                },
+                "cats": [{"name": "P25 测试猫", "food": "旧草稿饮食"}],
+                "service": {},
+            },
+        },
+    )
+    assert legacy.status_code == 200
+    legacy_body = legacy.json()
+    assert legacy_body["draft"]["customer"]["access_method"] == "旧门卡记录"
+    assert legacy_body["draft"]["customer"]["community_access_method"] is None
+    assert legacy_body["draft"]["customer"]["building_access_method"] is None
+    assert legacy_body["draft"]["cats"][0]["food"] == "旧草稿饮食"
+
+    community_only_draft = legacy_body["draft"]
+    community_only_draft["customer"]["community_access_method"] = "无"
+    community_only = client.put(
+        f"/api/fill/{value}",
+        json={
+            "expected_revision": legacy_body["revision"],
+            "draft": community_only_draft,
+        },
+    )
+    assert community_only.status_code == 200
+    community_body = community_only.json()
+    assert community_body["draft"]["customer"]["access_method"] is None
+    assert community_body["draft"]["customer"]["community_access_method"] == "无"
+    assert community_body["draft"]["customer"]["building_access_method"] is None
+    assert community_body["draft"]["cats"][0]["food"] == "旧草稿饮食"
+
+    classified_draft = community_body["draft"]
+    classified_draft["customer"]["building_access_method"] = "门卡"
+    classified = client.put(
+        f"/api/fill/{value}",
+        json={
+            "expected_revision": community_body["revision"],
+            "draft": classified_draft,
+        },
+    )
+    assert classified.status_code == 200
+    classified_body = classified.json()
+    assert classified_body["draft"]["customer"]["community_access_method"] == "无"
+    assert classified_body["draft"]["customer"]["building_access_method"] == "门卡"
+    assert classified_body["draft"]["cats"][0]["food"] == "旧草稿饮食"
+
+    with intake_api_context.session_factory() as session:
+        submission = session.scalar(select(CustomerFormSubmission))
+        assert submission is not None
+        assert submission.payload["customer"]["access_method"] == (
+            "小区门禁：无；楼下门禁：门卡"
+        )
+        assert submission.payload["cats"][0]["food"] == "旧草稿饮食"
+
+    invalid = client.put(
+        f"/api/fill/{value}",
+        json={
+            "expected_revision": classified_body["revision"],
+            "draft": {
+                **classified_body["draft"],
+                "customer": {
+                    **classified_body["draft"]["customer"],
+                    "community_access_method": "任意文本",
+                },
+            },
+        },
+    )
+    assert invalid.status_code == 422
 
 
 def test_token_status_revision_and_expiry_are_enforced(

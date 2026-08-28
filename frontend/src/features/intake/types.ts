@@ -74,16 +74,26 @@ export interface PublicIntakeCustomerDraft {
   phone: string | null;
   address: string | null;
   access_method: string | null;
+  community_access_method: PublicAccessMethod | null;
+  building_access_method: PublicAccessMethod | null;
   key_status: string | null;
   notes: string | null;
 }
 
+export type PublicAccessMethod =
+  | "无"
+  | "密码"
+  | "门卡"
+  | "钥匙开门"
+  | "指纹或人脸"
+  | "联系物业或门卫";
+
 export interface PublicIntakeCatDraft {
   name: string | null;
-  food: string | null;
-  litter_type: string | null;
-  medication_required: boolean;
-  medication_notes: string | null;
+  food?: string | null;
+  litter_type?: string | null;
+  medication_required?: boolean;
+  medication_notes?: string | null;
   special_notes: string | null;
 }
 

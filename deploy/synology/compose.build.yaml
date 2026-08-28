@@ -1,0 +1,22 @@
+services:
+  postgres:
+    build:
+      context: ../..
+      dockerfile: deploy/synology/postgres/Dockerfile
+
+  relay:
+    build:
+      context: ../..
+      dockerfile: deploy/synology/intake-relay/Dockerfile
+      additional_contexts:
+        relay_wheels: ../../.runtime/catcare-synology/wheels
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/synology/gateway/Dockerfile
+
+  backup:
+    build:
+      context: ../..
+      dockerfile: deploy/synology/backup/Dockerfile

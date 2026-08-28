@@ -1,20 +1,20 @@
 import {
   AlertCircle,
+  CalendarDays,
   Cat,
   CheckCircle2,
+  ChevronDown,
   ClipboardPenLine,
+  Home,
   LoaderCircle,
   Plus,
-  Save,
   Send,
   Trash2,
 } from "lucide-react";
-import { type FormEvent, useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import {
   getPublicIntake,
-  savePublicDraft,
   submitPublicIntake,
 } from "../features/intake/api";
 import {
@@ -22,16 +22,44 @@ import {
   publicEditableDraft,
 } from "../features/intake/constants";
 import type {
+  PublicAccessMethod,
   PublicIntakeCatDraft,
   PublicIntakeDraftPayload,
   PublicIntakeState,
 } from "../features/intake/types";
+import { keyStatusOptions } from "../lib/customerDisplay";
 
-const inputClass = "mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 placeholder:text-slate-400";
-const textareaClass = `${inputClass} min-h-24 resize-y leading-6`;
+const inputClass = "mt-2 min-h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100";
+const textareaClass = `${inputClass} min-h-28 resize-y leading-6`;
+
+const publicAccessOptions: ReadonlyArray<{ value: PublicAccessMethod; label: string }> = [
+  { value: "无", label: "无" },
+  { value: "密码", label: "密码（只选类型，请勿填写密码）" },
+  { value: "门卡", label: "门卡" },
+  { value: "钥匙开门", label: "钥匙开门" },
+  { value: "指纹或人脸", label: "指纹或人脸" },
+  { value: "联系物业或门卫", label: "联系物业或门卫" },
+];
+
+const keyLabels: Record<string, string> = {
+  待取: "尚未交接",
+  已取: "已交给服务人员",
+  已归还: "已归还",
+  无需钥匙: "无需钥匙",
+};
 
 function valueOf(value: string | null): string {
   return value ?? "";
+}
+
+function hasAddressDetails(draft: PublicIntakeDraftPayload): boolean {
+  return Boolean(
+    draft.customer.address
+    || draft.customer.access_method
+    || draft.customer.community_access_method
+    || draft.customer.building_access_method
+    || draft.customer.key_status,
+  );
 }
 
 function statusCopy(status: Exclude<PublicIntakeState, "editable">): {
@@ -45,9 +73,9 @@ function statusCopy(status: Exclude<PublicIntakeState, "editable">): {
     return { title: "提交已作废", body: "本次资料已停止处理；如需重新填写，请联系服务人员获取新链接。" };
   }
   if (status === "reviewed") {
-    return { title: "资料审核中", body: "后台已查看并正在补充确认，处理结果不会在此链接展示具体内容。" };
+    return { title: "资料审核中", body: "我们正在核对资料，稍后会通过微信或电话与你联系。" };
   }
-  return { title: "资料已提交", body: "提交后不能修改；后台会人工联系并核对资料。" };
+  return { title: "资料已提交", body: "我们会通过微信或电话与你联系并确认服务安排。" };
 }
 
 function Field({ label, value, onChange, required, type = "text", maxLength, placeholder }: {
@@ -59,9 +87,17 @@ function Field({ label, value, onChange, required, type = "text", maxLength, pla
   maxLength?: number;
   placeholder?: string;
 }) {
-  return <label className="block text-sm font-medium text-slate-700">
+  return <label className="block text-sm font-semibold text-slate-800">
     {label}{required ? <span className="ml-1 text-red-600">*</span> : null}
-    <input className={inputClass} type={type} value={valueOf(value)} required={required} maxLength={maxLength} placeholder={placeholder} onChange={(event) => onChange(event.target.value || null)} />
+    <input
+      className={inputClass}
+      type={type}
+      value={valueOf(value)}
+      aria-required={required || undefined}
+      maxLength={maxLength}
+      placeholder={placeholder}
+      onChange={(event) => onChange(event.target.value || null)}
+    />
   </label>;
 }
 
@@ -72,21 +108,54 @@ function TextAreaField({ label, value, onChange, maxLength, placeholder }: {
   maxLength?: number;
   placeholder?: string;
 }) {
-  return <label className="block text-sm font-medium text-slate-700">
+  return <label className="block text-sm font-semibold text-slate-800">
     {label}
     <textarea className={textareaClass} value={valueOf(value)} maxLength={maxLength} placeholder={placeholder} rows={3} onChange={(event) => onChange(event.target.value || null)} />
   </label>;
 }
 
-export function FillPage() {
-  const { token } = useParams<{ token: string }>();
+function SelectField({ label, value, onChange, options }: {
+  label: string;
+  value: string | null;
+  onChange: (value: string | null) => void;
+  options: ReadonlyArray<{ value: string; label: string }>;
+}) {
+  const known = options.some((option) => option.value === value);
+  return <label className="block text-sm font-semibold text-slate-800">
+    {label}
+    <select className={inputClass} value={valueOf(value)} onChange={(event) => onChange(event.target.value || null)}>
+      <option value="">待确认</option>
+      {!known && value ? <option value={value}>原草稿：{value}</option> : null}
+      {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+    </select>
+  </label>;
+}
+
+function DisclosureButton({ id, open, icon, title, summary, onClick }: {
+  id: string;
+  open: boolean;
+  icon: ReactNode;
+  title: string;
+  summary: string;
+  onClick: () => void;
+}) {
+  return <button type="button" className="flex w-full items-center gap-3 px-5 py-5 text-left" aria-expanded={open} aria-controls={id} onClick={onClick}>
+    <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-orange-700">{icon}</span>
+    <span className="min-w-0 flex-1"><span className="block font-semibold text-slate-950">{title}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{summary}</span></span>
+    <ChevronDown className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} size={20} />
+  </button>;
+}
+
+export function FillPage({ token }: { token: string | null }) {
   const [draft, setDraft] = useState<PublicIntakeDraftPayload | null>(null);
   const [revision, setRevision] = useState<string | null>(null);
   const [state, setState] = useState<PublicIntakeState | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(token));
-  const [action, setAction] = useState<"save" | "submit" | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [addressOpen, setAddressOpen] = useState(false);
+  const [catsOpen, setCatsOpen] = useState(false);
   const [error, setError] = useState<string | null>(
     token ? null : "当前链接缺少专属 Token，请向服务人员索取完整填写链接。",
   );
@@ -101,7 +170,12 @@ export function FillPage() {
         setState(response.status);
         setExpiresAt(response.expires_at);
         setRevision(response.revision);
-        if (response.status === "editable") setDraft(publicEditableDraft(response.draft));
+        if (response.status === "editable") {
+          const editable = publicEditableDraft(response.draft);
+          setDraft(editable);
+          setAddressOpen(hasAddressDetails(editable));
+          setCatsOpen(editable.cats.length > 0);
+        }
       })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : "填写链接读取失败，请重试。");
@@ -116,6 +190,20 @@ export function FillPage() {
     setDraft((current) => current ? { ...current, customer: { ...current.customer, [field]: value } } : current);
   }
 
+  function updateAccessMethod(
+    field: "community_access_method" | "building_access_method",
+    value: string | null,
+  ) {
+    setDraft((current) => current ? {
+      ...current,
+      customer: {
+        ...current.customer,
+        access_method: null,
+        [field]: value,
+      },
+    } : current);
+  }
+
   function updateCat(index: number, updates: Partial<PublicIntakeCatDraft>) {
     setDraft((current) => current ? {
       ...current,
@@ -123,37 +211,28 @@ export function FillPage() {
     } : current);
   }
 
-  async function handleSave() {
-    if (!token || !draft || !revision) return;
-    setAction("save");
-    setError(null);
-    setMessage(null);
-    try {
-      const response = await savePublicDraft(token, draft, revision);
-      setDraft(publicEditableDraft(response.draft));
-      setRevision(response.revision);
-      setMessage("草稿已保存。你可以稍后用同一链接继续填写。");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "草稿保存失败，请重试。");
-    } finally {
-      setAction(null);
-    }
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function requestSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !draft || !revision) return;
+    if (!draft) return;
     if (!draft.customer.name) {
       setError("请填写客户姓名或称呼。");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     if (!draft.customer.phone && !draft.customer.wechat_name) {
       setError("手机号和微信至少填写一项。");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
-    setAction("submit");
     setError(null);
-    setMessage(null);
+    setConfirmOpen(true);
+  }
+
+  async function confirmSubmit() {
+    if (!token || !draft || !revision) return;
+    setSubmitting(true);
+    setConfirmOpen(false);
+    setError(null);
     try {
       const response = await submitPublicIntake(token, draft, revision, submitKey.current);
       setState(response.status);
@@ -163,63 +242,103 @@ export function FillPage() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "提交失败，请检查后重试。");
     } finally {
-      setAction(null);
+      setSubmitting(false);
     }
   }
 
   const terminalCopy = state && state !== "editable" ? statusCopy(state) : null;
+  const keyOptions = keyStatusOptions.map((value) => ({ value, label: keyLabels[value] ?? value }));
 
-  return <main className="min-h-screen overflow-x-hidden bg-[#F5F5F7] px-4 py-6 text-[#1D1D1F] sm:px-6 sm:py-10">
-    <section className="mx-auto max-w-3xl" aria-labelledby="fill-title">
-      <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-        <span className="flex size-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><ClipboardPenLine aria-hidden="true" size={20} /></span>
-        <p className="mt-5 text-xs font-semibold tracking-[0.14em] text-orange-600 uppercase">CatCare-Hub · 客户填写</p>
-        <h1 id="fill-title" className="mt-1 text-2xl font-semibold tracking-tight">上门喂猫服务资料</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">资料仅用于联系、服务准备和后台人工审核，不会自动生成订单。</p>
-        {expiresAt ? <p className="mt-2 text-xs text-slate-500">链接有效期至：{new Date(expiresAt).toLocaleString("zh-CN")}</p> : null}
+  return <main className="min-h-screen overflow-x-hidden bg-[#FFF9F1] px-4 py-5 text-[#1D1D1F] sm:py-8">
+    <section className="mx-auto max-w-xl" aria-labelledby="fill-title">
+      <header className="overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-[0_18px_50px_rgba(120,72,20,0.08)]">
+        <div className="bg-[radial-gradient(circle_at_top_right,_#FFE5BF,_transparent_48%)] p-6 sm:p-8">
+          <span className="flex size-12 items-center justify-center rounded-2xl bg-orange-100 text-orange-700"><ClipboardPenLine aria-hidden="true" size={23} /></span>
+          <p className="mt-5 text-xs font-bold tracking-[0.16em] text-orange-700 uppercase">CatCare · 客户登记</p>
+          <h1 id="fill-title" className="mt-2 text-3xl font-bold tracking-tight text-slate-950">上门喂猫资料</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">先留下基本信息，我们会再通过微信或电话与你确认细节。</p>
+          {expiresAt ? <p className="mt-4 inline-flex rounded-full bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-500">链接有效期至 {new Date(expiresAt).toLocaleString("zh-CN")}</p> : null}
+        </div>
       </header>
 
-      {loading ? <div className="cc-surface mt-5 flex items-center justify-center gap-2 py-16 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={18} />正在读取填写链接…</div> : null}
+      {loading ? <div className="mt-5 flex items-center justify-center gap-2 rounded-3xl border border-orange-100 bg-white py-16 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={18} />正在读取填写链接…</div> : null}
       {!loading && error && !draft ? <div className="cc-alert cc-alert--danger mt-5 p-5" role="alert"><AlertCircle className="mt-0.5 shrink-0" size={18} /><span>{error}</span></div> : null}
-      {!loading && terminalCopy ? <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center shadow-sm"><CheckCircle2 className="mx-auto text-emerald-700" size={36} /><h2 className="mt-4 text-lg font-semibold text-emerald-950">{terminalCopy.title}</h2><p className="mt-2 text-sm leading-6 text-emerald-800">{terminalCopy.body}</p></div> : null}
+      {!loading && terminalCopy ? <div className="mt-5 rounded-[2rem] border border-emerald-200 bg-white p-8 text-center shadow-sm"><CheckCircle2 className="mx-auto text-emerald-600" size={42} /><h2 className="mt-5 text-xl font-bold text-emerald-950">{terminalCopy.title}</h2><p className="mt-2 text-sm leading-6 text-emerald-800">{terminalCopy.body}</p></div> : null}
 
-      {!loading && draft ? <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
+      {!loading && draft ? <form className="mt-5 space-y-4 pb-32" noValidate onSubmit={requestSubmit}>
         {error ? <div className="cc-alert cc-alert--danger" role="alert"><AlertCircle className="mt-0.5 shrink-0" size={17} /><span>{error}</span></div> : null}
-        {message ? <div className="cc-alert border border-emerald-200 bg-emerald-50 text-emerald-800" role="status"><CheckCircle2 className="mt-0.5 shrink-0" size={17} />{message}</div> : null}
 
-        <section className="cc-surface p-5 sm:p-6" aria-labelledby="contact-title">
-          <h2 id="contact-title" className="text-lg font-semibold">1. 联系与地址</h2>
-          <p className="mt-1 text-xs leading-5 text-slate-500">姓名必填；手机号或微信至少填写一项，其余可稍后由后台补齐。</p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <Field label="客户姓名 / 称呼" required maxLength={100} value={draft.customer.name} onChange={(value) => updateCustomer("name", value)} />
-            <Field label="手机号" type="tel" maxLength={32} value={draft.customer.phone} onChange={(value) => updateCustomer("phone", value)} />
-            <Field label="微信号 / 微信昵称" maxLength={100} value={draft.customer.wechat_name} onChange={(value) => updateCustomer("wechat_name", value)} />
-            <Field label="门禁方式" maxLength={100} placeholder="例如：联系门卫、刷卡" value={draft.customer.access_method} onChange={(value) => updateCustomer("access_method", value)} />
-            <div className="sm:col-span-2"><TextAreaField label="完整服务地址" maxLength={1000} placeholder="可暂不填写；请勿在这里填写门禁密码或进门说明" value={draft.customer.address} onChange={(value) => updateCustomer("address", value)} /></div>
-            <Field label="钥匙状态" maxLength={50} placeholder="例如：待交接、已放门卫" value={draft.customer.key_status} onChange={(value) => updateCustomer("key_status", value)} />
-            <div className="sm:col-span-2"><TextAreaField label="补充说明" maxLength={4000} value={draft.customer.notes} onChange={(value) => updateCustomer("notes", value)} /></div>
+        <section className="rounded-[2rem] border border-orange-100 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="contact-title">
+          <div className="flex items-start gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-orange-700">1</span><div><h2 id="contact-title" className="text-lg font-bold">怎么联系你</h2><p className="mt-1 text-xs leading-5 text-slate-500">称呼必填；微信或手机号至少填写一项。</p></div></div>
+          <div className="mt-6 space-y-5">
+            <Field label="客户姓名 / 称呼" required maxLength={100} placeholder="怎么称呼你" value={draft.customer.name} onChange={(value) => updateCustomer("name", value)} />
+            <Field label="手机号" type="tel" maxLength={32} placeholder="可选" value={draft.customer.phone} onChange={(value) => updateCustomer("phone", value)} />
+            <Field label="微信号 / 微信昵称" maxLength={100} placeholder="可选，方便核对微信联系人" value={draft.customer.wechat_name} onChange={(value) => updateCustomer("wechat_name", value)} />
           </div>
-          <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">请不要填写门禁密码、具体进门步骤或钥匙编号；这些信息会由后台审核时另行补录。</p>
         </section>
 
-        <section className="cc-surface p-5 sm:p-6" aria-labelledby="cats-title">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 id="cats-title" className="text-lg font-semibold">2. 猫咪资料（可选）</h2><p className="mt-1 text-xs text-slate-500">可以先不填；添加后也允许暂缺名字，由后台联系补齐。</p></div><button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={() => setDraft({ ...draft, cats: [...draft.cats, emptyPublicCat()] })}><Plus size={16} />添加猫咪</button></div>
-          {draft.cats.length === 0 ? <p className="mt-5 rounded-lg bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">尚未添加猫咪资料。</p> : <div className="mt-5 space-y-4">{draft.cats.map((cat, index) => <article key={index} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 sm:p-5" aria-label={`猫咪 ${index + 1}`}><div className="flex items-center justify-between gap-3"><h3 className="flex items-center gap-2 font-semibold"><Cat size={17} />猫咪 {index + 1}</h3><button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-red-700" onClick={() => setDraft({ ...draft, cats: draft.cats.filter((_, catIndex) => catIndex !== index) })}><Trash2 size={14} />移除</button></div><div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="名字" maxLength={100} value={cat.name} onChange={(value) => updateCat(index, { name: value })} /><Field label="猫砂类型" maxLength={100} value={cat.litter_type} onChange={(value) => updateCat(index, { litter_type: value })} /><TextAreaField label="饮食" maxLength={4000} value={cat.food} onChange={(value) => updateCat(index, { food: value })} /><TextAreaField label="特殊注意事项" maxLength={4000} value={cat.special_notes} onChange={(value) => updateCat(index, { special_notes: value })} /><label className="flex items-center gap-2 text-sm font-medium text-slate-700 sm:col-span-2"><input type="checkbox" checked={cat.medication_required} onChange={(event) => updateCat(index, { medication_required: event.target.checked })} />需要用药</label>{cat.medication_required ? <div className="sm:col-span-2"><TextAreaField label="用药说明" maxLength={4000} value={cat.medication_notes} onChange={(value) => updateCat(index, { medication_notes: value })} /></div> : null}</div></article>)}</div>}
+        <section className="rounded-[2rem] border border-orange-100 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="schedule-title">
+          <div className="flex items-start gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-orange-700"><CalendarDays size={19} /></span><div><h2 id="schedule-title" className="text-lg font-bold">预计服务时间</h2><p className="mt-1 text-xs leading-5 text-slate-500">日期和次数都可以暂不确定。</p></div></div>
+          <div className="mt-6 space-y-5">
+            <Field label="开始日期" type="date" value={draft.service.start_date} onChange={(value) => setDraft({ ...draft, service: { ...draft.service, start_date: value } })} />
+            <Field label="结束日期" type="date" value={draft.service.end_date} onChange={(value) => setDraft({ ...draft, service: { ...draft.service, end_date: value } })} />
+            <fieldset>
+              <legend className="text-sm font-semibold text-slate-800">每天上门次数</legend>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {[
+                  { label: "每天 1 次", value: 1 },
+                  { label: "每天 2 次", value: 2 },
+                  { label: "待确认", value: null },
+                ].map((option) => <button key={option.label} type="button" className={`min-h-12 rounded-2xl border px-2 text-sm font-semibold transition ${draft.service.visits_per_day === option.value ? "border-orange-500 bg-orange-50 text-orange-800 ring-2 ring-orange-100" : "border-slate-200 bg-white text-slate-600 hover:border-orange-200"}`} aria-pressed={draft.service.visits_per_day === option.value} onClick={() => setDraft({ ...draft, service: { ...draft.service, visits_per_day: option.value } })}>{option.label}</button>)}
+              </div>
+            </fieldset>
+          </div>
         </section>
 
-        <section className="cc-surface p-5 sm:p-6" aria-labelledby="service-title">
-          <h2 id="service-title" className="text-lg font-semibold">3. 服务需求（可选）</h2>
-          <p className="mt-1 text-xs text-slate-500">服务事项和价格由后台核对后补录。</p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-3"><Field label="开始日期" type="date" value={draft.service.start_date} onChange={(value) => setDraft({ ...draft, service: { ...draft.service, start_date: value } })} /><Field label="结束日期" type="date" value={draft.service.end_date} onChange={(value) => setDraft({ ...draft, service: { ...draft.service, end_date: value } })} /><label className="block text-sm font-medium text-slate-700">每日次数<input className={inputClass} type="number" min={1} max={10} value={draft.service.visits_per_day ?? ""} onChange={(event) => setDraft({ ...draft, service: { ...draft.service, visits_per_day: event.target.value ? Number(event.target.value) : null } })} /></label></div>
-          <div className="mt-5"><TextAreaField label="本次服务补充备注" maxLength={4000} value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} /></div>
+        <section className="overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-sm">
+          <DisclosureButton id="address-fields" open={addressOpen} icon={<Home size={19} />} title="地址与交接（选填）" summary="服务地址、门禁类型和钥匙交接状态" onClick={() => setAddressOpen((current) => !current)} />
+          {addressOpen ? <div id="address-fields" className="space-y-5 border-t border-orange-100 px-5 py-6 sm:px-6">
+            <TextAreaField label="完整服务地址" maxLength={1000} placeholder="可以稍后确认；请勿填写门禁密码或具体进门步骤" value={draft.customer.address} onChange={(value) => updateCustomer("address", value)} />
+            {draft.customer.access_method ? <p className="rounded-2xl bg-orange-50 px-4 py-3 text-xs leading-5 text-orange-900">旧草稿记录的门禁方式为“{draft.customer.access_method}”。如不修改会继续保留；如需更新，请分别选择下面两项。</p> : null}
+            <SelectField label="小区门禁" value={draft.customer.community_access_method} options={publicAccessOptions} onChange={(value) => updateAccessMethod("community_access_method", value)} />
+            <SelectField label="楼下门禁" value={draft.customer.building_access_method} options={publicAccessOptions} onChange={(value) => updateAccessMethod("building_access_method", value)} />
+            <SelectField label="钥匙状态" value={draft.customer.key_status} options={keyOptions} onChange={(value) => updateCustomer("key_status", value)} />
+            <p className="rounded-2xl bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">这里只选择交接类型，不要填写门禁密码、钥匙编号或具体进门步骤。</p>
+          </div> : null}
         </section>
 
-        <section className="rounded-2xl border border-orange-200 bg-orange-50/70 p-5">
-          <h2 className="font-semibold text-orange-950">4. 提交与资料留存</h2>
-          <p className="mt-2 text-sm leading-6 text-orange-900">提交后客户不能修改原稿；后台可以在只读原稿旁制作审核稿。云端会保存待审核资料，处理完成 30 天后清除原稿、审核稿和联系方式，只保留非敏感状态与幂等回执；本地正式档案按业务需要保留。</p>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end"><button type="button" className="cc-button cc-button--secondary min-h-11" onClick={() => void handleSave()} disabled={action !== null}>{action === "save" ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}保存草稿</button><button type="submit" className="cc-button cc-button--primary min-h-11" disabled={action !== null}>{action === "submit" ? <LoaderCircle className="animate-spin" size={16} /> : <Send size={16} />}提交资料</button></div>
+        <section className="overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-sm">
+          <DisclosureButton id="cat-fields" open={catsOpen} icon={<Cat size={19} />} title={`猫咪资料（选填）${draft.cats.length ? ` · ${draft.cats.length} 只` : ""}`} summary="名字和需要特别注意的事情" onClick={() => setCatsOpen((current) => !current)} />
+          {catsOpen ? <div id="cat-fields" className="border-t border-orange-100 px-5 py-6 sm:px-6">
+            <button type="button" className="cc-button cc-button--secondary min-h-11 w-full justify-center" disabled={draft.cats.length >= 20} onClick={() => setDraft({ ...draft, cats: [...draft.cats, emptyPublicCat()] })}><Plus size={16} />添加猫咪</button>
+            {draft.cats.length === 0 ? <p className="mt-4 rounded-2xl bg-orange-50/70 px-4 py-7 text-center text-sm text-slate-500">可以先不填，之后再通过微信补充。</p> : <div className="mt-4 space-y-4">{draft.cats.map((cat, index) => <article key={index} className="rounded-3xl border border-orange-100 bg-[#FFFCF8] p-4" aria-label={`猫咪 ${index + 1}`}>
+              <div className="flex items-center justify-between gap-3"><h3 className="flex items-center gap-2 font-bold text-slate-900"><Cat size={17} />猫咪 {index + 1}</h3><button type="button" className="inline-flex min-h-10 items-center gap-1 rounded-xl px-2 text-xs font-semibold text-red-700" onClick={() => setDraft({ ...draft, cats: draft.cats.filter((_, catIndex) => catIndex !== index) })}><Trash2 size={14} />移除</button></div>
+              <div className="mt-4 space-y-5">
+                <Field label="名字" maxLength={100} placeholder="可稍后补充" value={cat.name} onChange={(value) => updateCat(index, { name: value })} />
+                <TextAreaField label="特殊注意事项" maxLength={4000} placeholder="例如性格、健康或容易紧张的情况" value={cat.special_notes} onChange={(value) => updateCat(index, { special_notes: value })} />
+              </div>
+            </article>)}</div>}
+          </div> : null}
         </section>
+
+        <section className="rounded-[2rem] border border-orange-100 bg-white p-5 shadow-sm sm:p-6">
+          <TextAreaField label="还有什么需要告诉我们（选填）" maxLength={4000} placeholder="你可以补充尚未确定的安排或其他需要我们留意的事情" value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} />
+          <div className="mt-4 text-xs leading-5 text-slate-500"><p>仅用于服务沟通与人工审核；提交后不可修改。</p><p>处理完成 30 天后，云端会清理敏感资料。</p></div>
+        </section>
+
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-orange-100 bg-white/95 px-4 pt-3 shadow-[0_-12px_35px_rgba(80,45,10,0.10)] backdrop-blur" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}>
+          <div className="mx-auto max-w-xl"><button type="submit" className="cc-button cc-button--primary min-h-12 w-full justify-center rounded-2xl text-base font-bold" disabled={submitting}>{submitting ? <LoaderCircle className="animate-spin" size={18} /> : <Send size={18} />}{submitting ? "正在提交…" : "提交资料"}</button></div>
+        </div>
       </form> : null}
     </section>
+
+    {confirmOpen ? <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-4 backdrop-blur-sm sm:items-center" role="presentation">
+      <section className="w-full max-w-sm rounded-[2rem] bg-white p-6 shadow-2xl" role="alertdialog" aria-modal="true" aria-labelledby="submit-confirm-title">
+        <span className="flex size-11 items-center justify-center rounded-2xl bg-orange-100 text-orange-700"><Send size={20} /></span>
+        <h2 id="submit-confirm-title" className="mt-5 text-xl font-bold text-slate-950">确认提交资料？</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">提交后将不能修改。我们会再通过微信或电话与你确认服务细节。</p>
+        <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" className="cc-button cc-button--secondary min-h-11 justify-center" onClick={() => setConfirmOpen(false)}>返回检查</button><button type="button" className="cc-button cc-button--primary min-h-11 justify-center" onClick={() => void confirmSubmit()}>确认提交</button></div>
+      </section>
+    </div> : null}
   </main>;
 }

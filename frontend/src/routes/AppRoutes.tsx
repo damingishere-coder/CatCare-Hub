@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
+import { Navigate, Route, Routes, useParams, useSearchParams } from "react-router-dom";
 
 import { AdminLayout } from "../layouts/AdminLayout";
 import { CustomersPage } from "../features/customers/CustomersPage";
@@ -17,6 +17,11 @@ import { NotFoundPage } from "../pages/NotFoundPage";
 function CustomersRoute() {
   const [searchParams] = useSearchParams();
   return <CustomersPage initialCreate={searchParams.get("action") === "create"} />;
+}
+
+function PublicFillRoute() {
+  const { token } = useParams<{ token: string }>();
+  return <FillPage token={token ?? null} />;
 }
 
 function PaymentsRoute() {
@@ -61,8 +66,10 @@ export function AppRoutes() {
 
       <Route path="/mobile" element={<MobilePage />} />
       <Route path="/mobile/tasks/:id" element={<MobileTaskPage />} />
-      <Route path="/fill" element={<FillPage />} />
-      <Route path="/fill/:token" element={<FillPage />} />
+      <Route path="/f" element={<PublicFillRoute />} />
+      <Route path="/f/:token" element={<PublicFillRoute />} />
+      <Route path="/fill" element={<PublicFillRoute />} />
+      <Route path="/fill/:token" element={<PublicFillRoute />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
