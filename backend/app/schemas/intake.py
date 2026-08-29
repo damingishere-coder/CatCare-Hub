@@ -52,6 +52,7 @@ class IntakeCatDraft(IntakeModel):
 
 
 class IntakeServiceDraft(IntakeModel):
+    service_dates: list[date] | None = None
     start_date: date | None = None
     end_date: date | None = None
     visits_per_day: int | None = Field(default=None, ge=1, le=10)
@@ -65,8 +66,26 @@ class IntakeServiceDraft(IntakeModel):
     ) -> list[TaskItemType]:
         return list(dict.fromkeys(service_items))
 
+    @field_validator("service_dates")
+    @classmethod
+    def normalize_service_dates(
+        cls,
+        service_dates: list[date] | None,
+    ) -> list[date] | None:
+        if service_dates is None:
+            return None
+        normalized = sorted(set(service_dates))
+        if len(normalized) > 366:
+            raise ValueError("服务日期最多 366 天")
+        return normalized
+
     @model_validator(mode="after")
     def validate_optional_date_range(self) -> Self:
+        if self.service_dates is not None and any(
+            value is not None
+            for value in (self.start_date, self.end_date, self.visits_per_day)
+        ):
+            raise ValueError("服务日期列表不能与旧日期区间同时填写")
         if self.start_date and self.end_date:
             if self.end_date < self.start_date:
                 raise ValueError("结束日期不能早于开始日期")
@@ -114,12 +133,31 @@ class PublicIntakeCatDraft(IntakeModel):
 
 
 class PublicIntakeServiceDraft(IntakeModel):
+    service_dates: list[date] | None = None
     start_date: date | None = None
     end_date: date | None = None
     visits_per_day: int | None = Field(default=None, ge=1, le=10)
 
+    @field_validator("service_dates")
+    @classmethod
+    def normalize_service_dates(
+        cls,
+        service_dates: list[date] | None,
+    ) -> list[date] | None:
+        if service_dates is None:
+            return None
+        normalized = sorted(set(service_dates))
+        if len(normalized) > 366:
+            raise ValueError("服务日期最多 366 天")
+        return normalized
+
     @model_validator(mode="after")
     def validate_optional_date_range(self) -> Self:
+        if self.service_dates is not None and any(
+            value is not None
+            for value in (self.start_date, self.end_date, self.visits_per_day)
+        ):
+            raise ValueError("服务日期列表不能与旧日期区间同时填写")
         if self.start_date and self.end_date:
             if self.end_date < self.start_date:
                 raise ValueError("结束日期不能早于开始日期")
@@ -168,10 +206,15 @@ class IntakeOrderCustomer(IntakeCustomerSubmit):
 
 
 class IntakeServiceArchive(IntakeServiceDraft):
-    start_date: date
-    end_date: date
-    visits_per_day: int = Field(ge=1, le=10)
     service_items: list[TaskItemType] = Field(min_length=1, max_length=8)
+
+    @model_validator(mode="after")
+    def require_schedule(self) -> Self:
+        if self.service_dates:
+            return self
+        if self.start_date and self.end_date and self.visits_per_day:
+            return self
+        raise ValueError("请至少选择一个服务日期")
 
 
 class IntakeSubmissionPayload(IntakeModel):
@@ -252,9 +295,11 @@ class IntakeSubmissionSummary(BaseModel):
     cat_count: int
     start_date: date | None
     end_date: date | None
+    service_dates: list[date] = Field(default_factory=list)
     submitted_at: datetime | None
     updated_at: datetime
     revision: str
+    removed_at: datetime | None = None
 
 
 class IntakeSubmissionList(BaseModel):
@@ -308,6 +353,10 @@ class IntakeReviewDraftUpdate(RevisionCommand):
 
 class IntakeDecisionCommand(RevisionCommand):
     idempotency_key: str = Field(min_length=16, max_length=128)
+
+
+class IntakeListStateUpdate(RevisionCommand):
+    removed: bool
 
 
 class IntakeDecisionRead(BaseModel):

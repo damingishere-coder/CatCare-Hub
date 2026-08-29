@@ -257,6 +257,7 @@ it("moves tasks, edits time, and saves one revision-protected day schedule", asy
   const onDirtyChange = vi.fn();
   renderPage(onDirtyChange);
   expect((await screen.findAllByText("P4 第二位虚构客户")).length).toBeGreaterThan(0);
+  expect(screen.getByRole("button", { name: "拖动任务 #1 排序" })).toBeEnabled();
 
   fireEvent.click(screen.getByRole("button", { name: "上移 P4 第二位虚构客户 任务" }));
   fireEvent.change(screen.getByLabelText("任务 #2 计划时间"), {

@@ -97,6 +97,17 @@ export function getIntakeSubmission(submissionId: number): Promise<IntakeSubmiss
   return request<IntakeSubmissionDetail>(`${adminPath}/submissions/${submissionId}`);
 }
 
+export function updateIntakeSubmissionListState(
+  submissionId: number,
+  removed: boolean,
+  expectedRevision: string,
+): Promise<IntakeSubmissionDetail> {
+  return request<IntakeSubmissionDetail>(`${adminPath}/submissions/${submissionId}/list-state`, {
+    method: "PATCH",
+    body: JSON.stringify({ removed, expected_revision: expectedRevision }),
+  });
+}
+
 export function reviewIntakeSubmission(
   submissionId: number,
   expectedRevision: string,

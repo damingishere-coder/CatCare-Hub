@@ -21,8 +21,11 @@ const apiMocks = vi.hoisted(() => ({
   previewDemoData: vi.fn(),
   clearDemoData: vi.fn(),
 }));
+const planApiMocks = vi.hoisted(() => ({ getPlanDays: vi.fn() }));
 
 vi.mock("./api", () => apiMocks);
+vi.mock("../plans/DailyPlansPage", () => ({ DailyPlansPage: () => <div>当天排班工作区</div> }));
+vi.mock("../plans/api", () => planApiMocks);
 
 const timestamp = "2030-09-01T08:00:00";
 const tasks: OrderTask[] = Array.from({ length: 7 }, (_, index) => ({
@@ -127,9 +130,9 @@ const detail: OrderDetail = {
   created_at: timestamp,
 };
 
-function renderPage(initialCreate = false) {
+function renderPage(initialCreate = false, initialEntry = "/admin/orders?order_id=1&date=2030-10-01") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <OrdersPage initialCreate={initialCreate} />
     </MemoryRouter>,
   );
@@ -176,6 +179,36 @@ beforeEach(() => {
   apiMocks.updateOrder.mockResolvedValue(detail);
   apiMocks.updateOrderStatus.mockResolvedValue(detail);
   apiMocks.deleteOrder.mockResolvedValue(undefined);
+  planApiMocks.getPlanDays.mockResolvedValue({ items: [], total: 0 });
+});
+
+it("uses the month calendar as the primary view and opens details on demand", async () => {
+  planApiMocks.getPlanDays.mockResolvedValue({
+    items: [{
+      service_date: "2030-10-01",
+      task_count: 2,
+      order_count: 1,
+      cat_count: 2,
+      customer_names: [summary.customer.name],
+      orders: [{ order_id: 1, customer_name: summary.customer.name, visit_count: 2, order_status: "confirmed" }],
+    }],
+    total: 1,
+  });
+  renderPage(false, "/admin/orders?date=2030-10-01");
+
+  expect(await screen.findByRole("heading", { name: "订单月历" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "订单 #1", level: 2 })).not.toBeInTheDocument();
+  const marker = await screen.findByRole("button", { name: /#1 ×2/ });
+  fireEvent.click(marker);
+  expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
+  expect(apiMocks.getOrder).toHaveBeenCalledWith(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "关闭订单详情" }));
+  expect(screen.queryByRole("heading", { name: "订单 #1", level: 2 })).not.toBeInTheDocument();
+  const collapse = screen.getByRole("button", { name: "收起订单列表" });
+  fireEvent.click(collapse);
+  expect(screen.getByLabelText("订单列表")).toHaveClass("hidden");
+  expect(screen.getByRole("button", { name: "展开订单列表" })).toBeInTheDocument();
 });
 
 it("shows an order, authoritative pricing, and seven generated tasks", async () => {

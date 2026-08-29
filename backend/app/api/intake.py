@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.db.session import get_db
 from app.models.enums import FormSubmissionStatus
 from app.models.intake import CustomerFormSubmission, CustomerFormToken
+from app.models.system import SystemFlag
 from app.schemas.intake import (
     IntakeClaimCommand,
     IntakeClaimRead,
@@ -16,6 +17,7 @@ from app.schemas.intake import (
     IntakeDecisionCommand,
     IntakeDecisionRead,
     IntakeDraftPayload,
+    IntakeListStateUpdate,
     IntakeRedactionRead,
     IntakeReviewDraftUpdate,
     IntakeSubmissionDetail,
@@ -66,6 +68,7 @@ relay_admin_router = APIRouter(
     tags=["intake-relay-sync"],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
+REMOVED_FLAG_PREFIX = "intake-list-removed:"
 
 
 def _token_options():
@@ -81,6 +84,49 @@ def _load_admin_token(session: Session, token_id: int) -> CustomerFormToken:
     if token is None:
         raise HTTPException(status_code=404, detail="填写链接不存在")
     return token
+
+
+def _removed_key(submission_uuid: str) -> str:
+    return f"{REMOVED_FLAG_PREFIX}{submission_uuid}"
+
+
+def _decorate_removed_state(
+    session: Session,
+    detail: IntakeSubmissionDetail,
+) -> IntakeSubmissionDetail:
+    flag = session.get(SystemFlag, _removed_key(detail.submission_uuid))
+    return detail.model_copy(update={"removed_at": flag.created_at if flag else None})
+
+
+def _decorate_removed_list(
+    session: Session,
+    response: IntakeSubmissionList,
+) -> IntakeSubmissionList:
+    keys = [_removed_key(item.submission_uuid) for item in response.items]
+    flags = {
+        flag.key: flag
+        for flag in (
+            session.scalars(select(SystemFlag).where(SystemFlag.key.in_(keys))).all()
+            if keys
+            else []
+        )
+    }
+    return response.model_copy(
+        update={
+            "items": [
+                item.model_copy(
+                    update={
+                        "removed_at": (
+                            flags[_removed_key(item.submission_uuid)].created_at
+                            if _removed_key(item.submission_uuid) in flags
+                            else None
+                        )
+                    }
+                )
+                for item in response.items
+            ]
+        }
+    )
 
 
 def _submission_options():
@@ -235,9 +281,12 @@ def list_submissions(
     offset: int = Query(default=0, ge=0),
 ) -> IntakeSubmissionList:
     if remote_intake_enabled():
-        return hydrate_remote_list(
+        return _decorate_removed_list(
             session,
-            RemoteIntakeClient().list_submissions(limit=limit, offset=offset),
+            hydrate_remote_list(
+                session,
+                RemoteIntakeClient().list_submissions(limit=limit, offset=offset),
+            ),
         )
     status_filter = CustomerFormSubmission.status != FormSubmissionStatus.DRAFT
     total = session.scalar(
@@ -254,9 +303,12 @@ def list_submissions(
         .limit(limit)
         .offset(offset)
     ).all()
-    return IntakeSubmissionList(
-        items=[to_submission_summary(item) for item in submissions],
-        total=total,
+    return _decorate_removed_list(
+        session,
+        IntakeSubmissionList(
+            items=[to_submission_summary(item) for item in submissions],
+            total=total,
+        ),
     )
 
 
@@ -273,11 +325,52 @@ def get_submission(
     session: DatabaseSession,
 ) -> IntakeSubmissionDetail:
     if remote_intake_enabled():
-        return hydrate_remote_detail(
+        return _decorate_removed_state(
+            session,
+            hydrate_remote_detail(
+                session,
+                RemoteIntakeClient().get_submission(submission_id),
+            ),
+        )
+    return _decorate_removed_state(
+        session,
+        to_submission_detail(_load_submission(session, submission_id)),
+    )
+
+
+@admin_router.patch(
+    "/submissions/{submission_id}/list-state",
+    response_model=IntakeSubmissionDetail,
+)
+def update_submission_list_state(
+    submission_id: int,
+    payload: IntakeListStateUpdate,
+    session: DatabaseSession,
+) -> IntakeSubmissionDetail:
+    detail = (
+        hydrate_remote_detail(
             session,
             RemoteIntakeClient().get_submission(submission_id),
         )
-    return to_submission_detail(_load_submission(session, submission_id))
+        if remote_intake_enabled()
+        else to_submission_detail(_load_submission(session, submission_id))
+    )
+    if detail.revision != payload.expected_revision:
+        raise HTTPException(status_code=409, detail="提交记录已变化，请刷新后重试")
+    voided = detail.status is FormSubmissionStatus.VOIDED or (
+        detail.status is FormSubmissionStatus.REDACTED
+        and detail.decision_mode == "void"
+    )
+    if payload.removed and not voided:
+        raise HTTPException(status_code=409, detail="只有已作废记录可以从列表移除")
+    key = _removed_key(detail.submission_uuid)
+    flag = session.get(SystemFlag, key)
+    if payload.removed and flag is None:
+        session.add(SystemFlag(key=key, payload={"removed": True}))
+    elif not payload.removed and flag is not None:
+        session.delete(flag)
+    session.commit()
+    return _decorate_removed_state(session, detail)
 
 
 @admin_router.put(

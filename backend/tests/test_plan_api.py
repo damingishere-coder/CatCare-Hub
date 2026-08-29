@@ -201,11 +201,16 @@ def test_plan_days_and_task_detail_follow_privacy_boundaries(
         "building",
         "unit",
         "room",
+        "updated_at",
     }
     assert detail["customer"]["address"] == "虚构路 100 号"
     assert detail["cats"][0]["service_notes"] == "虚构服务注意事项"
     assert detail["order_notes"] == "虚构 P4 订单备注"
     assert detail["photo_count"] == 0
+    assert detail["location_scope"] == "customer"
+    assert detail["location_sync_order_count"] == 1
+    assert detail["location_sync_task_count"] == 4
+    assert detail["order_updated_at"]
     for forbidden_key in (
         "phone",
         "wechat_name",
@@ -224,6 +229,42 @@ def test_plan_days_and_task_detail_follow_privacy_boundaries(
     assert empty_response.json()["tasks"] == []
     assert empty_response.json()["task_count"] == 0
     assert client.get("/api/admin/plans/tasks/999999").status_code == 404
+
+
+def test_plan_days_range_returns_order_markers_and_validates_bounds(
+    plan_api_context: PlanApiContext,
+) -> None:
+    client = plan_api_context.client
+    first_order, second_order = create_three_task_plan(client)
+
+    response = client.get(
+        "/api/admin/plans/days",
+        params={"date_from": "2033-10-01", "date_to": "2033-10-02"},
+    )
+    assert response.status_code == 200
+    days = response.json()["items"]
+    assert days[0]["orders"] == [
+        {
+            "order_id": first_order["id"],
+            "customer_name": "P4 第一位虚构客户",
+            "visit_count": 2,
+            "order_status": "confirmed",
+        },
+        {
+            "order_id": second_order["id"],
+            "customer_name": "P4 第二位虚构客户",
+            "visit_count": 1,
+            "order_status": "confirmed",
+        },
+    ]
+    assert days[1]["orders"][0]["visit_count"] == 2
+    assert client.get(
+        "/api/admin/plans/days", params={"date_from": "2033-10-01"}
+    ).status_code == 422
+    assert client.get(
+        "/api/admin/plans/days",
+        params={"date_from": "2033-01-01", "date_to": "2033-03-04"},
+    ).status_code == 422
 
 
 def test_schedule_save_is_atomic_persistent_and_revision_protected(

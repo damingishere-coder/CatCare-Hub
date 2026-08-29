@@ -6,6 +6,8 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import get_db
+from app.maps import MapServices
+from app.maps.factory import get_map_services
 from app.models.customer import Cat, Customer
 from app.models.order import Order, OrderCat
 from app.models.payment import Payment
@@ -22,11 +24,18 @@ from app.schemas.customer import (
     CustomerSummary,
     CustomerUpdate,
 )
+from app.schemas.location import CustomerLocationRestore, CustomerLocationUpdate, LocationUpdateRead
 from app.services.customers import build_customer
+from app.services.manual_locations import (
+    check_customer_location_concurrency,
+    update_customer_location,
+    verified_geocode,
+)
 
 
 router = APIRouter(prefix="/api/admin/customers", tags=["admin-customers"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
+MapServicesDependency = Annotated[MapServices, Depends(get_map_services)]
 GEOCODE_ADDRESS_FIELDS = {"community", "address", "building", "unit", "room"}
 
 
@@ -172,6 +181,59 @@ def create_customer(payload: CustomerCreate, session: DatabaseSession) -> Custom
 @router.get("/{customer_id}", response_model=CustomerDetail)
 def get_customer(customer_id: int, session: DatabaseSession) -> CustomerDetail:
     return _customer_detail(session, _load_customer(session, customer_id))
+
+
+@router.patch("/{customer_id}/location", response_model=LocationUpdateRead)
+def patch_customer_location(
+    customer_id: int,
+    payload: CustomerLocationUpdate,
+    session: DatabaseSession,
+) -> LocationUpdateRead:
+    result = update_customer_location(
+        session,
+        customer_id=customer_id,
+        source_order_id=payload.source_order_id,
+        service_date=payload.service_date,
+        expected_customer_updated_at=payload.expected_customer_updated_at,
+        expected_day_revision=payload.expected_day_revision,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+    )
+    session.commit()
+    return result
+
+
+@router.post("/{customer_id}/location/restore-auto", response_model=LocationUpdateRead)
+def restore_customer_location(
+    customer_id: int,
+    payload: CustomerLocationRestore,
+    session: DatabaseSession,
+    services: MapServicesDependency,
+) -> LocationUpdateRead:
+    _, order, _ = check_customer_location_concurrency(
+        session,
+        customer_id=customer_id,
+        source_order_id=payload.source_order_id,
+        service_date=payload.service_date,
+        expected_customer_updated_at=payload.expected_customer_updated_at,
+        expected_day_revision=payload.expected_day_revision,
+    )
+    result, provider_name = verified_geocode(order, services)
+    session.expire_all()
+    updated = update_customer_location(
+        session,
+        customer_id=customer_id,
+        source_order_id=payload.source_order_id,
+        service_date=payload.service_date,
+        expected_customer_updated_at=payload.expected_customer_updated_at,
+        expected_day_revision=payload.expected_day_revision,
+        latitude=result.point.latitude,
+        longitude=result.point.longitude,
+        automatic_result=result,
+        provider_name=provider_name,
+    )
+    session.commit()
+    return updated
 
 
 @router.patch("/{customer_id}", response_model=CustomerDetail)

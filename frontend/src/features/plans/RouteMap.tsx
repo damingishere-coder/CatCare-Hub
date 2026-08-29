@@ -20,6 +20,10 @@ interface RouteMapProps {
   route: PlanRoutePath | null;
   selectedTaskId: number | null;
   onSelectTask: (taskId: number) => void;
+  locationEditing?: boolean;
+  draftPosition?: PlanGeoPoint | null;
+  onDraftPositionChange?: (position: PlanGeoPoint) => void;
+  onAmapReadyChange?: (ready: boolean) => void;
 }
 
 interface ProjectedPoint {
@@ -120,6 +124,8 @@ function CoordinateCanvas({
 export function RouteMap(props: RouteMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const selectTask = useRef(props.onSelectTask);
+  const changeDraft = useRef(props.onDraftPositionChange);
+  const readyChange = useRef(props.onAmapReadyChange);
   const [amapFailed, setAmapFailed] = useState(false);
   const canUseAmap = props.providerName === "amap" && hasAmapBrowserKey() && hasAmapBrowserSecurityCode() && !amapFailed;
   const modelKey = useMemo(
@@ -128,13 +134,23 @@ export function RouteMap(props: RouteMapProps) {
       markers: props.markers,
       route: props.route,
       selectedTaskId: props.selectedTaskId,
+      locationEditing: props.locationEditing,
+      draftPosition: props.draftPosition,
     }),
-    [props.markers, props.route, props.selectedTaskId, props.start],
+    [props.draftPosition, props.locationEditing, props.markers, props.route, props.selectedTaskId, props.start],
   );
 
   useEffect(() => {
     selectTask.current = props.onSelectTask;
   }, [props.onSelectTask]);
+
+  useEffect(() => {
+    changeDraft.current = props.onDraftPositionChange;
+  }, [props.onDraftPositionChange]);
+
+  useEffect(() => {
+    readyChange.current = props.onAmapReadyChange;
+  }, [props.onAmapReadyChange]);
 
   useEffect(() => {
     if (!canUseAmap || !container.current) return;
@@ -149,21 +165,33 @@ export function RouteMap(props: RouteMapProps) {
           markers: props.markers,
           polyline: props.route?.polyline ?? [],
           selectedTaskId: props.selectedTaskId,
+          locationEditing: props.locationEditing,
+          draftPosition: props.draftPosition,
         },
-        (taskId) => selectTask.current(taskId),
+        {
+          onSelectTask: (taskId) => selectTask.current(taskId),
+          onDraftPositionChange: (point) => changeDraft.current?.(point),
+        },
       )
       .then((dispose) => {
-        if (active) cleanup = dispose;
+        if (active) {
+          cleanup = dispose;
+          readyChange.current?.(true);
+        }
         else dispose();
       })
       .catch(() => {
-        if (active) setAmapFailed(true);
+        if (active) {
+          setAmapFailed(true);
+          readyChange.current?.(false);
+        }
       });
     return () => {
       active = false;
+      readyChange.current?.(false);
       cleanup?.();
     };
-  }, [canUseAmap, modelKey, props.markers, props.route, props.selectedTaskId, props.start]);
+  }, [canUseAmap, modelKey, props.draftPosition, props.locationEditing, props.markers, props.route, props.selectedTaskId, props.start]);
 
   return (
     <div className="relative h-[390px] overflow-hidden rounded-[10px] border border-slate-200/80 bg-slate-100 shadow-inner">

@@ -36,11 +36,11 @@ from app.schemas.intake import (
     PublicIntakeRead,
     PublicIntakeSubmissionPayload,
 )
-from app.schemas.order import OrderWrite
+from app.schemas.order import OrderCreate, OrderWrite
 from app.services.business_time import as_utc
 from app.services.credentials import token_digest
 from app.services.customers import build_customer
-from app.services.orders import build_order, reprice_order
+from app.services.orders import build_order, build_simple_order, reprice_order
 
 
 PUBLIC_TOKEN_BYTES = 16
@@ -316,6 +316,7 @@ def _public_payload_from_stored(payload: dict[str, object]) -> PublicIntakeDraft
                 for cat in stored.cats
             ],
             "service": {
+                "service_dates": stored.service.service_dates,
                 "start_date": stored.service.start_date,
                 "end_date": stored.service.end_date,
                 "visits_per_day": stored.service.visits_per_day,
@@ -556,6 +557,7 @@ def to_submission_summary(
             cat_count=0,
             start_date=None,
             end_date=None,
+            service_dates=[],
             submitted_at=submission.token.submitted_at,
             updated_at=submission.updated_at,
             revision=submission_revision(submission),
@@ -570,6 +572,7 @@ def to_submission_summary(
         cat_count=len(payload.cats),
         start_date=payload.service.start_date,
         end_date=payload.service.end_date,
+        service_dates=payload.service.service_dates or [],
         submitted_at=submission.token.submitted_at,
         updated_at=submission.updated_at,
         revision=submission_revision(submission),
@@ -746,7 +749,7 @@ def _order_payload(submission: CustomerFormSubmission) -> IntakeOrderArchivePayl
     except ValidationError as exc:
         raise HTTPException(
             status_code=409,
-            detail="请补齐地址、猫咪、服务日期、每日次数和服务事项",
+            detail="请补齐地址、猫咪、服务日期和服务事项",
         ) from exc
 
 
@@ -949,20 +952,36 @@ def archive_order_submission(
         changed_at=changed_at,
     )
     customer, cats = _build_customer_cats(session, payload=payload)
-    order_payload = OrderWrite(
-        customer_id=customer.id,
-        cat_ids=[cat.id for cat in cats],
-        start_date=payload.service.start_date,
-        end_date=payload.service.end_date,
-        visits_per_day=payload.service.visits_per_day,
-        service_items=payload.service.service_items,
-        base_price=unit_price,
-        stairs_fee=Decimal("0.00"),
-        other_fee=Decimal("0.00"),
-        order_status=OrderStatus.CONFIRMED,
-        notes=payload.notes,
-    )
-    order = build_order(order_payload, cats=cats, customer=customer)
+    if payload.service.service_dates:
+        order = build_simple_order(
+            OrderCreate(
+                source_customer_id=customer.id,
+                cat_count=len(cats),
+                service_dates=payload.service.service_dates,
+                service_items=payload.service.service_items,
+                unit_price=unit_price,
+                notes=payload.notes,
+            ),
+            source_customer=customer,
+        )
+    else:
+        assert payload.service.start_date is not None
+        assert payload.service.end_date is not None
+        assert payload.service.visits_per_day is not None
+        order_payload = OrderWrite(
+            customer_id=customer.id,
+            cat_ids=[cat.id for cat in cats],
+            start_date=payload.service.start_date,
+            end_date=payload.service.end_date,
+            visits_per_day=payload.service.visits_per_day,
+            service_items=payload.service.service_items,
+            base_price=unit_price,
+            stairs_fee=Decimal("0.00"),
+            other_fee=Decimal("0.00"),
+            order_status=OrderStatus.CONFIRMED,
+            notes=payload.notes,
+        )
+        order = build_order(order_payload, cats=cats, customer=customer)
     reprice_order(order, unit_price=unit_price)
     session.add(order)
     session.flush()

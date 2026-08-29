@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.session import build_engine, get_db
 from app.main import app
 from app.models import Cat, Customer, CustomerFormSubmission, CustomerFormToken, Order, Task
+from app.models.system import SystemFlag
 from app.models.enums import FormSubmissionStatus, FormTokenStatus
 from app.services.privacy_logging import FillTokenRedactionFilter
 from app.services.credentials import token_digest
@@ -544,6 +545,139 @@ def test_submission_list_supports_pagination(
     assert page.status_code == 200
     assert page.json()["total"] == 3
     assert len(page.json()["items"]) == 2
+
+
+def test_sparse_service_dates_are_canonical_and_create_one_task_per_selected_day(
+    intake_api_context: IntakeApiContext,
+) -> None:
+    client = intake_api_context.client
+    token = create_token(client)
+    payload = complete_payload(
+        service={
+            "service_dates": ["2031-04-07", "2031-04-01", "2031-04-07"],
+        }
+    )
+    submitted = client.post(
+        f"/api/fill/{token_value(token)}/submit",
+        json={
+            "expected_revision": token["revision"],
+            "idempotency_key": "sparse-service-dates-submit-0001",
+            "payload": payload,
+        },
+    )
+    assert submitted.status_code == 200
+    summary = max(
+        client.get("/api/admin/intake/submissions").json()["items"],
+        key=lambda item: item["id"],
+    )
+    assert summary["service_dates"] == ["2031-04-01", "2031-04-07"]
+    detail = client.get(f"/api/admin/intake/submissions/{summary['id']}").json()
+    review_payload = detail["payload"]
+    review_payload["service"]["service_items"] = ["feed", "photo"]
+    reviewed = client.put(
+        f"/api/admin/intake/submissions/{summary['id']}/review-draft",
+        json={
+            "review_payload": review_payload,
+            "unit_price": "40.00",
+            "expected_revision": detail["revision"],
+        },
+    ).json()
+    archived = client.post(
+        f"/api/admin/intake/submissions/{summary['id']}/archive-order",
+        json={
+            "expected_revision": reviewed["revision"],
+            "idempotency_key": "sparse-service-dates-archive-0001",
+        },
+    )
+    assert archived.status_code == 200
+    with intake_api_context.session_factory() as session:
+        order = session.get(Order, archived.json()["order_id"])
+        assert order is not None
+        task_dates = sorted(task.service_date.isoformat() for task in order.tasks)
+        assert task_dates == ["2031-04-01", "2031-04-07"]
+        assert order.total_amount == 80
+
+    mixed_token = create_token(client)
+    mixed = client.post(
+        f"/api/fill/{token_value(mixed_token)}/submit",
+        json={
+            "expected_revision": mixed_token["revision"],
+            "idempotency_key": "mixed-service-date-format-0001",
+            "payload": complete_payload(
+                service={
+                    "service_dates": ["2031-04-01"],
+                    "start_date": "2031-04-01",
+                    "end_date": "2031-04-01",
+                    "visits_per_day": 1,
+                }
+            ),
+        },
+    )
+    assert mixed.status_code == 422
+
+    duplicate_token = create_token(client)
+    duplicate_dates = client.post(
+        f"/api/fill/{token_value(duplicate_token)}/submit",
+        json={
+            "expected_revision": duplicate_token["revision"],
+            "idempotency_key": "dedupe-before-service-date-limit-0001",
+            "payload": complete_payload(
+                service={"service_dates": ["2031-04-01"] * 367}
+            ),
+        },
+    )
+    assert duplicate_dates.status_code == 200
+
+    too_many_token = create_token(client)
+    too_many_dates = [
+        (datetime(2031, 1, 1) + timedelta(days=offset)).date().isoformat()
+        for offset in range(367)
+    ]
+    rejected = client.post(
+        f"/api/fill/{token_value(too_many_token)}/submit",
+        json={
+            "expected_revision": too_many_token["revision"],
+            "idempotency_key": "too-many-service-dates-0001",
+            "payload": complete_payload(service={"service_dates": too_many_dates}),
+        },
+    )
+    assert rejected.status_code == 422
+
+
+def test_voided_submission_can_be_removed_and_restored_without_deletion(
+    intake_api_context: IntakeApiContext,
+) -> None:
+    client = intake_api_context.client
+    _, summary = submit_for_review(client)
+    voided = client.post(
+        f"/api/admin/intake/submissions/{summary['id']}/void",
+        json={
+            "expected_revision": summary["revision"],
+            "idempotency_key": "list-state-void-0001",
+        },
+    )
+    assert voided.status_code == 200
+    detail = client.get(f"/api/admin/intake/submissions/{summary['id']}").json()
+    removed = client.patch(
+        f"/api/admin/intake/submissions/{summary['id']}/list-state",
+        json={"removed": True, "expected_revision": detail["revision"]},
+    )
+    assert removed.status_code == 200
+    assert removed.json()["removed_at"] is not None
+    listed = client.get("/api/admin/intake/submissions").json()["items"]
+    assert next(item for item in listed if item["id"] == summary["id"])["removed_at"]
+    with intake_api_context.session_factory() as session:
+        assert session.get(CustomerFormSubmission, summary["id"]) is not None
+        flag = session.get(SystemFlag, f"intake-list-removed:{summary['submission_uuid']}")
+        assert flag is not None
+        assert flag.payload == {"removed": True}
+
+    restored = client.patch(
+        f"/api/admin/intake/submissions/{summary['id']}/list-state",
+        json={"removed": False, "expected_revision": detail["revision"]},
+    )
+    assert restored.status_code == 200
+    assert restored.json()["removed_at"] is None
 
 
 def test_customer_only_archive_and_void_are_idempotent(

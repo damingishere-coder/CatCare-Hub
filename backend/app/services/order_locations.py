@@ -6,33 +6,16 @@ from sqlalchemy.orm import Session, selectinload
 from app.maps import GeoPoint, GeocodeResult, MapProviderError, MapServices
 from app.models.order import Order
 from app.models.task import Task
-from app.services.geocoding import geocode_fingerprint, geocode_result_matches_address
+from app.services.geocoding import (
+    geocode_fingerprint,
+    geocode_result_matches_address,
+    normalized_geocode_address,
+)
 from app.services.orders import (
-    default_geocode_service_area,
+    customer_geocode_address,
     order_geocode_address,
     task_has_execution_history,
 )
-
-
-def _normalized(value: str | None) -> str:
-    return " ".join((value or "").strip().casefold().split())
-
-
-def _customer_address(order: Order) -> str | None:
-    if order.customer is None:
-        return None
-    parts = [
-        order.customer.address,
-        order.customer.community,
-        order.customer.building,
-    ]
-    values: list[str] = []
-    for part in parts:
-        value = " ".join((part or "").strip().split())
-        if value and not any(_normalized(value) in _normalized(item) for item in values):
-            values = [item for item in values if _normalized(item) not in _normalized(value)]
-            values.append(value)
-    return " ".join(values) or None
 
 
 def clear_order_location(order: Order) -> None:
@@ -50,6 +33,20 @@ def clear_order_location(order: Order) -> None:
 
 def trusted_order_point(order: Order, services: MapServices) -> GeoPoint | None:
     address = order_geocode_address(order)
+    if (
+        address
+        and order.route_geocode_status == "manual"
+        and order.route_geocode_fingerprint == geocode_fingerprint("manual", address)
+        and order.route_latitude is not None
+        and order.route_longitude is not None
+    ):
+        try:
+            return GeoPoint(
+                latitude=float(order.route_latitude),
+                longitude=float(order.route_longitude),
+            )
+        except (TypeError, ValueError):
+            return None
     state = services.map_provider.provider_state()
     expected_fingerprints = (
         {geocode_fingerprint(state.name, address)} if address else set()
@@ -112,8 +109,14 @@ def _apply_geocode_result(
             task.planned_lat = latitude
             task.planned_lng = longitude
 
-    customer_address = default_geocode_service_area(_customer_address(order))
-    if order.customer is not None and _normalized(customer_address) == _normalized(address):
+    customer_address = (
+        customer_geocode_address(order.customer) if order.customer is not None else None
+    )
+    if (
+        order.customer is not None
+        and normalized_geocode_address(customer_address or "")
+        == normalized_geocode_address(address)
+    ):
         order.customer.latitude = latitude
         order.customer.longitude = longitude
         order.customer.geocode_status = "resolved"
@@ -128,6 +131,7 @@ def geocode_order(
     services: MapServices,
     *,
     raise_provider_errors: bool = False,
+    prefer_customer_manual: bool = True,
 ) -> str:
     """Best-effort address-only geocoding after the order transaction succeeds."""
 
@@ -143,6 +147,28 @@ def geocode_order(
         clear_order_location(order)
         session.commit()
         return "missing"
+
+    customer = order.customer
+    if (
+        prefer_customer_manual
+        and customer is not None
+        and customer.geocode_status == "manual"
+        and customer.geocode_fingerprint == geocode_fingerprint("manual", address)
+        and customer.latitude is not None
+        and customer.longitude is not None
+    ):
+        order.route_latitude = customer.latitude
+        order.route_longitude = customer.longitude
+        order.route_geocode_status = "manual"
+        order.route_geocode_fingerprint = customer.geocode_fingerprint
+        order.route_geocode_adcode = None
+        order.route_geocode_level = "manual_pin"
+        for task in order.tasks:
+            if not task_has_execution_history(task):
+                task.planned_lat = customer.latitude
+                task.planned_lng = customer.longitude
+        session.commit()
+        return "manual"
 
     try:
         result = services.geocode_provider.geocode(address)

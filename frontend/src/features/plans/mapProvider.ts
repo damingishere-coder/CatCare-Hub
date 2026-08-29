@@ -5,13 +5,20 @@ export interface MapRenderModel {
   markers: PlanRouteMarker[];
   polyline: PlanGeoPoint[];
   selectedTaskId: number | null;
+  locationEditing?: boolean;
+  draftPosition?: PlanGeoPoint | null;
+}
+
+export interface MapInteractionCallbacks {
+  onSelectTask: (taskId: number) => void;
+  onDraftPositionChange?: (position: PlanGeoPoint) => void;
 }
 
 export interface MapProvider {
   mount(
     container: HTMLElement,
     model: MapRenderModel,
-    onSelectTask: (taskId: number) => void,
+    callbacks: MapInteractionCallbacks,
   ): Promise<() => void>;
 }
 
@@ -42,8 +49,18 @@ export function markerDisplayOffset(
   };
 }
 
+interface AMapLngLat {
+  getLat: () => number;
+  getLng: () => number;
+}
+
+interface AMapEvent {
+  lnglat?: AMapLngLat;
+  target?: { getPosition?: () => AMapLngLat };
+}
+
 interface AMapOverlay {
-  on?: (event: string, handler: () => void) => void;
+  on?: (event: string, handler: (event: AMapEvent) => void) => void;
 }
 
 interface AMapMap {
@@ -55,6 +72,7 @@ interface AMapMap {
     maxZoom?: number,
   ) => void;
   destroy: () => void;
+  on?: (event: string, handler: (event: AMapEvent) => void) => void;
 }
 
 interface AMapNamespace {
@@ -108,12 +126,13 @@ function markerContent(
   name: string | null = null,
   selected = false,
   offset: MarkerDisplayOffset = { x: 0, y: 0 },
+  muted = false,
 ): HTMLDivElement {
   const content = document.createElement("div");
   content.className = [
     "flex items-center gap-1 rounded-full border-2 border-white px-2 py-1",
     "max-w-36 text-xs font-bold whitespace-nowrap text-white shadow-md",
-    selected ? "bg-amber-600 ring-2 ring-amber-300" : "bg-slate-900",
+    selected ? "bg-amber-600 ring-2 ring-amber-300" : muted ? "bg-slate-400" : "bg-slate-900",
   ].join(" ");
   const sequence = document.createElement("span");
   sequence.textContent = label;
@@ -132,7 +151,7 @@ export class AmapMapProvider implements MapProvider {
   async mount(
     container: HTMLElement,
     model: MapRenderModel,
-    onSelectTask: (taskId: number) => void,
+    callbacks: MapInteractionCallbacks,
   ): Promise<() => void> {
     const AMap = await loadAmap();
     const center = model.start?.position ?? model.markers[0]?.position;
@@ -162,12 +181,32 @@ export class AmapMapProvider implements MapProvider {
         content: markerContent(
           String(item.sequence),
           item.customer_name,
-          item.task_id === model.selectedTaskId,
+          item.task_id === model.selectedTaskId && !model.locationEditing,
           markerDisplayOffset(model.markers, index),
+          model.locationEditing && item.task_id === model.selectedTaskId,
         ),
       });
-      marker.on?.("click", () => onSelectTask(item.task_id));
+      marker.on?.("click", () => callbacks.onSelectTask(item.task_id));
       overlays.push(marker);
+    }
+    if (model.locationEditing && model.draftPosition) {
+      const draftMarker = new AMap.Marker({
+        position: position(model.draftPosition),
+        title: "新客户定位",
+        anchor: "center",
+        draggable: true,
+        content: markerContent("新", "拖动微调", true),
+      });
+      draftMarker.on?.("dragend", (event) => {
+        const point = event.target?.getPosition?.();
+        if (point) callbacks.onDraftPositionChange?.({ latitude: point.getLat(), longitude: point.getLng() });
+      });
+      overlays.push(draftMarker);
+    }
+    if (model.locationEditing) {
+      map.on?.("click", (event) => {
+        if (event.lnglat) callbacks.onDraftPositionChange?.({ latitude: event.lnglat.getLat(), longitude: event.lnglat.getLng() });
+      });
     }
     if (model.polyline.length > 1) {
       overlays.push(

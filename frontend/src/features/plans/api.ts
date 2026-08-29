@@ -6,6 +6,8 @@ import type {
   PlanScheduleInput,
   PlanTaskDetail,
   PlanTaskStatusInput,
+  LocationUpdateRead,
+  PlanGeoPoint,
 } from "./types";
 import { requestJson, ROUTE_REQUEST_TIMEOUT_MS } from "../../lib/api";
 
@@ -16,8 +18,11 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs?: number):
   return requestJson<T>(path, init, { timeoutMs });
 }
 
-export function getPlanDays(): Promise<PlanDaysResponse> {
-  return request<PlanDaysResponse>(`${plansPath}/days`);
+export function getPlanDays(dateFrom?: string, dateTo?: string): Promise<PlanDaysResponse> {
+  const query = dateFrom && dateTo
+    ? `?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`
+    : "";
+  return request<PlanDaysResponse>(`${plansPath}/days${query}`);
 }
 
 export function getDayPlan(serviceDate: string): Promise<DayPlan> {
@@ -63,5 +68,62 @@ export function updatePlanTaskStatus(
   return request<PlanTaskDetail>(`${plansPath}/tasks/${taskId}/status`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+  });
+}
+
+interface LocationConcurrency {
+  serviceDate: string;
+  dayRevision: string;
+}
+
+export function updateTaskLocation(
+  detail: PlanTaskDetail,
+  position: PlanGeoPoint,
+  concurrency: LocationConcurrency,
+): Promise<LocationUpdateRead> {
+  const common = {
+    latitude: position.latitude,
+    longitude: position.longitude,
+    coordinate_system: "GCJ-02",
+    service_date: concurrency.serviceDate,
+    expected_day_revision: concurrency.dayRevision,
+  };
+  if (detail.location_scope === "customer" && detail.customer.id && detail.customer.updated_at) {
+    return request<LocationUpdateRead>(`${apiBase}/api/admin/customers/${detail.customer.id}/location`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...common,
+        source_order_id: detail.task.order_id,
+        expected_customer_updated_at: detail.customer.updated_at,
+      }),
+    });
+  }
+  return request<LocationUpdateRead>(`${apiBase}/api/admin/orders/${detail.task.order_id}/location`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...common, expected_order_updated_at: detail.order_updated_at }),
+  });
+}
+
+export function restoreTaskAutomaticLocation(
+  detail: PlanTaskDetail,
+  concurrency: LocationConcurrency,
+): Promise<LocationUpdateRead> {
+  const common = {
+    service_date: concurrency.serviceDate,
+    expected_day_revision: concurrency.dayRevision,
+  };
+  if (detail.location_scope === "customer" && detail.customer.id && detail.customer.updated_at) {
+    return request<LocationUpdateRead>(`${apiBase}/api/admin/customers/${detail.customer.id}/location/restore-auto`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...common,
+        source_order_id: detail.task.order_id,
+        expected_customer_updated_at: detail.customer.updated_at,
+      }),
+    });
+  }
+  return request<LocationUpdateRead>(`${apiBase}/api/admin/orders/${detail.task.order_id}/location/restore-auto`, {
+    method: "POST",
+    body: JSON.stringify({ ...common, expected_order_updated_at: detail.order_updated_at }),
   });
 }

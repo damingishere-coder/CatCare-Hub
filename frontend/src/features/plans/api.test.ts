@@ -4,12 +4,76 @@ import {
   getPlanRoute,
   getPlanTask,
   previewPlanRoute,
+  restoreTaskAutomaticLocation,
   saveDaySchedule,
+  updateTaskLocation,
   updatePlanTaskStatus,
 } from "./api";
+import type { PlanTaskDetail } from "./types";
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
+});
+
+it("requests ranged calendar markers and revision-protected GCJ-02 location updates", async () => {
+  const fetchMock = vi.mocked(fetch);
+  fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
+  const customerDetail = {
+    task: { order_id: 9 },
+    customer: { id: 4, updated_at: "2034-09-01T08:00:00Z" },
+    location_scope: "customer",
+  } as PlanTaskDetail;
+  const orderDetail = {
+    task: { order_id: 10 },
+    customer: { id: null, updated_at: null },
+    order_updated_at: "2034-09-02T08:00:00Z",
+    location_scope: "order",
+  } as PlanTaskDetail;
+
+  await getPlanDays("2034-10-01", "2034-10-31");
+  await updateTaskLocation(
+    customerDetail,
+    { latitude: 22.61, longitude: 114.05 },
+    { serviceDate: "2034-10-01", dayRevision: "a".repeat(64) },
+  );
+  await restoreTaskAutomaticLocation(
+    orderDetail,
+    { serviceDate: "2034-10-02", dayRevision: "b".repeat(64) },
+  );
+
+  expect(fetchMock).toHaveBeenNthCalledWith(
+    1,
+    "/api/admin/plans/days?date_from=2034-10-01&date_to=2034-10-31",
+    expect.any(Object),
+  );
+  expect(fetchMock).toHaveBeenNthCalledWith(
+    2,
+    "/api/admin/customers/4/location",
+    expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({
+        latitude: 22.61,
+        longitude: 114.05,
+        coordinate_system: "GCJ-02",
+        service_date: "2034-10-01",
+        expected_day_revision: "a".repeat(64),
+        source_order_id: 9,
+        expected_customer_updated_at: "2034-09-01T08:00:00Z",
+      }),
+    }),
+  );
+  expect(fetchMock).toHaveBeenNthCalledWith(
+    3,
+    "/api/admin/orders/10/location/restore-auto",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        service_date: "2034-10-02",
+        expected_day_revision: "b".repeat(64),
+        expected_order_updated_at: "2034-09-02T08:00:00Z",
+      }),
+    }),
+  );
 });
 
 afterEach(() => {

@@ -55,6 +55,7 @@ export interface IntakeCatDraft {
 }
 
 export interface IntakeServiceDraft {
+  service_dates?: string[] | null;
   start_date: string | null;
   end_date: string | null;
   visits_per_day: number | null;
@@ -98,6 +99,7 @@ export interface PublicIntakeCatDraft {
 }
 
 export interface PublicIntakeServiceDraft {
+  service_dates?: string[] | null;
   start_date: string | null;
   end_date: string | null;
   visits_per_day: number | null;
@@ -142,9 +144,11 @@ export interface IntakeSubmissionSummary {
   cat_count: number;
   start_date: string | null;
   end_date: string | null;
+  service_dates?: string[];
   submitted_at: string | null;
   updated_at: string;
   revision: string;
+  removed_at?: string | null;
 }
 
 export interface IntakeSubmissionList {

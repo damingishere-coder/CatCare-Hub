@@ -9,7 +9,12 @@ import {
   LoaderCircle,
   RotateCcw,
   Save,
+  GripVertical,
+  LocateFixed,
 } from "lucide-react";
+import { DragDropProvider } from "@dnd-kit/react";
+import { useSortable } from "@dnd-kit/react/sortable";
+import { arrayMove } from "@dnd-kit/helpers";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
@@ -25,6 +30,8 @@ import {
   previewPlanRoute,
   saveDaySchedule,
   updatePlanTaskStatus,
+  updateTaskLocation,
+  restoreTaskAutomaticLocation,
 } from "./api";
 import { editablePlanStatuses, planTaskStatusLabels } from "./constants";
 import { RouteWorkspace } from "./RouteWorkspace";
@@ -35,6 +42,7 @@ import type {
   PlanTaskDetail,
   PlanTaskStatus,
   PlanTaskSummary,
+  PlanGeoPoint,
 } from "./types";
 
 const serviceLabels = Object.fromEntries(
@@ -88,6 +96,22 @@ function statusStyle(status: PlanTaskStatus): string {
   }[status];
 }
 
+function SortableTaskItem({ taskId, index, disabled, selected, children }: {
+  taskId: number;
+  index: number;
+  disabled: boolean;
+  selected: boolean;
+  children: React.ReactNode;
+}) {
+  const { ref, handleRef, isDragging } = useSortable({ id: taskId, index, disabled });
+  return (
+    <li ref={ref} className={`relative rounded-xl border p-3 transition-all ${selected ? "border-orange-200 bg-orange-50/70 shadow-sm" : "border-transparent bg-slate-50/70 hover:border-slate-200 hover:bg-white"} ${isDragging ? "z-10 opacity-70 shadow-lg" : ""}`}>
+      <button ref={handleRef} type="button" className="absolute top-2 right-2 cursor-grab rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700 active:cursor-grabbing disabled:cursor-not-allowed" aria-label={`拖动任务 #${taskId} 排序`} disabled={disabled}><GripVertical size={16} /></button>
+      {children}
+    </li>
+  );
+}
+
 interface DailyPlansPageProps {
   onDirtyChange: (dirty: boolean) => void;
 }
@@ -116,12 +140,17 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
   const [routeAdopting, setRouteAdopting] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [locationEditing, setLocationEditing] = useState(false);
+  const [draftLocation, setDraftLocation] = useState<PlanGeoPoint | null>(null);
+  const [locationSaving, setLocationSaving] = useState(false);
+  const [amapReady, setAmapReady] = useState(false);
+  const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dayRequestId = useRef(0);
   const detailRequestId = useRef(0);
   const routeRequestId = useRef(0);
 
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  useEffect(() => onDirtyChange(dirty || locationEditing), [dirty, locationEditing, onDirtyChange]);
 
   const refreshDays = useCallback(async () => {
     const response = await getPlanDays();
@@ -222,17 +251,31 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
   }, [selectedTaskId]);
 
   function selectDate(nextDate: string) {
+    if (locationEditing) return;
     setSelectedDate(nextDate);
     setTaskDetail(null);
-    setSearchParams({ date: nextDate });
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("date", nextDate);
+      next.delete("task_id");
+      return next;
+    });
     void loadDay(nextDate);
   }
 
   function selectTask(taskId: number) {
+    if (locationEditing) return;
     if (taskId === selectedTaskId) return;
     setDetailLoading(true);
     setSelectedTaskId(taskId);
-    if (selectedDate) setSearchParams({ date: selectedDate, task_id: String(taskId) });
+    if (selectedDate) {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.set("date", selectedDate);
+        next.set("task_id", String(taskId));
+        return next;
+      });
+    }
   }
 
   function updateDraft(next: PlanTaskSummary[]) {
@@ -260,6 +303,17 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
     [next[index], next[destination]] = [next[destination], next[index]];
     invalidateRouteWorkspace();
     updateDraft(next);
+  }
+
+  function handleDragEnd(event: { canceled: boolean; operation: { source: { id: string | number } | null; target: { id: string | number } | null } }) {
+    if (event.canceled || plan?.schedule_locked || routeBusy) return;
+    const sourceId = Number(event.operation.source?.id);
+    const targetId = Number(event.operation.target?.id);
+    const sourceIndex = draftTasks.findIndex((task) => task.id === sourceId);
+    const targetIndex = draftTasks.findIndex((task) => task.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
+    invalidateRouteWorkspace();
+    updateDraft(arrayMove(draftTasks, sourceIndex, targetIndex));
   }
 
   function updateTime(taskId: number, value: string) {
@@ -376,6 +430,66 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
     }
   }
 
+  function beginLocationEdit() {
+    if (!taskDetail || !amapReady || dirty || routeBusy) return;
+    setDraftLocation(taskDetail.current_position ?? selectedRouteMarker?.position ?? null);
+    setLocationMessage(null);
+    setLocationEditing(true);
+    invalidateRouteWorkspace();
+  }
+
+  function cancelLocationEdit() {
+    if (locationSaving) return;
+    setLocationEditing(false);
+    setDraftLocation(null);
+    void loadRoute(selectedDate, draftTasks.length > 0);
+  }
+
+  async function saveLocation() {
+    if (!taskDetail || !plan || !draftLocation || locationSaving) return;
+    const scope = taskDetail.location_scope === "customer"
+      ? `将同步 ${taskDetail.location_sync_order_count ?? 0} 笔同地址订单、${taskDetail.location_sync_task_count ?? 0} 个未执行任务`
+      : `未关联客户档案，仅修改订单 #${taskDetail.task.order_id} 及其未执行任务`;
+    if (!window.confirm(`确认保存 ${taskDetail.customer.name} 的新定位？\n${scope}\n地址文字不会改变。`)) return;
+    setLocationSaving(true);
+    setError(null);
+    try {
+      const result = await updateTaskLocation(taskDetail, draftLocation, {
+        serviceDate: selectedDate,
+        dayRevision: plan.revision,
+      });
+      setLocationMessage(`定位已保存：同步 ${result.affected_orders} 笔订单、${result.affected_tasks} 个未执行任务。请重新规划当天路线。`);
+      setLocationEditing(false);
+      setDraftLocation(null);
+      await loadDay(selectedDate, taskDetail.task.id);
+      await refreshDays();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "客户定位保存失败，请刷新后重试。");
+    } finally {
+      setLocationSaving(false);
+    }
+  }
+
+  async function restoreAutomaticLocation() {
+    if (!taskDetail || !plan || dirty || routeBusy || locationEditing) return;
+    if (!window.confirm("确认按当前地址重新进行高德自动定位？解析失败会保留现有手动锚点。")) return;
+    setLocationSaving(true);
+    setError(null);
+    try {
+      const result = await restoreTaskAutomaticLocation(taskDetail, {
+        serviceDate: selectedDate,
+        dayRevision: plan.revision,
+      });
+      setLocationMessage(`已恢复地址自动定位，并同步 ${result.affected_orders} 笔订单、${result.affected_tasks} 个未执行任务。`);
+      await loadDay(selectedDate, taskDetail.task.id);
+      await refreshDays();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "地址自动定位失败，已保留原手动锚点。");
+    } finally {
+      setLocationSaving(false);
+    }
+  }
+
   const currentDay = days.find((day) => day.service_date === selectedDate);
   const detailStatusEditable =
     taskDetail &&
@@ -384,7 +498,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
   const selectedRouteMarker = routeWorkspace?.markers.find(
     (marker) => marker.task_id === selectedTaskId,
   );
-  const routeBusy = routePreviewing || routeAdopting;
+  const routeBusy = routePreviewing || routeAdopting || locationSaving;
 
   return (
     <>
@@ -451,9 +565,10 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                 这一天没有任务
               </div>
             ) : (
+              <DragDropProvider onDragEnd={handleDragEnd}>
               <ol className="space-y-2">
                 {draftTasks.map((task, index) => (
-                  <li key={task.id} className={`rounded-xl border p-3 transition-all ${selectedTaskId === task.id ? "border-orange-200 bg-orange-50/70 shadow-sm" : "border-transparent bg-slate-50/70 hover:border-slate-200 hover:bg-white"}`}>
+                  <SortableTaskItem key={task.id} taskId={task.id} index={index} disabled={Boolean(plan?.schedule_locked || saving || routeBusy)} selected={selectedTaskId === task.id}>
                     <div className="flex items-start gap-2">
                       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => selectTask(task.id)}>
                         <div className="flex items-center gap-2">
@@ -481,9 +596,10 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                         <button type="button" className="cc-icon-button min-h-9 min-w-9 p-2" aria-label={`下移 ${task.customer.name} 任务`} onClick={() => moveTask(index, 1)} disabled={index === draftTasks.length - 1 || plan?.schedule_locked || saving || routeBusy}><ArrowDown size={14} /></button>
                       </div>
                     </div>
-                  </li>
+                  </SortableTaskItem>
                 ))}
               </ol>
+              </DragDropProvider>
             )}
           </div>
 
@@ -503,12 +619,16 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
           loading={routeLoading}
           previewing={routePreviewing}
           adopting={routeAdopting}
-          dirty={dirty}
+          dirty={dirty || locationEditing}
           error={routeError}
           onSelectTask={selectTask}
           onPreview={() => void handleRoutePreview()}
           onRetry={() => void loadRoute(selectedDate, draftTasks.length > 0)}
           onAdopt={() => void handleAdoptRecommendation()}
+          locationEditing={locationEditing}
+          draftPosition={draftLocation}
+          onDraftPositionChange={setDraftLocation}
+          onAmapReadyChange={setAmapReady}
         />
 
         <aside className="bg-white" aria-label="任务详情">
@@ -529,6 +649,13 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                     <span className={`rounded-full px-2 py-1 text-xs font-medium ${statusStyle(taskDetail.task.status)}`}>{planTaskStatusLabels[taskDetail.task.status]}</span>
                   </div>
                   <p className="mt-3 text-sm leading-6 text-slate-700">{addressLine(taskDetail)}</p>
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+                    <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-slate-800">客户地图锚点</span><span>{taskDetail.location_scope === "customer" ? "同步客户档案" : "仅此订单"}</span></div>
+                    <p className="mt-1">当前：{taskDetail.current_position ? `${taskDetail.current_position.longitude.toFixed(6)}, ${taskDetail.current_position.latitude.toFixed(6)}` : "尚无可信坐标"}</p>
+                    {!amapReady ? <p className="mt-1 font-medium text-amber-700">高德街道底图未成功加载，只能查看，不能修改定位。</p> : null}
+                    {locationMessage ? <p className="mt-2 rounded-md bg-emerald-50 px-2 py-1.5 text-emerald-800">{locationMessage}</p> : null}
+                    {locationEditing ? <div className="mt-3 space-y-2 rounded-md bg-white p-2"><p><strong>原地址：</strong>{addressLine(taskDetail)}</p><p><strong>原定位：</strong>{taskDetail.current_position ? `${taskDetail.current_position.longitude.toFixed(6)}, ${taskDetail.current_position.latitude.toFixed(6)}` : "无"}</p><p><strong>新定位：</strong>{draftLocation ? `${draftLocation.longitude.toFixed(6)}, ${draftLocation.latitude.toFixed(6)}` : "请点击地图选择"}</p><p><strong>同步范围：</strong>{taskDetail.location_scope === "customer" ? `${taskDetail.location_sync_order_count ?? 0} 笔同地址订单、${taskDetail.location_sync_task_count ?? 0} 个未执行任务` : `订单 #${taskDetail.task.order_id} 的未执行任务`}</p><div className="flex gap-2"><button type="button" className="cc-button cc-button--secondary min-h-9 flex-1 px-2 text-xs" onClick={cancelLocationEdit} disabled={locationSaving}>取消</button><button type="button" className="cc-button cc-button--primary min-h-9 flex-1 px-2 text-xs" onClick={() => void saveLocation()} disabled={!draftLocation || locationSaving}>{locationSaving ? <LoaderCircle className="animate-spin" size={13} /> : null}确认定位</button></div></div> : <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="cc-button cc-button--secondary min-h-9 px-2.5 text-xs" onClick={beginLocationEdit} disabled={!amapReady || dirty || routeBusy || taskDetail.task.has_execution_history}><LocateFixed size={14} />修改客户定位</button>{taskDetail.route_geocode_status === "manual" ? <button type="button" className="cc-button cc-button--secondary min-h-9 px-2.5 text-xs" onClick={() => void restoreAutomaticLocation()} disabled={dirty || routeBusy}><RotateCcw size={14} />恢复地址自动定位</button> : null}</div>}
+                  </div>
                   {selectedRouteMarker?.navigation_url ? (
                     <a
                       className="cc-button cc-button--secondary mt-3"

@@ -13,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   getIntakeSubmission: vi.fn(),
   saveIntakeReviewDraft: vi.fn(),
   decideIntakeSubmission: vi.fn(),
+  updateIntakeSubmissionListState: vi.fn(),
 }));
 
 vi.mock("./api", () => apiMocks);
@@ -100,10 +101,68 @@ beforeEach(() => {
   apiMocks.updateIntakeToken.mockResolvedValue({ ...token, status: "disabled", submitted_at: null, submission_status: null });
   apiMocks.saveIntakeReviewDraft.mockResolvedValue({ ...detail, status: "reviewed", review_payload: payload, review_unit_price: "30.00", reviewed_at: timestamp, revision: "b".repeat(64) });
   apiMocks.decideIntakeSubmission.mockResolvedValue({ submission_id: 9, submission_uuid: summary.submission_uuid, status: "archived_order", decision_mode: "order", customer_id: 3, order_id: 4, revision: "c".repeat(64) });
+  apiMocks.updateIntakeSubmissionListState.mockResolvedValue(detail);
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
   });
+});
+
+it("shows only the newest three links until expanded", async () => {
+  const links = Array.from({ length: 5 }, (_, index) => ({
+    ...token,
+    id: 20 - index,
+    created_at: `2031-05-0${5 - index}T08:00:00Z`,
+  }));
+  apiMocks.listIntakeTokens.mockResolvedValue({ items: links, total: links.length });
+  renderPage();
+
+  expect(await screen.findByText("链接 #20")).toBeInTheDocument();
+  expect(screen.getByText("链接 #18")).toBeInTheDocument();
+  expect(screen.queryByText("链接 #17")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "展开全部（5）" }));
+  expect(screen.getByText("链接 #16")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "收起" }));
+  expect(screen.queryByText("链接 #17")).not.toBeInTheDocument();
+});
+
+it("moves a voided record out of the current list and can restore it", async () => {
+  const voidedSummary: IntakeSubmissionSummary = {
+    ...summary,
+    status: "voided",
+    removed_at: null,
+  };
+  const voidedDetail: IntakeSubmissionDetail = {
+    ...detail,
+    ...voidedSummary,
+    status: "voided",
+    voided_at: timestamp,
+    decision_mode: "void",
+  };
+  const removedDetail = { ...voidedDetail, removed_at: "2031-05-02T08:00:00Z" };
+  apiMocks.listIntakeSubmissions.mockResolvedValue({ items: [voidedSummary], total: 1 });
+  apiMocks.getIntakeSubmission.mockResolvedValue(voidedDetail);
+  apiMocks.updateIntakeSubmissionListState
+    .mockResolvedValueOnce(removedDetail)
+    .mockResolvedValueOnce(voidedDetail);
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "从列表移除" }));
+  await waitFor(() => expect(apiMocks.updateIntakeSubmissionListState).toHaveBeenCalledWith(
+    9,
+    true,
+    revision,
+  ));
+  expect(await screen.findByRole("button", { name: "恢复到当前列表" })).toBeInTheDocument();
+  expect(within(screen.getByLabelText("提交记录列表")).getByText("P10 后台虚构客户")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "恢复到当前列表" }));
+  await waitFor(() => expect(apiMocks.updateIntakeSubmissionListState).toHaveBeenLastCalledWith(
+    9,
+    false,
+    revision,
+  ));
+  expect(await screen.findByRole("button", { name: "从列表移除" })).toBeInTheDocument();
 });
 
 it("shows the full editable review while keeping the submission list privacy-minimized", async () => {
