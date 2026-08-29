@@ -5,6 +5,7 @@ import {
   hasAmapBrowserKey,
   hasAmapBrowserSecurityCode,
   markerDisplayOffset,
+  type MapController,
 } from "./mapProvider";
 import type {
   PlanGeoPoint,
@@ -126,19 +127,21 @@ export function RouteMap(props: RouteMapProps) {
   const selectTask = useRef(props.onSelectTask);
   const changeDraft = useRef(props.onDraftPositionChange);
   const readyChange = useRef(props.onAmapReadyChange);
+  const controller = useRef<MapController | null>(null);
   const [amapFailed, setAmapFailed] = useState(false);
   const canUseAmap = props.providerName === "amap" && hasAmapBrowserKey() && hasAmapBrowserSecurityCode() && !amapFailed;
-  const modelKey = useMemo(
-    () => JSON.stringify({
+  const model = useMemo(
+    () => ({
       start: props.start,
       markers: props.markers,
-      route: props.route,
+      polyline: props.route?.polyline ?? [],
       selectedTaskId: props.selectedTaskId,
       locationEditing: props.locationEditing,
       draftPosition: props.draftPosition,
     }),
     [props.draftPosition, props.locationEditing, props.markers, props.route, props.selectedTaskId, props.start],
   );
+  const latestModel = useRef(model);
 
   useEffect(() => {
     selectTask.current = props.onSelectTask;
@@ -154,31 +157,26 @@ export function RouteMap(props: RouteMapProps) {
 
   useEffect(() => {
     if (!canUseAmap || !container.current) return;
-    let cleanup: (() => void) | undefined;
+    let mountedController: MapController | null = null;
     let active = true;
     const provider = new AmapMapProvider();
     provider
       .mount(
         container.current,
-        {
-          start: props.start,
-          markers: props.markers,
-          polyline: props.route?.polyline ?? [],
-          selectedTaskId: props.selectedTaskId,
-          locationEditing: props.locationEditing,
-          draftPosition: props.draftPosition,
-        },
+        latestModel.current,
         {
           onSelectTask: (taskId) => selectTask.current(taskId),
           onDraftPositionChange: (point) => changeDraft.current?.(point),
         },
       )
-      .then((dispose) => {
+      .then((nextController) => {
         if (active) {
-          cleanup = dispose;
+          mountedController = nextController;
+          controller.current = nextController;
+          nextController.update(latestModel.current);
           readyChange.current?.(true);
         }
-        else dispose();
+        else nextController.dispose();
       })
       .catch(() => {
         if (active) {
@@ -189,9 +187,15 @@ export function RouteMap(props: RouteMapProps) {
     return () => {
       active = false;
       readyChange.current?.(false);
-      cleanup?.();
+      if (controller.current === mountedController) controller.current = null;
+      mountedController?.dispose();
     };
-  }, [canUseAmap, modelKey, props.draftPosition, props.locationEditing, props.markers, props.route, props.selectedTaskId, props.start]);
+  }, [canUseAmap]);
+
+  useEffect(() => {
+    latestModel.current = model;
+    controller.current?.update(model);
+  }, [model]);
 
   return (
     <div className="relative h-[390px] overflow-hidden rounded-[10px] border border-slate-200/80 bg-slate-100 shadow-inner">

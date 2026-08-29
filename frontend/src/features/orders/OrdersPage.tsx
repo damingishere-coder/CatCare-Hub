@@ -32,7 +32,7 @@ import {
 } from "./api";
 import { serviceItemOptions } from "./constants";
 import { OrderForm } from "./OrderForm";
-import { OrderScheduleCalendar } from "./OrderScheduleCalendar";
+import { OrderDayVisits, OrderScheduleCalendar } from "./OrderScheduleCalendar";
 import type {
   OrderDetail,
   OrderCreateInput,
@@ -125,6 +125,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
   const [deleting, setDeleting] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [listCollapsed, setListCollapsed] = useState(false);
+  const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
   const listRequestId = useRef(0);
 
   const applyOrders = useCallback((items: OrderSummary[]) => {
@@ -202,6 +203,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
     });
     setFormMode(null);
     await refreshOrders();
+    setScheduleRefreshKey((current) => current + 1);
   }
 
   function selectOrder(orderId: number) {
@@ -222,10 +224,12 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
   }
 
   function selectScheduleDate(date: string) {
+    setOrderDetail(null);
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.set("date", date);
       next.delete("task_id");
+      next.delete("order_id");
       return next;
     });
   }
@@ -240,6 +244,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
       const updated = await updateOrderStatus(orderDetail.id, status);
       setOrderDetail(updated);
       await refreshOrders();
+      setScheduleRefreshKey((current) => current + 1);
     } catch (cause) {
       setPageError(cause instanceof Error ? cause.message : "订单状态更新失败，请重试。");
     } finally {
@@ -256,6 +261,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
       await deleteOrder(orderDetail.id);
       closeOrderDetail();
       await refreshOrders();
+      setScheduleRefreshKey((current) => current + 1);
     } catch (cause) {
       setPageError(cause instanceof Error ? cause.message : "订单删除失败，请重试。");
     } finally {
@@ -277,6 +283,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
       await clearDemoData();
       closeOrderDetail();
       await refreshOrders();
+      setScheduleRefreshKey((current) => current + 1);
     } catch (cause) {
       setPageError(cause instanceof Error ? cause.message : "演示数据清理失败，请重试。");
     } finally {
@@ -292,6 +299,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
       const updated = await retryOrderGeocode(orderDetail.id);
       setOrderDetail(updated);
       await refreshOrders();
+      setScheduleRefreshKey((current) => current + 1);
     } catch (cause) {
       setPageError(cause instanceof Error ? cause.message : "地址定位重试失败。");
     } finally {
@@ -380,13 +388,16 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
           </div>
         </aside>
 
-        <OrderScheduleCalendar
-          selectedDate={requestedDate}
-          onSelectDate={selectScheduleDate}
-          onSelectOrder={selectOrder}
-        />
-
-        {selectedOrderId !== null ? <div className="fixed inset-0 z-50 min-w-0 overflow-y-auto bg-slate-50 shadow-2xl lg:left-auto lg:w-[min(920px,78vw)]">
+        <main className="min-w-0 bg-slate-50/60 p-4 sm:p-5" aria-label="订单月历与详情">
+          <div className="space-y-5">
+        {selectedOrderId === null ? (
+          <OrderScheduleCalendar
+            selectedDate={requestedDate}
+            onSelectDate={selectScheduleDate}
+            onSelectOrder={selectOrder}
+            refreshKey={scheduleRefreshKey}
+          />
+        ) : <section className="cc-scrollbar h-[min(620px,72vh)] min-h-[480px] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 shadow-sm" aria-label="订单详情区域">
           {selectedOrderId !== null && orderDetail?.id !== selectedOrderId ? (
             <div className="flex h-full min-h-96 items-center justify-center gap-2 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={18} />正在加载订单详情…</div>
           ) : selectedOrderId === null || !orderDetail ? (
@@ -464,7 +475,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 id="generated-tasks-title" className="text-base font-semibold text-slate-950">已生成任务</h3>
-                    <p className="mt-1 text-xs text-slate-500">共 {orderDetail.task_count} 个任务；具体时间与排序请在“按天计划”中设置。</p>
+                    <p className="mt-1 text-xs text-slate-500">共 {orderDetail.task_count} 个任务；具体时间与顺序由“路线图”维护。</p>
                   </div>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><CheckCircle2 size={13} />自动生成完成</span>
                 </div>
@@ -488,7 +499,10 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
               </section>
             </div>
           )}
-        </div> : null}
+        </section>}
+            <OrderDayVisits selectedDate={requestedDate} onSelectOrder={selectOrder} refreshKey={scheduleRefreshKey} />
+          </div>
+        </main>
       </div>
 
       {formMode && formOptions ? (

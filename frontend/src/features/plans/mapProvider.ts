@@ -14,12 +14,17 @@ export interface MapInteractionCallbacks {
   onDraftPositionChange?: (position: PlanGeoPoint) => void;
 }
 
+export interface MapController {
+  update(model: MapRenderModel): void;
+  dispose(): void;
+}
+
 export interface MapProvider {
   mount(
     container: HTMLElement,
     model: MapRenderModel,
     callbacks: MapInteractionCallbacks,
-  ): Promise<() => void>;
+  ): Promise<MapController>;
 }
 
 export interface MarkerDisplayOffset {
@@ -61,10 +66,12 @@ interface AMapEvent {
 
 interface AMapOverlay {
   on?: (event: string, handler: (event: AMapEvent) => void) => void;
+  setPosition?: (position: [number, number]) => void;
 }
 
 interface AMapMap {
   add: (overlays: AMapOverlay[]) => void;
+  remove: (overlays: AMapOverlay[]) => void;
   setFitView: (
     overlays?: AMapOverlay[],
     immediately?: boolean,
@@ -147,85 +154,182 @@ function markerContent(
   return content;
 }
 
+function draftMarkerContent(): HTMLDivElement {
+  const content = document.createElement("div");
+  content.className = "relative flex size-12 cursor-move items-center justify-center";
+  content.dataset.mapDraftCrosshair = "true";
+  content.setAttribute("aria-label", "新客户定位准星");
+
+  const ring = document.createElement("span");
+  ring.className = "absolute size-8 rounded-full border-2 border-orange-600 bg-white/35 shadow-[0_0_0_2px_rgba(255,255,255,0.9)]";
+  const horizontal = document.createElement("span");
+  horizontal.className = "absolute h-0.5 w-11 bg-orange-700 shadow-[0_0_0_1px_rgba(255,255,255,0.9)]";
+  const vertical = document.createElement("span");
+  vertical.className = "absolute h-11 w-0.5 bg-orange-700 shadow-[0_0_0_1px_rgba(255,255,255,0.9)]";
+  const center = document.createElement("span");
+  center.className = "absolute size-2 rounded-full border-2 border-white bg-red-600 shadow-md";
+  center.dataset.mapDraftCenter = "true";
+  const label = document.createElement("span");
+  label.className = "absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded-full bg-orange-600 px-2 py-1 text-[11px] font-bold whitespace-nowrap text-white shadow-md";
+  label.textContent = "新客户定位";
+
+  content.append(ring, horizontal, vertical, center, label);
+  return content;
+}
+
+function staticModelKey(model: MapRenderModel): string {
+  return JSON.stringify({ start: model.start, markers: model.markers, polyline: model.polyline });
+}
+
+function appearanceModelKey(model: MapRenderModel): string {
+  return JSON.stringify({ selectedTaskId: model.selectedTaskId, locationEditing: model.locationEditing });
+}
+
+function samePoint(left: PlanGeoPoint | null | undefined, right: PlanGeoPoint | null | undefined): boolean {
+  if (!left || !right) return left === right;
+  return left.latitude === right.latitude && left.longitude === right.longitude;
+}
+
 export class AmapMapProvider implements MapProvider {
   async mount(
     container: HTMLElement,
-    model: MapRenderModel,
+    initialModel: MapRenderModel,
     callbacks: MapInteractionCallbacks,
-  ): Promise<() => void> {
+  ): Promise<MapController> {
     const AMap = await loadAmap();
-    const center = model.start?.position ?? model.markers[0]?.position;
+    const center = initialModel.start?.position ?? initialModel.markers[0]?.position;
     const map = new AMap.Map(container, {
       center: center ? position(center) : [116.397428, 39.90923],
       zoom: center ? 13 : 4,
       viewMode: "2D",
       resizeEnable: true,
     });
-    const overlays: AMapOverlay[] = [];
+    let currentModel = initialModel;
+    let overlays: AMapOverlay[] = [];
+    let draftMarker: AMapOverlay | null = null;
+    let renderedStaticKey = "";
+    let renderedAppearanceKey = "";
+    let disposed = false;
 
-    if (model.start) {
-      overlays.push(
-        new AMap.Marker({
-          position: position(model.start.position),
-          title: model.start.label,
-          anchor: "center",
-          content: markerContent("家", "起终点"),
-        }),
-      );
-    }
-    for (const [index, item] of model.markers.entries()) {
+    const emitDraftPosition = (point: PlanGeoPoint) => {
+      callbacks.onDraftPositionChange?.(point);
+    };
+
+    const createDraftMarker = (point: PlanGeoPoint): AMapOverlay => {
       const marker = new AMap.Marker({
-        position: position(item.position),
-        title: item.address || item.community || item.customer_name,
-        anchor: "center",
-        content: markerContent(
-          String(item.sequence),
-          item.customer_name,
-          item.task_id === model.selectedTaskId && !model.locationEditing,
-          markerDisplayOffset(model.markers, index),
-          model.locationEditing && item.task_id === model.selectedTaskId,
-        ),
-      });
-      marker.on?.("click", () => callbacks.onSelectTask(item.task_id));
-      overlays.push(marker);
-    }
-    if (model.locationEditing && model.draftPosition) {
-      const draftMarker = new AMap.Marker({
-        position: position(model.draftPosition),
+        position: position(point),
         title: "新客户定位",
         anchor: "center",
         draggable: true,
-        content: markerContent("新", "拖动微调", true),
+        raiseOnDrag: true,
+        zIndex: 500,
+        content: draftMarkerContent(),
       });
-      draftMarker.on?.("dragend", (event) => {
-        const point = event.target?.getPosition?.();
-        if (point) callbacks.onDraftPositionChange?.({ latitude: point.getLat(), longitude: point.getLng() });
+      marker.on?.("dragend", (event) => {
+        const next = event.target?.getPosition?.();
+        if (next) emitDraftPosition({ latitude: next.getLat(), longitude: next.getLng() });
       });
-      overlays.push(draftMarker);
-    }
-    if (model.locationEditing) {
-      map.on?.("click", (event) => {
-        if (event.lnglat) callbacks.onDraftPositionChange?.({ latitude: event.lnglat.getLat(), longitude: event.lnglat.getLng() });
-      });
-    }
-    if (model.polyline.length > 1) {
-      overlays.push(
-        new AMap.Polyline({
-          path: model.polyline.map(position),
-          strokeColor: "#0f172a",
-          strokeWeight: 5,
-          strokeOpacity: 0.82,
-          lineJoin: "round",
-          showDir: true,
-        }),
-      );
-    }
+      return marker;
+    };
 
-    if (overlays.length) {
-      map.add(overlays);
-      map.setFitView(overlays, false, [60, 60, 60, 60], 15);
-    }
-    return () => map.destroy();
+    const moveDraftMarker = (point: PlanGeoPoint) => {
+      if (!draftMarker) {
+        draftMarker = createDraftMarker(point);
+        overlays.push(draftMarker);
+        map.add([draftMarker]);
+        return;
+      }
+      draftMarker.setPosition?.(position(point));
+    };
+
+    const renderOverlays = (model: MapRenderModel, fitView: boolean) => {
+      if (overlays.length) map.remove(overlays);
+      overlays = [];
+      draftMarker = null;
+
+      if (model.start) {
+        overlays.push(
+          new AMap.Marker({
+            position: position(model.start.position),
+            title: model.start.label,
+            anchor: "center",
+            content: markerContent("家", "起终点"),
+          }),
+        );
+      }
+      for (const [index, item] of model.markers.entries()) {
+        const marker = new AMap.Marker({
+          position: position(item.position),
+          title: item.address || item.community || item.customer_name,
+          anchor: "center",
+          content: markerContent(
+            String(item.sequence),
+            item.customer_name,
+            item.task_id === model.selectedTaskId && !model.locationEditing,
+            markerDisplayOffset(model.markers, index),
+            model.locationEditing && item.task_id === model.selectedTaskId,
+          ),
+        });
+        marker.on?.("click", () => callbacks.onSelectTask(item.task_id));
+        overlays.push(marker);
+      }
+      if (model.locationEditing && model.draftPosition) {
+        draftMarker = createDraftMarker(model.draftPosition);
+        overlays.push(draftMarker);
+      }
+      if (model.polyline.length > 1) {
+        overlays.push(
+          new AMap.Polyline({
+            path: model.polyline.map(position),
+            strokeColor: "#0f172a",
+            strokeWeight: 5,
+            strokeOpacity: 0.82,
+            lineJoin: "round",
+            showDir: true,
+          }),
+        );
+      }
+
+      if (overlays.length) {
+        map.add(overlays);
+        if (fitView) map.setFitView(overlays, false, [60, 60, 60, 60], 15);
+      }
+      renderedStaticKey = staticModelKey(model);
+      renderedAppearanceKey = appearanceModelKey(model);
+    };
+
+    map.on?.("click", (event) => {
+      if (!currentModel.locationEditing || !event.lnglat) return;
+      const point = { latitude: event.lnglat.getLat(), longitude: event.lnglat.getLng() };
+      moveDraftMarker(point);
+      emitDraftPosition(point);
+    });
+
+    renderOverlays(initialModel, true);
+
+    return {
+      update(nextModel) {
+        if (disposed) return;
+        const nextStaticKey = staticModelKey(nextModel);
+        const nextAppearanceKey = appearanceModelKey(nextModel);
+        const staticChanged = nextStaticKey !== renderedStaticKey;
+        const appearanceChanged = nextAppearanceKey !== renderedAppearanceKey;
+        const draftPresenceChanged = Boolean(nextModel.draftPosition) !== Boolean(currentModel.draftPosition);
+        const draftChanged = !samePoint(nextModel.draftPosition, currentModel.draftPosition);
+        currentModel = nextModel;
+
+        if (staticChanged || appearanceChanged || draftPresenceChanged) {
+          renderOverlays(nextModel, staticChanged);
+        } else if (nextModel.locationEditing && nextModel.draftPosition && draftChanged) {
+          moveDraftMarker(nextModel.draftPosition);
+        }
+      },
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        map.destroy();
+      },
+    };
   }
 }
 
