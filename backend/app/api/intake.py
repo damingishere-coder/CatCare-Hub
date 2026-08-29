@@ -357,12 +357,6 @@ def update_submission_list_state(
     )
     if detail.revision != payload.expected_revision:
         raise HTTPException(status_code=409, detail="提交记录已变化，请刷新后重试")
-    voided = detail.status is FormSubmissionStatus.VOIDED or (
-        detail.status is FormSubmissionStatus.REDACTED
-        and detail.decision_mode == "void"
-    )
-    if payload.removed and not voided:
-        raise HTTPException(status_code=409, detail="只有已作废记录可以从列表移除")
     key = _removed_key(detail.submission_uuid)
     flag = session.get(SystemFlag, key)
     if payload.removed and flag is None:

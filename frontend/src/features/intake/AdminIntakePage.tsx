@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Trash2,
+  X,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -455,17 +456,24 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
     }
   }
 
-  async function handleListState(removed: boolean) {
-    if (!detail) return;
-    setAction("list-state");
+  async function handleListState(item: IntakeSubmissionSummary, removed: boolean) {
+    setAction(`list-state-${item.id}`);
     setError(null);
     try {
-      const updated = await updateIntakeSubmissionListState(detail.id, removed, detail.revision);
-      setDetail(updated);
-      setSubmissions((current) => replaceSubmission(current, updated));
-      showRemovedRef.current = removed;
-      setShowRemoved(removed);
-      setSelectedId(updated.id);
+      const updated = await updateIntakeSubmissionListState(item.id, removed, item.revision);
+      const nextSubmissions = replaceSubmission(submissions, updated);
+      setSubmissions(nextSubmissions);
+      if (selectedIdRef.current === item.id) {
+        const nextVisible = nextSubmissions.find(
+          (candidate) => Boolean(candidate.removed_at) === showRemovedRef.current,
+        );
+        setSelectedId(nextVisible?.id ?? null);
+        if (!nextVisible) {
+          setDetail(null);
+          setReviewDraft(null);
+          setUnitPrice("");
+        }
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "列表状态修改失败，请刷新后重试。");
     } finally {
@@ -536,7 +544,7 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
         <section className="cc-surface min-w-0 overflow-hidden" aria-labelledby="submissions-title">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 id="submissions-title" className="font-semibold">提交审核（{visibleSubmissions.length}）</h2><p className="mt-1 text-xs text-slate-500">列表仅显示摘要；完整地址、门禁和钥匙只在右侧详情中读取。</p></div><div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs font-medium"><button type="button" className={`rounded-md px-3 py-1.5 ${!showRemoved ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`} onClick={() => selectSubmissionList(false)}>当前记录</button><button type="button" className={`rounded-md px-3 py-1.5 ${showRemoved ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`} onClick={() => selectSubmissionList(true)}>已移除记录</button></div></div>
           <div className="grid min-h-[600px] lg:grid-cols-[260px_minmax(0,1fr)]">
-            <aside className="cc-scrollbar overflow-y-auto border-b border-slate-200 bg-slate-50/60 lg:border-r lg:border-b-0" aria-label="提交记录列表">{loading ? <div className="flex justify-center py-12"><LoaderCircle className="animate-spin text-slate-400" size={18} /></div> : !loadedOnce && error ? <p className="px-4 py-12 text-center text-sm font-medium text-red-700">云端暂不可用，请稍后刷新。</p> : visibleSubmissions.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-500">{showRemoved ? "还没有已移除记录。" : "还没有客户提交。"}</p> : <ul className="p-2">{visibleSubmissions.map((item) => { const serviceDates = item.service_dates ?? []; return <li key={item.id}><button type="button" className={`mb-1 w-full rounded-xl px-3 py-3 text-left ${selectedId === item.id ? "bg-orange-50 text-slate-950 shadow-sm ring-1 ring-orange-200" : "hover:bg-slate-100"}`} onClick={() => { setSelectedId(item.id); setConfirmingDecision(null); }}><div className="flex items-start justify-between gap-2"><span className="truncate text-sm font-semibold">{item.customer_name || "未填写名称"}</span><span className={`shrink-0 text-[11px] ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{submissionStatusLabels[item.status]}</span></div><p className={`mt-1 truncate text-xs ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{item.cat_count} 只猫</p><p className={`mt-2 text-xs ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{serviceDates.length ? `${serviceDates.length} 天 · ${serviceDates.slice(0, 2).join("、")}${serviceDates.length > 2 ? "…" : ""}` : `${item.start_date || "日期未填"} 至 ${item.end_date || "—"}`}</p></button></li>; })}</ul>}</aside>
+            <aside className="cc-scrollbar overflow-y-auto border-b border-slate-200 bg-slate-50/60 lg:border-r lg:border-b-0" aria-label="提交记录列表">{loading ? <div className="flex justify-center py-12"><LoaderCircle className="animate-spin text-slate-400" size={18} /></div> : !loadedOnce && error ? <p className="px-4 py-12 text-center text-sm font-medium text-red-700">云端暂不可用，请稍后刷新。</p> : visibleSubmissions.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-500">{showRemoved ? "还没有已移除记录。" : "还没有客户提交。"}</p> : <ul className="p-2">{visibleSubmissions.map((item) => { const serviceDates = item.service_dates ?? []; const customerName = item.customer_name || "未填写名称"; const listStateAction = action === `list-state-${item.id}`; return <li key={item.id} className="relative"><button type="button" className={`mb-1 w-full rounded-xl px-3 py-3 pr-11 text-left ${selectedId === item.id ? "bg-orange-50 text-slate-950 shadow-sm ring-1 ring-orange-200" : "hover:bg-slate-100"}`} onClick={() => { setSelectedId(item.id); setConfirmingDecision(null); }}><div className="flex items-start justify-between gap-2"><span className="truncate text-sm font-semibold">{customerName}</span><span className={`shrink-0 text-[11px] ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{submissionStatusLabels[item.status]}</span></div><p className={`mt-1 truncate text-xs ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{item.cat_count} 只猫</p><p className={`mt-2 text-xs ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{serviceDates.length ? `${serviceDates.length} 天 · ${serviceDates.slice(0, 2).join("、")}${serviceDates.length > 2 ? "…" : ""}` : `${item.start_date || "日期未填"} 至 ${item.end_date || "—"}`}</p></button><button type="button" className="absolute top-2.5 right-2.5 inline-flex size-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50" aria-label={showRemoved ? `恢复 ${customerName}` : `从列表删除 ${customerName}`} title={showRemoved ? "恢复到当前列表" : "从当前列表删除"} disabled={action !== null} onClick={() => void handleListState(item, !showRemoved)}>{listStateAction ? <LoaderCircle className="animate-spin" size={15} /> : showRemoved ? <RefreshCw size={15} /> : <X size={16} />}</button></li>; })}</ul>}</aside>
             <div className="min-w-0 bg-slate-50/40 p-4 sm:p-5">
               {selectedId !== null && detail?.id !== selectedId ? <div className="flex items-center justify-center gap-2 py-20 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={18} />正在读取敏感详情…</div> : !detail ? <div className="flex min-h-80 flex-col items-center justify-center text-center text-sm text-slate-500"><FileCheck2 className="text-slate-300" size={34} /><p className="mt-3">选择一条提交查看详情。</p></div> : <div>
                 <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -550,7 +558,7 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
                 </div>
                 {detail.status === "processing" ? <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">云端记录正在处理。如上次因回写失败中断，请使用同一动作重试；本机唯一回执会阻止重复建档。</div> : null}
                 {confirmingDecision ? <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4" role="alertdialog" aria-label="确认审核动作"><p className="text-sm font-semibold text-amber-950">{confirmingDecision === "customer" ? "确认新建客户档案（不会设置为已归档），并创建已补齐名称的猫咪？" : confirmingDecision === "order" ? "确认新建客户、猫咪、已确认订单和每日任务？" : "确认作废本次提交？"}</p><p className="mt-1 text-xs leading-5 text-amber-800">客户原稿保持只读；失败不会留下半套订单，重复重试不会重复建档。</p><div className="mt-3 flex justify-end gap-2"><button type="button" className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900" onClick={() => setConfirmingDecision(null)}>取消</button><button type="button" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white" onClick={() => void handleDecision(confirmingDecision)}>{action === `decision-${confirmingDecision}` ? <LoaderCircle className="inline animate-spin" size={14} /> : null}确认执行</button></div></div> : null}
-                {terminal ? <div className={`mb-4 rounded-lg border p-4 text-sm ${detail.status === "voided" ? "border-slate-300 bg-slate-100 text-slate-800" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}><p className="font-semibold">{detail.status === "voided" ? "该提交已作废。" : detail.status === "redacted" ? "云端敏感资料已按期限清理。" : "已完成本机幂等归档。"}</p><div className="mt-2 flex flex-wrap items-center gap-3">{detail.converted_customer_id ? <Link className="font-medium underline underline-offset-4" to="/admin/customers">查看客户 #{detail.converted_customer_id}</Link> : null}{detail.converted_order_id ? <Link className="font-medium underline underline-offset-4" to="/admin/orders">查看订单 #{detail.converted_order_id}</Link> : null}{detail.status === "voided" || (detail.status === "redacted" && detail.decision_mode === "void") ? <button type="button" className="font-medium text-slate-700 underline underline-offset-4 disabled:opacity-50" disabled={action !== null} onClick={() => void handleListState(!detail.removed_at)}>{detail.removed_at ? "恢复到当前列表" : "从列表移除"}</button> : null}</div></div> : null}
+                {terminal ? <div className={`mb-4 rounded-lg border p-4 text-sm ${detail.status === "voided" ? "border-slate-300 bg-slate-100 text-slate-800" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}><p className="font-semibold">{detail.status === "voided" ? "该提交已作废。" : detail.status === "redacted" ? "云端敏感资料已按期限清理。" : "已完成本机幂等归档。"}</p><div className="mt-2 flex flex-wrap items-center gap-3">{detail.converted_customer_id ? <Link className="font-medium underline underline-offset-4" to="/admin/customers">查看客户 #{detail.converted_customer_id}</Link> : null}{detail.converted_order_id ? <Link className="font-medium underline underline-offset-4" to="/admin/orders">查看订单 #{detail.converted_order_id}</Link> : null}</div></div> : null}
                 {terminal ? <PayloadDetail payload={detail.review_payload ?? detail.payload} /> : reviewDraft ? <><ReviewEditor payload={reviewDraft} sourceNote={detail.payload.notes} unitPrice={unitPrice} disabled={action !== null || detail.status === "processing"} onPayloadChange={setReviewDraft} onUnitPriceChange={setUnitPrice} /><details className="mt-4 rounded-lg border border-slate-200 bg-white p-4"><summary className="cursor-pointer text-sm font-semibold">查看客户原始提交（永久只读）</summary><div className="mt-4"><PayloadDetail payload={detail.payload} /></div></details></> : null}
                 <AuditTimeline events={detail.audit_events} />
               </div>}

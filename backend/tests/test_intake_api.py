@@ -644,19 +644,11 @@ def test_sparse_service_dates_are_canonical_and_create_one_task_per_selected_day
     assert rejected.status_code == 422
 
 
-def test_voided_submission_can_be_removed_and_restored_without_deletion(
+def test_any_submission_can_be_removed_and_restored_without_deletion(
     intake_api_context: IntakeApiContext,
 ) -> None:
     client = intake_api_context.client
     _, summary = submit_for_review(client)
-    voided = client.post(
-        f"/api/admin/intake/submissions/{summary['id']}/void",
-        json={
-            "expected_revision": summary["revision"],
-            "idempotency_key": "list-state-void-0001",
-        },
-    )
-    assert voided.status_code == 200
     detail = client.get(f"/api/admin/intake/submissions/{summary['id']}").json()
     removed = client.patch(
         f"/api/admin/intake/submissions/{summary['id']}/list-state",

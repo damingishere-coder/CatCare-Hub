@@ -126,43 +126,34 @@ it("shows only the newest three links until expanded", async () => {
   expect(screen.queryByText("链接 #17")).not.toBeInTheDocument();
 });
 
-it("moves a voided record out of the current list and can restore it", async () => {
-  const voidedSummary: IntakeSubmissionSummary = {
-    ...summary,
-    status: "voided",
-    removed_at: null,
-  };
-  const voidedDetail: IntakeSubmissionDetail = {
-    ...detail,
-    ...voidedSummary,
-    status: "voided",
-    voided_at: timestamp,
-    decision_mode: "void",
-  };
-  const removedDetail = { ...voidedDetail, removed_at: "2031-05-02T08:00:00Z" };
-  apiMocks.listIntakeSubmissions.mockResolvedValue({ items: [voidedSummary], total: 1 });
-  apiMocks.getIntakeSubmission.mockResolvedValue(voidedDetail);
+it("removes any record from the list with a direct x and can restore it", async () => {
+  const removedDetail = { ...detail, removed_at: "2031-05-02T08:00:00Z" };
   apiMocks.updateIntakeSubmissionListState
     .mockResolvedValueOnce(removedDetail)
-    .mockResolvedValueOnce(voidedDetail);
+    .mockResolvedValueOnce(detail);
   renderPage();
 
-  fireEvent.click(await screen.findByRole("button", { name: "从列表移除" }));
+  fireEvent.click(await screen.findByRole("button", { name: "从列表删除 P10 后台虚构客户" }));
   await waitFor(() => expect(apiMocks.updateIntakeSubmissionListState).toHaveBeenCalledWith(
     9,
     true,
     revision,
   ));
-  expect(await screen.findByRole("button", { name: "恢复到当前列表" })).toBeInTheDocument();
+  expect(within(screen.getByLabelText("提交记录列表")).getByText("还没有客户提交。")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "已移除记录" }));
   expect(within(screen.getByLabelText("提交记录列表")).getByText("P10 后台虚构客户")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "恢复到当前列表" }));
+  fireEvent.click(screen.getByRole("button", { name: "恢复 P10 后台虚构客户" }));
   await waitFor(() => expect(apiMocks.updateIntakeSubmissionListState).toHaveBeenLastCalledWith(
     9,
     false,
     revision,
   ));
-  expect(await screen.findByRole("button", { name: "从列表移除" })).toBeInTheDocument();
+  expect(within(screen.getByLabelText("提交记录列表")).getByText("还没有已移除记录。")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "当前记录" }));
+  expect(within(screen.getByLabelText("提交记录列表")).getByText("P10 后台虚构客户")).toBeInTheDocument();
 });
 
 it("shows the full editable review while keeping the submission list privacy-minimized", async () => {
