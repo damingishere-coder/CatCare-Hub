@@ -18,6 +18,7 @@ export interface PlanCustomerDetail extends PlanCustomerSummary {
   building: string | null;
   unit: string | null;
   room: string | null;
+  updated_at?: string | null;
 }
 
 export interface PlanCatSummary {
@@ -59,6 +60,12 @@ export interface PlanDaySummary {
   order_count: number;
   cat_count: number;
   customer_names: string[];
+  orders?: Array<{
+    order_id: number;
+    customer_name: string;
+    visit_count: number;
+    order_status: OrderStatus;
+  }>;
 }
 
 export interface PlanDaysResponse {
@@ -87,6 +94,25 @@ export interface PlanTaskDetail {
   task_notes: string | null;
   estimated_arrival: string | null;
   photo_count: number;
+  order_updated_at?: string;
+  route_geocode_status?: string | null;
+  current_position?: PlanGeoPoint | null;
+  location_scope?: "customer" | "order";
+  location_sync_order_count?: number;
+  location_sync_task_count?: number;
+}
+
+export interface LocationUpdateRead {
+  scope: "customer" | "order";
+  customer_id: number | null;
+  order_id: number;
+  original_position: PlanGeoPoint | null;
+  position: PlanGeoPoint;
+  affected_orders: number;
+  affected_tasks: number;
+  customer_updated_at: string | null;
+  order_updated_at: string;
+  day_revision: string;
 }
 
 export interface PlanScheduleInput {

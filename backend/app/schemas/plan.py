@@ -20,6 +20,7 @@ class PlanCustomerDetail(PlanCustomerSummary):
     building: str | None
     unit: str | None
     room: str | None
+    updated_at: datetime | None
 
 
 class PlanCatSummary(BaseModel):
@@ -55,12 +56,20 @@ class PlanTaskSummary(BaseModel):
     has_execution_history: bool
 
 
+class PlanDayOrderMarker(BaseModel):
+    order_id: int
+    customer_name: str
+    visit_count: int = Field(ge=1)
+    order_status: OrderStatus
+
+
 class PlanDaySummary(BaseModel):
     service_date: date
     task_count: int
     order_count: int
     cat_count: int
     customer_names: list[str]
+    orders: list[PlanDayOrderMarker] | None = None
 
 
 class PlanDaysResponse(BaseModel):
@@ -89,6 +98,12 @@ class PlanTaskDetail(BaseModel):
     task_notes: str | None
     estimated_arrival: datetime | None
     photo_count: int
+    order_updated_at: datetime
+    route_geocode_status: str | None
+    current_position: "PlanGeoPoint | None" = None
+    location_scope: Literal["customer", "order"]
+    location_sync_order_count: int = Field(ge=0)
+    location_sync_task_count: int = Field(ge=0)
 
 
 class PlanScheduleItem(PlanWriteModel):

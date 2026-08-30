@@ -56,9 +56,10 @@ export function editableDraft(draft: IntakeDraftPayload | null): IntakeDraftPayl
       customer: { ...emptyCustomer },
       cats: [emptyCat()],
       service: {
+        service_dates: [],
         start_date: null,
         end_date: null,
-        visits_per_day: 1,
+        visits_per_day: null,
         service_items: ["feed", "water", "litter", "photo"],
       },
       notes: null,
@@ -70,7 +71,11 @@ export function editableDraft(draft: IntakeDraftPayload | null): IntakeDraftPayl
     cats: draft.cats.length ? draft.cats : [emptyCat()],
     service: {
       ...draft.service,
-      visits_per_day: draft.service.visits_per_day ?? 1,
+      service_dates: draft.service.service_dates ?? null,
+      visits_per_day: draft.service.service_dates !== null
+        && draft.service.service_dates !== undefined
+        ? null
+        : draft.service.visits_per_day ?? 1,
       service_items: draft.service.service_items.length
         ? draft.service.service_items
         : ["feed", "water", "litter", "photo"],
@@ -86,7 +91,17 @@ export const emptyPublicCat = (): PublicIntakeCatDraft => ({
 export function publicEditableDraft(
   draft: PublicIntakeDraftPayload | null,
 ): PublicIntakeDraftPayload {
-  if (draft) return draft;
+  if (draft) {
+    return {
+      ...draft,
+      service: {
+        service_dates: draft.service.service_dates ?? null,
+        start_date: draft.service.start_date ?? null,
+        end_date: draft.service.end_date ?? null,
+        visits_per_day: draft.service.visits_per_day ?? null,
+      },
+    };
+  }
   return {
     customer: {
       name: null,
@@ -101,6 +116,7 @@ export function publicEditableDraft(
     },
     cats: [],
     service: {
+      service_dates: [],
       start_date: null,
       end_date: null,
       visits_per_day: null,

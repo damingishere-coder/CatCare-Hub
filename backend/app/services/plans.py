@@ -155,6 +155,7 @@ def apply_day_schedule(
         task = tasks_by_id[item.task_id]
         task.sort_order = sort_order
         task.planned_time = item.planned_time
+        task.estimated_arrival = None
 
     session.commit()
     return load_day_tasks(session, service_date)

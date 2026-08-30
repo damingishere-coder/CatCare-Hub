@@ -21,7 +21,9 @@ from app.maps import (
 )
 from app.maps.factory import UnavailableMapProvider, get_map_services
 from app.models import Customer, Order, Task
-from tests.test_plan_api import PlanApiContext, create_three_task_plan
+from app.services.geocoding import geocode_fingerprint
+from app.services.orders import order_geocode_address
+from tests.test_plan_api import PlanApiContext, create_order, create_three_task_plan
 
 
 @pytest.fixture
@@ -218,6 +220,207 @@ def test_order_save_geocodes_before_explicit_round_trip_preview(
     assert [
         task["id"] for task in adopted_response.json()["tasks"]
     ] == optimized_task_ids
+
+
+def test_manual_customer_pin_syncs_only_unexecuted_tasks_and_restore_is_fail_safe(
+    plan_api_context: PlanApiContext,
+    fake_map_provider: FakeMapProvider,
+) -> None:
+    client = plan_api_context.client
+    first_order, _ = create_three_task_plan(client)
+    fake_map_provider.geocode_results.extend(
+        [
+            GeocodeResult(GeoPoint(30.11, 120.11), "深圳市", "龙岗区", "440307", "门牌号"),
+            GeocodeResult(GeoPoint(30.12, 120.12), "深圳市", "龙岗区", "440307", "门牌号"),
+        ]
+    )
+    cat_ids = [cat["id"] for cat in first_order["cats"]]
+    same_address_order = create_order(
+        client,
+        customer_id=first_order["customer"]["id"],
+        cat_ids=cat_ids,
+        start_date="2033-10-03",
+        end_date="2033-10-03",
+        visits_per_day=1,
+    )
+    different_address_order = create_order(
+        client,
+        customer_id=first_order["customer"]["id"],
+        cat_ids=cat_ids,
+        start_date="2033-10-04",
+        end_date="2033-10-04",
+        visits_per_day=1,
+    )
+    with plan_api_context.session_factory.begin() as session:
+        different = session.get(Order, different_address_order["id"])
+        assert different is not None
+        different.contact_address = "深圳市龙岗区虚构路 999 号"
+        different.route_latitude = Decimal("22.700001")
+        different.route_longitude = Decimal("114.700002")
+        for task in different.tasks:
+            task.planned_lat = different.route_latitude
+            task.planned_lng = different.route_longitude
+    day_one = client.get("/api/admin/plans/2033-10-01").json()
+    detail = client.get(
+        f"/api/admin/plans/tasks/{day_one['tasks'][0]['id']}"
+    ).json()
+    assert detail["location_scope"] == "customer"
+
+    with plan_api_context.session_factory.begin() as session:
+        historical = session.scalar(
+            select(Task).where(
+                Task.order_id == first_order["id"],
+                Task.service_date == datetime(2033, 10, 2).date(),
+            )
+        )
+        assert historical is not None
+        historical.started_at = datetime(2033, 10, 2, 9, 0, tzinfo=timezone.utc)
+        historical_original = (historical.planned_lat, historical.planned_lng)
+
+    day_one = client.get("/api/admin/plans/2033-10-01").json()
+    detail = client.get(
+        f"/api/admin/plans/tasks/{day_one['tasks'][0]['id']}"
+    ).json()
+    endpoint = f"/api/admin/customers/{detail['customer']['id']}/location"
+    payload = {
+        "latitude": 22.610001,
+        "longitude": 114.050002,
+        "coordinate_system": "GCJ-02",
+        "source_order_id": first_order["id"],
+        "service_date": "2033-10-01",
+        "expected_customer_updated_at": detail["customer"]["updated_at"],
+        "expected_day_revision": day_one["revision"],
+    }
+    wrong_coordinate_system = client.patch(
+        endpoint,
+        json={**payload, "coordinate_system": "WGS-84"},
+    )
+    assert wrong_coordinate_system.status_code == 422
+    response = client.patch(endpoint, json=payload)
+    assert response.status_code == 200
+    result = response.json()
+    assert result["scope"] == "customer"
+    assert result["affected_orders"] == 2
+    assert result["affected_tasks"] == 4
+    assert result["position"] == {"latitude": 22.610001, "longitude": 114.050002}
+
+    with plan_api_context.session_factory() as session:
+        order = session.get(Order, first_order["id"])
+        assert order is not None
+        address = order_geocode_address(order)
+        assert address
+        assert order.route_geocode_status == "manual"
+        assert order.route_geocode_fingerprint == geocode_fingerprint(
+            "manual", address
+        )
+        current_historical = session.get(Task, historical.id)
+        assert current_historical is not None
+        assert (
+            current_historical.planned_lat,
+            current_historical.planned_lng,
+        ) == historical_original
+        changed_tasks = session.scalars(
+            select(Task).where(
+                Task.order_id == first_order["id"],
+                Task.id != historical.id,
+            )
+        ).all()
+        assert all(
+            float(task.planned_lat or 0) == pytest.approx(22.610001)
+            for task in changed_tasks
+        )
+        assert all(
+            float(task.planned_lng or 0) == pytest.approx(114.050002)
+            for task in changed_tasks
+        )
+        same_address = session.get(Order, same_address_order["id"])
+        assert same_address is not None
+        assert float(same_address.route_latitude or 0) == pytest.approx(22.610001)
+        different_address = session.get(Order, different_address_order["id"])
+        assert different_address is not None
+        assert float(different_address.route_latitude or 0) == pytest.approx(22.700001)
+        assert all(
+            float(task.planned_lng or 0) == pytest.approx(114.700002)
+            for task in different_address.tasks
+        )
+
+    route = client.get("/api/admin/plans/2033-10-01/route").json()
+    first_order_markers = [
+        marker for marker in route["markers"] if marker["task_id"] in {
+            task["id"] for task in day_one["tasks"] if task["order_id"] == first_order["id"]
+        }
+    ]
+    assert first_order_markers
+    assert all(marker["position"] == result["position"] for marker in first_order_markers)
+    assert client.patch(endpoint, json=payload).status_code == 409
+
+    geocode_calls_before_inherited_order = len(fake_map_provider.geocode_calls)
+    inherited_order = create_order(
+        client,
+        customer_id=first_order["customer"]["id"],
+        cat_ids=cat_ids,
+        start_date="2033-10-05",
+        end_date="2033-10-05",
+        visits_per_day=1,
+    )
+    assert len(fake_map_provider.geocode_calls) == geocode_calls_before_inherited_order
+    with plan_api_context.session_factory() as session:
+        inherited = session.get(Order, inherited_order["id"])
+        assert inherited is not None
+        assert inherited.route_geocode_status == "manual"
+        assert float(inherited.route_latitude or 0) == pytest.approx(22.610001)
+
+    latest_day = client.get("/api/admin/plans/2033-10-01").json()
+    latest_detail = client.get(
+        f"/api/admin/plans/tasks/{latest_day['tasks'][0]['id']}"
+    ).json()
+    geocode_calls_before_stale_restore = len(fake_map_provider.geocode_calls)
+    stale_restore = client.post(
+        f"/api/admin/customers/{latest_detail['customer']['id']}/location/restore-auto",
+        json={
+            "source_order_id": first_order["id"],
+            "service_date": "2033-10-01",
+            "expected_customer_updated_at": detail["customer"]["updated_at"],
+            "expected_day_revision": latest_day["revision"],
+        },
+    )
+    assert stale_restore.status_code == 409
+    assert len(fake_map_provider.geocode_calls) == geocode_calls_before_stale_restore
+
+    next_geocode_index = len(fake_map_provider.geocode_calls)
+    fake_map_provider.geocode_results[next_geocode_index] = None
+    restore = client.post(
+        f"/api/admin/customers/{latest_detail['customer']['id']}/location/restore-auto",
+        json={
+            "source_order_id": first_order["id"],
+            "service_date": "2033-10-01",
+            "expected_customer_updated_at": latest_detail["customer"]["updated_at"],
+            "expected_day_revision": latest_day["revision"],
+        },
+    )
+    assert restore.status_code == 409
+    with plan_api_context.session_factory() as session:
+        order = session.get(Order, first_order["id"])
+        assert order is not None
+        assert order.route_geocode_status == "manual"
+        assert float(order.route_latitude or 0) == pytest.approx(22.610001)
+
+    changed_customer = client.patch(
+        f"/api/admin/customers/{latest_detail['customer']['id']}",
+        json={"address": "深圳市龙岗区另一条虚构路 1 号"},
+    )
+    assert changed_customer.status_code == 200
+    with plan_api_context.session_factory() as session:
+        customer = session.get(Customer, latest_detail["customer"]["id"])
+        assert customer is not None
+        assert customer.geocode_status == "pending"
+        assert customer.latitude is None
+        assert customer.geocode_fingerprint is None
+        historical_order = session.get(Order, first_order["id"])
+        assert historical_order is not None
+        assert historical_order.route_geocode_status == "manual"
+        assert float(historical_order.route_latitude or 0) == pytest.approx(22.610001)
+
 
 def test_route_preview_caches_order_coordinates_and_ignores_later_profile_changes(
     plan_api_context: PlanApiContext,

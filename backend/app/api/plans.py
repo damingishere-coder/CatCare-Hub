@@ -1,15 +1,15 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import distinct, func, select
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import get_db
 from app.maps import MapServices
 from app.maps.factory import get_map_services
-from app.models.order import Order, OrderCat
-from app.models.enums import TaskStatus
+from app.models.order import Order
+from app.models.enums import OrderStatus, TaskStatus
 from app.models.task import Task
 from app.schemas.plan import (
     DayPlanResponse,
@@ -18,6 +18,7 @@ from app.schemas.plan import (
     PlanCustomerDetail,
     PlanCustomerSummary,
     PlanDaySummary,
+    PlanDayOrderMarker,
     PlanDaysResponse,
     PlanRoutePreviewRequest,
     PlanRouteWorkspace,
@@ -28,6 +29,7 @@ from app.schemas.plan import (
     PlanTaskSummary,
 )
 from app.services.orders import order_display_address, task_has_execution_history
+from app.services.manual_locations import location_impact
 from app.services.plan_routes import load_route_workspace, preview_day_route
 from app.services.plans import (
     apply_day_schedule,
@@ -101,8 +103,11 @@ def _day_plan(service_date: date, tasks: list[Task]) -> DayPlanResponse:
     )
 
 
-def _task_detail(task: Task, day_tasks: list[Task]) -> PlanTaskDetail:
+def _task_detail(session: Session, task: Task, day_tasks: list[Task]) -> PlanTaskDetail:
     order = task.order
+    location_scope, sync_order_count, sync_task_count, customer_updated_at = (
+        location_impact(session, order)
+    )
     return PlanTaskDetail(
         task=_task_summary(task),
         day_revision=day_plan_revision(day_tasks),
@@ -114,6 +119,7 @@ def _task_detail(task: Task, day_tasks: list[Task]) -> PlanTaskDetail:
             building=order.contact_building,
             unit=order.contact_unit,
             room=order.contact_room,
+            updated_at=customer_updated_at,
         ),
         cats=(
             [
@@ -148,66 +154,83 @@ def _task_detail(task: Task, day_tasks: list[Task]) -> PlanTaskDetail:
         task_notes=task.notes,
         estimated_arrival=task.estimated_arrival,
         photo_count=len(task.photos),
+        order_updated_at=order.updated_at,
+        route_geocode_status=order.route_geocode_status,
+        current_position=(
+            {"latitude": float(order.route_latitude), "longitude": float(order.route_longitude)}
+            if order.route_latitude is not None and order.route_longitude is not None
+            else None
+        ),
+        location_scope=location_scope,
+        location_sync_order_count=sync_order_count,
+        location_sync_task_count=sync_task_count,
     )
 
 
-@router.get("/days", response_model=PlanDaysResponse)
-def list_plan_days(session: DatabaseSession) -> PlanDaysResponse:
-    rows = session.execute(
-        select(
-            Task.service_date,
-            func.count(distinct(Task.id)),
-            func.count(distinct(Task.order_id)),
-            func.count(distinct(OrderCat.cat_id)),
-        )
-        .outerjoin(OrderCat, OrderCat.order_id == Task.order_id)
-        .where(Task.status != TaskStatus.CANCELLED)
-        .group_by(Task.service_date)
-        .order_by(Task.service_date)
-    ).all()
-    order_rows = session.execute(
-        select(Task.service_date, Task.order_id)
-        .where(Task.status != TaskStatus.CANCELLED)
-        .distinct()
-    ).all()
-    order_ids = {order_id for _, order_id in order_rows}
-    order_counts = {
-        order.id: order.cat_count
-        for order in session.scalars(select(Order).where(Order.id.in_(order_ids))).all()
-    }
-    cat_counts_by_date: dict[date, int] = {}
-    for service_date, order_id in order_rows:
-        cat_counts_by_date[service_date] = (
-            cat_counts_by_date.get(service_date, 0) + order_counts.get(order_id, 0)
-        )
-    customer_names_by_date: dict[date, list[str]] = {}
-    name_rows = session.execute(
-        select(Task.service_date, Order.contact_name)
+@router.get("/days", response_model=PlanDaysResponse, response_model_exclude_none=True)
+def list_plan_days(
+    session: DatabaseSession,
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+) -> PlanDaysResponse:
+    if (date_from is None) != (date_to is None):
+        raise HTTPException(status_code=422, detail="date_from 和 date_to 必须成对提供")
+    if date_from is not None and date_to is not None:
+        if date_to < date_from:
+            raise HTTPException(status_code=422, detail="date_to 不能早于 date_from")
+        if (date_to - date_from).days > 61:
+            raise HTTPException(status_code=422, detail="日期范围最多 62 天")
+    statement = (
+        select(Task)
         .join(Order, Order.id == Task.order_id)
-        .where(Task.status != TaskStatus.CANCELLED)
-        .order_by(Task.service_date, Task.sort_order, Task.id)
-    ).all()
-    for service_date, customer_name in name_rows:
-        names = customer_names_by_date.setdefault(service_date, [])
-        if customer_name not in names:
-            names.append(customer_name)
-    items = [
-        PlanDaySummary(
-            service_date=service_date,
-            task_count=int(task_count),
-            order_count=int(order_count),
-            cat_count=cat_counts_by_date.get(service_date, int(cat_count)),
-            customer_names=customer_names_by_date.get(service_date, []),
+        .options(selectinload(Task.order))
+        .where(
+            Task.status != TaskStatus.CANCELLED,
+            Order.order_status != OrderStatus.CANCELLED,
         )
-        for service_date, task_count, order_count, cat_count in rows
-    ]
+        .order_by(Task.service_date, Task.sort_order, Task.id)
+    )
+    if date_from is not None and date_to is not None:
+        statement = statement.where(Task.service_date.between(date_from, date_to))
+    tasks = list(session.scalars(statement).unique().all())
+    tasks_by_date: dict[date, list[Task]] = {}
+    for task in tasks:
+        tasks_by_date.setdefault(task.service_date, []).append(task)
+    items: list[PlanDaySummary] = []
+    for service_date, day_tasks in tasks_by_date.items():
+        order_tasks: dict[int, list[Task]] = {}
+        for task in day_tasks:
+            order_tasks.setdefault(task.order_id, []).append(task)
+        orders = [entries[0].order for entries in order_tasks.values()]
+        items.append(
+            PlanDaySummary(
+                service_date=service_date,
+                task_count=len(day_tasks),
+                order_count=len(order_tasks),
+                cat_count=sum(order.cat_count for order in orders),
+                customer_names=list(dict.fromkeys(order.contact_name for order in orders)),
+                orders=(
+                    [
+                        PlanDayOrderMarker(
+                            order_id=order_id,
+                            customer_name=entries[0].order.contact_name,
+                            visit_count=len(entries),
+                            order_status=entries[0].order.order_status,
+                        )
+                        for order_id, entries in order_tasks.items()
+                    ]
+                    if date_from is not None
+                    else None
+                ),
+            )
+        )
     return PlanDaysResponse(items=items, total=len(items))
 
 
 @router.get("/tasks/{task_id}", response_model=PlanTaskDetail)
 def get_plan_task(task_id: int, session: DatabaseSession) -> PlanTaskDetail:
     task = load_plan_task(session, task_id)
-    return _task_detail(task, load_day_tasks(session, task.service_date))
+    return _task_detail(session, task, load_day_tasks(session, task.service_date))
 
 
 @router.get("/{service_date}/route", response_model=PlanRouteWorkspace)
@@ -251,7 +274,7 @@ def change_plan_task_status(
         expected_revision=payload.expected_revision,
         task_status=payload.task_status,
     )
-    return _task_detail(task, load_day_tasks(session, task.service_date))
+    return _task_detail(session, task, load_day_tasks(session, task.service_date))
 
 
 @router.get("/{service_date}", response_model=DayPlanResponse)

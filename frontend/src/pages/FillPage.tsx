@@ -28,6 +28,8 @@ import type {
   PublicIntakeState,
 } from "../features/intake/types";
 import { keyStatusOptions } from "../lib/customerDisplay";
+import { MultiDateCalendar } from "../components/ui/MultiDateCalendar";
+import { expandDateRange } from "../components/ui/calendarDates";
 
 const inputClass = "mt-2 min-h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100";
 const textareaClass = `${inputClass} min-h-28 resize-y leading-6`;
@@ -156,6 +158,7 @@ export function FillPage({ token }: { token: string | null }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [addressOpen, setAddressOpen] = useState(false);
   const [catsOpen, setCatsOpen] = useState(false);
+  const [scheduleTouched, setScheduleTouched] = useState(false);
   const [error, setError] = useState<string | null>(
     token ? null : "当前链接缺少专属 Token，请向服务人员索取完整填写链接。",
   );
@@ -248,6 +251,9 @@ export function FillPage({ token }: { token: string | null }) {
 
   const terminalCopy = state && state !== "editable" ? statusCopy(state) : null;
   const keyOptions = keyStatusOptions.map((value) => ({ value, label: keyLabels[value] ?? value }));
+  const selectedDates = draft
+    ? draft.service.service_dates ?? expandDateRange(draft.service.start_date, draft.service.end_date)
+    : [];
 
   return <main className="min-h-screen overflow-x-hidden bg-[#FFF9F1] px-4 py-5 text-[#1D1D1F] sm:py-8">
     <section className="mx-auto max-w-xl" aria-labelledby="fill-title">
@@ -278,20 +284,24 @@ export function FillPage({ token }: { token: string | null }) {
         </section>
 
         <section className="rounded-[2rem] border border-orange-100 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="schedule-title">
-          <div className="flex items-start gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-orange-700"><CalendarDays size={19} /></span><div><h2 id="schedule-title" className="text-lg font-bold">预计服务时间</h2><p className="mt-1 text-xs leading-5 text-slate-500">日期和次数都可以暂不确定。</p></div></div>
-          <div className="mt-6 space-y-5">
-            <Field label="开始日期" type="date" value={draft.service.start_date} onChange={(value) => setDraft({ ...draft, service: { ...draft.service, start_date: value } })} />
-            <Field label="结束日期" type="date" value={draft.service.end_date} onChange={(value) => setDraft({ ...draft, service: { ...draft.service, end_date: value } })} />
-            <fieldset>
-              <legend className="text-sm font-semibold text-slate-800">每天上门次数</legend>
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                {[
-                  { label: "每天 1 次", value: 1 },
-                  { label: "每天 2 次", value: 2 },
-                  { label: "待确认", value: null },
-                ].map((option) => <button key={option.label} type="button" className={`min-h-12 rounded-2xl border px-2 text-sm font-semibold transition ${draft.service.visits_per_day === option.value ? "border-orange-500 bg-orange-50 text-orange-800 ring-2 ring-orange-100" : "border-slate-200 bg-white text-slate-600 hover:border-orange-200"}`} aria-pressed={draft.service.visits_per_day === option.value} onClick={() => setDraft({ ...draft, service: { ...draft.service, visits_per_day: option.value } })}>{option.label}</button>)}
-              </div>
-            </fieldset>
+          <div className="flex items-start gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-orange-700"><CalendarDays size={19} /></span><div><h2 id="schedule-title" className="text-lg font-bold">预计上门时间</h2><p className="mt-1 text-xs leading-5 text-slate-500">可以选择多个不连续日期；暂不确定也可以留空。</p></div></div>
+          <div className="mt-6 min-w-0 max-w-full">
+            <MultiDateCalendar
+              values={selectedDates}
+              onChange={(values) => {
+                setScheduleTouched(true);
+                setDraft({
+                  ...draft,
+                  service: {
+                    service_dates: values,
+                    start_date: null,
+                    end_date: null,
+                    visits_per_day: null,
+                  },
+                });
+              }}
+            />
+            {!scheduleTouched && !draft.service.service_dates && draft.service.start_date ? <p className="mt-3 rounded-xl bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">这是旧草稿的连续日期安排；不修改会按原安排保留，点击日历修改后将改为每个选中日期一次。</p> : null}
           </div>
         </section>
 

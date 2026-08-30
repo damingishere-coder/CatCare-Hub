@@ -13,11 +13,14 @@ import {
   ShieldCheck,
   ShoppingCart,
   Trash2,
+  X,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { PageHeader } from "../../components/ui/PageHeader";
+import { MultiDateCalendar } from "../../components/ui/MultiDateCalendar";
+import { expandDateRange } from "../../components/ui/calendarDates";
 import { customerAddress } from "../../lib/customerDisplay";
 import {
   createIntakeToken,
@@ -27,6 +30,7 @@ import {
   listIntakeTokens,
   saveIntakeReviewDraft,
   updateIntakeToken,
+  updateIntakeSubmissionListState,
 } from "./api";
 import { emptyCat, serviceItemOptions } from "./constants";
 import type {
@@ -103,9 +107,11 @@ function replaceSubmission(
     cat_count: detail.cat_count,
     start_date: detail.start_date,
     end_date: detail.end_date,
+    service_dates: detail.service_dates,
     submitted_at: detail.submitted_at,
     updated_at: detail.updated_at,
     revision: detail.revision,
+    removed_at: detail.removed_at,
   } : item);
 }
 
@@ -115,6 +121,7 @@ function DetailRow({ label, value }: { label: string; value: string | null | und
 
 function PayloadDetail({ payload }: { payload: IntakeDraftPayload }) {
   const labels = new Map(serviceItemOptions.map((item) => [item.value, item.label]));
+  const dates = payload.service.service_dates ?? [];
   return (
     <div className="space-y-4">
       <section className="rounded-lg border border-slate-200 bg-white p-4">
@@ -141,7 +148,7 @@ function PayloadDetail({ payload }: { payload: IntakeDraftPayload }) {
       </section>
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold">服务计划</h3>
-        <dl className="mt-4 grid gap-4 sm:grid-cols-2"><DetailRow label="服务日期" value={`${valueOrDash(payload.service.start_date)} 至 ${valueOrDash(payload.service.end_date)}`} /><DetailRow label="每日次数" value={payload.service.visits_per_day ? `${payload.service.visits_per_day} 次` : null} /><DetailRow label="服务事项" value={payload.service.service_items.map((item) => labels.get(item) || item).join("、")} /><DetailRow label="补充备注" value={payload.notes} /><div className="sm:col-span-2"><DetailRow label="客户备注" value={payload.customer.notes} /></div></dl>
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2"><DetailRow label="服务日期" value={dates.length ? `${dates.length} 天：${dates.join("、")}` : `${valueOrDash(payload.service.start_date)} 至 ${valueOrDash(payload.service.end_date)}`} />{dates.length ? null : <DetailRow label="每日次数（旧记录）" value={payload.service.visits_per_day ? `${payload.service.visits_per_day} 次` : null} />}<DetailRow label="服务事项" value={payload.service.service_items.map((item) => labels.get(item) || item).join("、")} /><DetailRow label="补充备注" value={payload.notes} /><div className="sm:col-span-2"><DetailRow label="客户备注" value={payload.customer.notes} /></div></dl>
       </section>
     </div>
   );
@@ -198,6 +205,8 @@ function ReviewEditor({ payload, sourceNote, unitPrice, disabled, onPayloadChang
     onPayloadChange({ ...payload, notes: mergeNote(payload.notes, sourceNote) });
   }
   const optional = (value: string) => value.trim() || null;
+  const serviceDates = payload.service.service_dates
+    ?? expandDateRange(payload.service.start_date, payload.service.end_date);
   return <div className="space-y-4">
     <section className="rounded-lg border border-orange-200 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-semibold">后台审核稿</h3><p className="mt-1 text-xs text-slate-500">客户原始提交不会被覆盖；这里的修改只用于最终落档和生成订单。</p></div><label className="text-sm font-semibold text-orange-900">每次价格（元）<input className={`${reviewInputClass} w-40 border-orange-300`} type="number" min="0" step="0.01" value={unitPrice} disabled={disabled} onChange={(event) => onUnitPriceChange(event.target.value)} /></label></div>
@@ -241,7 +250,7 @@ function ReviewEditor({ payload, sourceNote, unitPrice, disabled, onPayloadChang
         <label className="text-xs font-medium text-slate-600 sm:col-span-2">服务注意事项<textarea className={`${reviewInputClass} min-h-16`} value={item.service_notes ?? ""} disabled={disabled} onChange={(event) => cat(index, "service_notes", optional(event.target.value))} /></label>
       </div>)}</div>
     </section>
-    <section className="rounded-lg border border-slate-200 bg-white p-4"><h3 className="text-sm font-semibold">服务计划</h3><div className="mt-3 grid gap-4 sm:grid-cols-3"><label className="text-xs font-medium text-slate-600">开始日期<input className={reviewInputClass} type="date" value={payload.service.start_date ?? ""} disabled={disabled} onChange={(event) => service("start_date", optional(event.target.value))} /></label><label className="text-xs font-medium text-slate-600">结束日期<input className={reviewInputClass} type="date" value={payload.service.end_date ?? ""} disabled={disabled} onChange={(event) => service("end_date", optional(event.target.value))} /></label><label className="text-xs font-medium text-slate-600">每日次数<input className={reviewInputClass} type="number" min={1} max={10} value={payload.service.visits_per_day ?? 1} disabled={disabled} onChange={(event) => service("visits_per_day", Number(event.target.value))} /></label></div><fieldset className="mt-4"><legend className="text-xs font-medium text-slate-600">服务事项</legend><div className="mt-2 flex flex-wrap gap-2">{serviceItemOptions.map((option) => <label key={option.value} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs"><input className="mr-2" type="checkbox" checked={payload.service.service_items.includes(option.value)} disabled={disabled} onChange={() => service("service_items", payload.service.service_items.includes(option.value) ? payload.service.service_items.filter((item) => item !== option.value) : [...payload.service.service_items, option.value])} />{option.label}</label>)}</div></fieldset><label className="mt-4 block text-xs font-medium text-slate-600">本次订单备注<textarea className={`${reviewInputClass} min-h-20`} value={payload.notes ?? ""} disabled={disabled} onChange={(event) => onPayloadChange({ ...payload, notes: optional(event.target.value) })} /></label></section>
+    <section className="rounded-lg border border-slate-200 bg-white p-4"><h3 className="text-sm font-semibold">服务计划</h3><div className="mt-3 max-w-xl"><MultiDateCalendar values={serviceDates} disabled={disabled} title="选择预计上门日期" onChange={(dates) => onPayloadChange({ ...payload, service: { ...payload.service, service_dates: dates, start_date: null, end_date: null, visits_per_day: null } })} /></div>{payload.service.service_dates === null && payload.service.visits_per_day ? <p className="mt-2 text-xs text-amber-700">旧记录当前仍按每天 {payload.service.visits_per_day} 次处理；修改日历后将转换为每个选中日期一次。</p> : null}<fieldset className="mt-4"><legend className="text-xs font-medium text-slate-600">服务事项</legend><div className="mt-2 flex flex-wrap gap-2">{serviceItemOptions.map((option) => <label key={option.value} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs"><input className="mr-2" type="checkbox" checked={payload.service.service_items.includes(option.value)} disabled={disabled} onChange={() => service("service_items", payload.service.service_items.includes(option.value) ? payload.service.service_items.filter((item) => item !== option.value) : [...payload.service.service_items, option.value])} />{option.label}</label>)}</div></fieldset><label className="mt-4 block text-xs font-medium text-slate-600">本次订单备注<textarea className={`${reviewInputClass} min-h-20`} value={payload.notes ?? ""} disabled={disabled} onChange={(event) => onPayloadChange({ ...payload, notes: optional(event.target.value) })} /></label></section>
   </div>;
 }
 
@@ -258,9 +267,12 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
   const [action, setAction] = useState<string | null>(null);
   const [confirmingDecision, setConfirmingDecision] = useState<IntakeDecisionMode | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [linksExpanded, setLinksExpanded] = useState(false);
+  const [showRemoved, setShowRemoved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const decisionKeys = useRef(new Map<string, string>());
   const selectedIdRef = useRef<number | null>(null);
+  const showRemovedRef = useRef(false);
 
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
 
@@ -275,9 +287,12 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
       setTokens(tokenResponse.items);
       setSubmissions(submissionResponse.items);
       setLoadedOnce(true);
-      setSelectedId((current) => current && submissionResponse.items.some((item) => item.id === current)
+      const matchingSubmissions = submissionResponse.items.filter(
+        (item) => Boolean(item.removed_at) === showRemovedRef.current,
+      );
+      setSelectedId((current) => current && matchingSubmissions.some((item) => item.id === current)
         ? current
-        : submissionResponse.items[0]?.id ?? null);
+        : matchingSubmissions[0]?.id ?? null);
       const activeId = selectedIdRef.current;
       if (!silent && activeId && submissionResponse.items.some((item) => item.id === activeId)) {
         const refreshedDetail = await getIntakeSubmission(activeId);
@@ -441,6 +456,40 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
     }
   }
 
+  async function handleListState(item: IntakeSubmissionSummary, removed: boolean) {
+    setAction(`list-state-${item.id}`);
+    setError(null);
+    try {
+      const updated = await updateIntakeSubmissionListState(item.id, removed, item.revision);
+      const nextSubmissions = replaceSubmission(submissions, updated);
+      setSubmissions(nextSubmissions);
+      if (selectedIdRef.current === item.id) {
+        const nextVisible = nextSubmissions.find(
+          (candidate) => Boolean(candidate.removed_at) === showRemovedRef.current,
+        );
+        setSelectedId(nextVisible?.id ?? null);
+        if (!nextVisible) {
+          setDetail(null);
+          setReviewDraft(null);
+          setUnitPrice("");
+        }
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "列表状态修改失败，请刷新后重试。");
+    } finally {
+      setAction(null);
+    }
+  }
+
+  function selectSubmissionList(removed: boolean) {
+    showRemovedRef.current = removed;
+    setShowRemoved(removed);
+    const first = submissions.find((item) => Boolean(item.removed_at) === removed);
+    setSelectedId(first?.id ?? null);
+    if (!first) setDetail(null);
+    setConfirmingDecision(null);
+  }
+
   const reviewDirty = Boolean(
     detail
     && reviewDraft
@@ -450,7 +499,11 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
     ),
   );
   const reviewSaved = Boolean(detail?.review_payload && !reviewDirty);
-  const orderReady = Boolean(reviewSaved && detail?.review_unit_price !== null);
+  const hasServiceSchedule = Boolean(reviewDraft && (
+    (reviewDraft.service.service_dates?.length ?? 0) > 0
+    || (reviewDraft.service.start_date && reviewDraft.service.end_date && reviewDraft.service.visits_per_day)
+  ));
+  const orderReady = Boolean(reviewSaved && detail?.review_unit_price !== null && hasServiceSchedule);
   const canEdit = detail?.status === "submitted" || detail?.status === "reviewed";
   const canDecide = canEdit || detail?.status === "processing";
   const terminal = Boolean(detail && [
@@ -460,6 +513,8 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
     "voided",
     "redacted",
   ].includes(detail.status));
+  const visibleSubmissions = submissions.filter((item) => Boolean(item.removed_at) === showRemoved);
+  const visibleTokens = linksExpanded ? tokens : tokens.slice(0, 3);
 
   return (
     <section className={embedded ? "mt-6" : "cc-page cc-page--wide"} aria-labelledby="intake-title">
@@ -482,14 +537,14 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
 
           <section className="cc-surface overflow-hidden" aria-labelledby="links-title">
             <div className="border-b border-slate-200 px-5 py-4"><h2 id="links-title" className="font-semibold">填写链接（{tokens.length}）</h2></div>
-            {loading ? <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={17} />正在加载…</div> : !loadedOnce && error ? <p className="px-5 py-10 text-center text-sm font-medium text-red-700">云端暂不可用，未把失败当作空列表。</p> : tokens.length === 0 ? <p className="px-5 py-10 text-center text-sm text-slate-500">还没有填写链接。</p> : <ul className="divide-y divide-slate-100">{tokens.map((token) => <li key={token.id} className="p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">链接 #{token.id}</span><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${token.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{tokenStatusLabels[token.status]}</span>{token.submission_status ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{submissionStatusLabels[token.submission_status]}</span> : null}</div><p className="mt-2 text-xs text-slate-500">有效期至 {dateTime(token.expires_at)}</p>{token.fill_path ? <p className="mt-1 text-xs font-medium text-amber-700">新链接仅本次可查看，请立即复制保存</p> : <p className="mt-1 text-xs text-slate-400">链接原文未保存；需要时请重新生成</p>}</div></div><div className="mt-3 flex flex-wrap gap-2">{token.fill_path ? <><a href={token.fill_path} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium"><ExternalLink size={13} />打开</a><button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium" onClick={() => void handleCopy(token)}><ClipboardCopy size={13} />{copiedId === token.id ? "已复制" : "复制"}</button></> : null}{!token.submitted_at && token.status !== "expired" ? <button type="button" className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium disabled:opacity-50" onClick={() => void handleTokenStatus(token)} disabled={action === `token-${token.id}`}>{token.status === "active" ? "关闭" : "恢复"}</button> : null}</div></li>)}</ul>}
+            {loading ? <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={17} />正在加载…</div> : !loadedOnce && error ? <p className="px-5 py-10 text-center text-sm font-medium text-red-700">云端暂不可用，未把失败当作空列表。</p> : tokens.length === 0 ? <p className="px-5 py-10 text-center text-sm text-slate-500">还没有填写链接。</p> : <><ul className="divide-y divide-slate-100">{visibleTokens.map((token) => <li key={token.id} className="p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">链接 #{token.id}</span><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${token.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{tokenStatusLabels[token.status]}</span>{token.submission_status ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{submissionStatusLabels[token.submission_status]}</span> : null}</div><p className="mt-2 text-xs text-slate-500">有效期至 {dateTime(token.expires_at)}</p>{token.fill_path ? <p className="mt-1 text-xs font-medium text-amber-700">新链接仅本次可查看，请立即复制保存</p> : <p className="mt-1 text-xs text-slate-400">链接原文未保存；需要时请重新生成</p>}</div></div><div className="mt-3 flex flex-wrap gap-2">{token.fill_path ? <><a href={token.fill_path} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium"><ExternalLink size={13} />打开</a><button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium" onClick={() => void handleCopy(token)}><ClipboardCopy size={13} />{copiedId === token.id ? "已复制" : "复制"}</button></> : null}{!token.submitted_at && token.status !== "expired" ? <button type="button" className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium disabled:opacity-50" onClick={() => void handleTokenStatus(token)} disabled={action === `token-${token.id}`}>{token.status === "active" ? "关闭" : "恢复"}</button> : null}</div></li>)}</ul>{tokens.length > 3 ? <div className="border-t border-slate-100 p-3 text-center"><button type="button" className="text-sm font-medium text-orange-700" onClick={() => setLinksExpanded((value) => !value)}>{linksExpanded ? "收起" : `展开全部（${tokens.length}）`}</button></div> : null}</>}
           </section>
         </div>
 
         <section className="cc-surface min-w-0 overflow-hidden" aria-labelledby="submissions-title">
-          <div className="border-b border-slate-200 px-5 py-4"><h2 id="submissions-title" className="font-semibold">提交审核（{submissions.length}）</h2><p className="mt-1 text-xs text-slate-500">列表仅显示摘要；完整地址、门禁和钥匙只在右侧详情中读取。</p></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><div><h2 id="submissions-title" className="font-semibold">提交审核（{visibleSubmissions.length}）</h2><p className="mt-1 text-xs text-slate-500">列表仅显示摘要；完整地址、门禁和钥匙只在右侧详情中读取。</p></div><div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs font-medium"><button type="button" className={`rounded-md px-3 py-1.5 ${!showRemoved ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`} onClick={() => selectSubmissionList(false)}>当前记录</button><button type="button" className={`rounded-md px-3 py-1.5 ${showRemoved ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`} onClick={() => selectSubmissionList(true)}>已移除记录</button></div></div>
           <div className="grid min-h-[600px] lg:grid-cols-[260px_minmax(0,1fr)]">
-            <aside className="cc-scrollbar overflow-y-auto border-b border-slate-200 bg-slate-50/60 lg:border-r lg:border-b-0" aria-label="提交记录列表">{loading ? <div className="flex justify-center py-12"><LoaderCircle className="animate-spin text-slate-400" size={18} /></div> : !loadedOnce && error ? <p className="px-4 py-12 text-center text-sm font-medium text-red-700">云端暂不可用，请稍后刷新。</p> : submissions.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-500">还没有客户提交。</p> : <ul className="p-2">{submissions.map((item) => <li key={item.id}><button type="button" className={`mb-1 w-full rounded-xl px-3 py-3 text-left ${selectedId === item.id ? "bg-orange-50 text-slate-950 shadow-sm ring-1 ring-orange-200" : "hover:bg-slate-100"}`} onClick={() => { setSelectedId(item.id); setConfirmingDecision(null); }}><div className="flex items-start justify-between gap-2"><span className="truncate text-sm font-semibold">{item.customer_name || "未填写名称"}</span><span className={`shrink-0 text-[11px] ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{submissionStatusLabels[item.status]}</span></div><p className={`mt-1 truncate text-xs ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{item.cat_count} 只猫</p><p className={`mt-2 text-xs ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{item.start_date || "日期未填"} 至 {item.end_date || "—"}</p></button></li>)}</ul>}</aside>
+            <aside className="cc-scrollbar overflow-y-auto border-b border-slate-200 bg-slate-50/60 lg:border-r lg:border-b-0" aria-label="提交记录列表">{loading ? <div className="flex justify-center py-12"><LoaderCircle className="animate-spin text-slate-400" size={18} /></div> : !loadedOnce && error ? <p className="px-4 py-12 text-center text-sm font-medium text-red-700">云端暂不可用，请稍后刷新。</p> : visibleSubmissions.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-500">{showRemoved ? "还没有已移除记录。" : "还没有客户提交。"}</p> : <ul className="p-2">{visibleSubmissions.map((item) => { const serviceDates = item.service_dates ?? []; const customerName = item.customer_name || "未填写名称"; const listStateAction = action === `list-state-${item.id}`; return <li key={item.id} className="relative"><button type="button" className={`mb-1 w-full rounded-xl px-3 py-3 pr-11 text-left ${selectedId === item.id ? "bg-orange-50 text-slate-950 shadow-sm ring-1 ring-orange-200" : "hover:bg-slate-100"}`} onClick={() => { setSelectedId(item.id); setConfirmingDecision(null); }}><div className="flex items-start justify-between gap-2"><span className="truncate text-sm font-semibold">{customerName}</span><span className={`shrink-0 text-[11px] ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{submissionStatusLabels[item.status]}</span></div><p className={`mt-1 truncate text-xs ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{item.cat_count} 只猫</p><p className={`mt-2 text-xs ${selectedId === item.id ? "text-orange-800" : "text-slate-500"}`}>{serviceDates.length ? `${serviceDates.length} 天 · ${serviceDates.slice(0, 2).join("、")}${serviceDates.length > 2 ? "…" : ""}` : `${item.start_date || "日期未填"} 至 ${item.end_date || "—"}`}</p></button><button type="button" className="absolute top-2.5 right-2.5 inline-flex size-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50" aria-label={showRemoved ? `恢复 ${customerName}` : `从列表删除 ${customerName}`} title={showRemoved ? "恢复到当前列表" : "从当前列表删除"} disabled={action !== null} onClick={() => void handleListState(item, !showRemoved)}>{listStateAction ? <LoaderCircle className="animate-spin" size={15} /> : showRemoved ? <RefreshCw size={15} /> : <X size={16} />}</button></li>; })}</ul>}</aside>
             <div className="min-w-0 bg-slate-50/40 p-4 sm:p-5">
               {selectedId !== null && detail?.id !== selectedId ? <div className="flex items-center justify-center gap-2 py-20 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={18} />正在读取敏感详情…</div> : !detail ? <div className="flex min-h-80 flex-col items-center justify-center text-center text-sm text-slate-500"><FileCheck2 className="text-slate-300" size={34} /><p className="mt-3">选择一条提交查看详情。</p></div> : <div>
                 <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -503,7 +558,7 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
                 </div>
                 {detail.status === "processing" ? <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">云端记录正在处理。如上次因回写失败中断，请使用同一动作重试；本机唯一回执会阻止重复建档。</div> : null}
                 {confirmingDecision ? <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4" role="alertdialog" aria-label="确认审核动作"><p className="text-sm font-semibold text-amber-950">{confirmingDecision === "customer" ? "确认新建客户档案（不会设置为已归档），并创建已补齐名称的猫咪？" : confirmingDecision === "order" ? "确认新建客户、猫咪、已确认订单和每日任务？" : "确认作废本次提交？"}</p><p className="mt-1 text-xs leading-5 text-amber-800">客户原稿保持只读；失败不会留下半套订单，重复重试不会重复建档。</p><div className="mt-3 flex justify-end gap-2"><button type="button" className="rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900" onClick={() => setConfirmingDecision(null)}>取消</button><button type="button" className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white" onClick={() => void handleDecision(confirmingDecision)}>{action === `decision-${confirmingDecision}` ? <LoaderCircle className="inline animate-spin" size={14} /> : null}确认执行</button></div></div> : null}
-                {terminal ? <div className={`mb-4 rounded-lg border p-4 text-sm ${detail.status === "voided" ? "border-slate-300 bg-slate-100 text-slate-800" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}><p className="font-semibold">{detail.status === "voided" ? "该提交已作废。" : detail.status === "redacted" ? "云端敏感资料已按期限清理。" : "已完成本机幂等归档。"}</p><div className="mt-2 flex flex-wrap gap-3">{detail.converted_customer_id ? <Link className="font-medium underline underline-offset-4" to="/admin/customers">查看客户 #{detail.converted_customer_id}</Link> : null}{detail.converted_order_id ? <Link className="font-medium underline underline-offset-4" to="/admin/orders">查看订单 #{detail.converted_order_id}</Link> : null}</div></div> : null}
+                {terminal ? <div className={`mb-4 rounded-lg border p-4 text-sm ${detail.status === "voided" ? "border-slate-300 bg-slate-100 text-slate-800" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}><p className="font-semibold">{detail.status === "voided" ? "该提交已作废。" : detail.status === "redacted" ? "云端敏感资料已按期限清理。" : "已完成本机幂等归档。"}</p><div className="mt-2 flex flex-wrap items-center gap-3">{detail.converted_customer_id ? <Link className="font-medium underline underline-offset-4" to="/admin/customers">查看客户 #{detail.converted_customer_id}</Link> : null}{detail.converted_order_id ? <Link className="font-medium underline underline-offset-4" to="/admin/orders">查看订单 #{detail.converted_order_id}</Link> : null}</div></div> : null}
                 {terminal ? <PayloadDetail payload={detail.review_payload ?? detail.payload} /> : reviewDraft ? <><ReviewEditor payload={reviewDraft} sourceNote={detail.payload.notes} unitPrice={unitPrice} disabled={action !== null || detail.status === "processing"} onPayloadChange={setReviewDraft} onUnitPriceChange={setUnitPrice} /><details className="mt-4 rounded-lg border border-slate-200 bg-white p-4"><summary className="cursor-pointer text-sm font-semibold">查看客户原始提交（永久只读）</summary><div className="mt-4"><PayloadDetail payload={detail.payload} /></div></details></> : null}
                 <AuditTimeline events={detail.audit_events} />
               </div>}

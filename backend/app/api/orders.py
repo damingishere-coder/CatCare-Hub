@@ -36,8 +36,14 @@ from app.schemas.order import (
     OrderWrite,
     OrderServiceContact,
 )
+from app.schemas.location import LocationUpdateRead, OrderLocationRestore, OrderLocationUpdate
 from app.services.order_customers import resolve_order_customer
 from app.services.order_locations import clear_order_location, geocode_order
+from app.services.manual_locations import (
+    check_order_location_concurrency,
+    update_order_location,
+    verified_geocode,
+)
 from app.services.orders import (
     DEFAULT_BASE_PRICE,
     EXTRA_CAT_UNIT_PRICE,
@@ -551,6 +557,56 @@ def retry_order_geocode(
     _load_order(session, order_id)
     geocode_order(session, order_id, services)
     return _order_detail(_load_order(session, order_id))
+
+
+@router.patch("/{order_id}/location", response_model=LocationUpdateRead)
+def patch_order_location(
+    order_id: int,
+    payload: OrderLocationUpdate,
+    session: DatabaseSession,
+) -> LocationUpdateRead:
+    result = update_order_location(
+        session,
+        order_id=order_id,
+        service_date=payload.service_date,
+        expected_order_updated_at=payload.expected_order_updated_at,
+        expected_day_revision=payload.expected_day_revision,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+    )
+    session.commit()
+    return result
+
+
+@router.post("/{order_id}/location/restore-auto", response_model=LocationUpdateRead)
+def restore_order_location(
+    order_id: int,
+    payload: OrderLocationRestore,
+    session: DatabaseSession,
+    services: MapServicesDependency,
+) -> LocationUpdateRead:
+    _, order = check_order_location_concurrency(
+        session,
+        order_id=order_id,
+        service_date=payload.service_date,
+        expected_order_updated_at=payload.expected_order_updated_at,
+        expected_day_revision=payload.expected_day_revision,
+    )
+    result, provider_name = verified_geocode(order, services)
+    session.expire_all()
+    updated = update_order_location(
+        session,
+        order_id=order_id,
+        service_date=payload.service_date,
+        expected_order_updated_at=payload.expected_order_updated_at,
+        expected_day_revision=payload.expected_day_revision,
+        latitude=result.point.latitude,
+        longitude=result.point.longitude,
+        automatic_result=result,
+        provider_name=provider_name,
+    )
+    session.commit()
+    return updated
 
 
 @router.put("/{order_id}", response_model=OrderDetail)

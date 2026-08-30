@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 
 import { OrdersPage } from "./OrdersPage";
+import type { PlanTaskSummary } from "../plans/types";
 import type {
   OrderDetail,
   OrderFormOptions,
@@ -21,8 +22,10 @@ const apiMocks = vi.hoisted(() => ({
   previewDemoData: vi.fn(),
   clearDemoData: vi.fn(),
 }));
+const planApiMocks = vi.hoisted(() => ({ getPlanDays: vi.fn(), getDayPlan: vi.fn() }));
 
 vi.mock("./api", () => apiMocks);
+vi.mock("../plans/api", () => planApiMocks);
 
 const timestamp = "2030-09-01T08:00:00";
 const tasks: OrderTask[] = Array.from({ length: 7 }, (_, index) => ({
@@ -127,9 +130,9 @@ const detail: OrderDetail = {
   created_at: timestamp,
 };
 
-function renderPage(initialCreate = false) {
+function renderPage(initialCreate = false, initialEntry = "/admin/orders?order_id=1&date=2030-10-01") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <OrdersPage initialCreate={initialCreate} />
     </MemoryRouter>,
   );
@@ -176,6 +179,110 @@ beforeEach(() => {
   apiMocks.updateOrder.mockResolvedValue(detail);
   apiMocks.updateOrderStatus.mockResolvedValue(detail);
   apiMocks.deleteOrder.mockResolvedValue(undefined);
+  planApiMocks.getPlanDays.mockResolvedValue({ items: [], total: 0 });
+  planApiMocks.getDayPlan.mockResolvedValue({
+    service_date: "2030-10-01",
+    task_count: 1,
+    order_count: 1,
+    cat_count: 2,
+    revision: "p".repeat(64),
+    schedule_locked: false,
+    tasks: [{
+      id: 1,
+      order_id: 1,
+      service_date: "2030-10-01",
+      planned_time: "09:30:00",
+      sort_order: 0,
+      status: "confirmed",
+      customer: summary.customer,
+      cat_count: 2,
+      cats: summary.cats.map((cat) => ({ id: cat.id, name: cat.name })),
+      items: tasks[0].items,
+      has_execution_history: false,
+    }],
+  });
+});
+
+it("uses the month calendar as the primary view and opens details on demand", async () => {
+  planApiMocks.getPlanDays.mockResolvedValue({
+    items: [{
+      service_date: "2030-10-01",
+      task_count: 2,
+      order_count: 1,
+      cat_count: 2,
+      customer_names: [summary.customer.name],
+      orders: [{ order_id: 1, customer_name: summary.customer.name, visit_count: 2, order_status: "confirmed" }],
+    }],
+    total: 1,
+  });
+  renderPage(false, "/admin/orders?date=2030-10-01");
+
+  expect(await screen.findByRole("heading", { name: "订单月历" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "订单 #1", level: 2 })).not.toBeInTheDocument();
+  const marker = await screen.findByRole("button", { name: /#1 ×2/ });
+  fireEvent.click(marker);
+  expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
+  expect(apiMocks.getOrder).toHaveBeenCalledWith(1);
+  expect(screen.queryByRole("heading", { name: "订单月历" })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("2030-10-01 当天上门")).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "路线地图" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "保存排程" })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "关闭订单详情" }));
+  expect(screen.queryByRole("heading", { name: "订单 #1", level: 2 })).not.toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "订单月历" })).toBeInTheDocument();
+  expect(screen.getByLabelText("2030-10-01 当天上门")).toBeInTheDocument();
+  const collapse = screen.getByRole("button", { name: "收起订单列表" });
+  fireEvent.click(collapse);
+  expect(screen.getByLabelText("订单列表")).toHaveClass("hidden");
+  expect(screen.getByRole("button", { name: "展开订单列表" })).toBeInTheDocument();
+});
+
+it("shows every active visit in the exact route-saved order", async () => {
+  const dayTask = (
+    id: number,
+    orderId: number,
+    customerName: string,
+    sortOrder: number,
+    status: PlanTaskSummary["status"] = "confirmed",
+  ): PlanTaskSummary => ({
+    id,
+    order_id: orderId,
+    service_date: "2030-10-01",
+    planned_time: sortOrder === 0 ? "08:30:00" : null,
+    sort_order: sortOrder,
+    status,
+    customer: { id: orderId, name: customerName, community: "虚构小区", address: `${customerName}地址` },
+    cat_count: 1,
+    cats: [{ id, name: `猫咪${id}` }],
+    items: [{ item_type: "feed", required: true, completed: false }],
+    has_execution_history: false,
+  });
+  planApiMocks.getDayPlan.mockResolvedValue({
+    service_date: "2030-10-01",
+    task_count: 4,
+    order_count: 3,
+    cat_count: 4,
+    revision: "r".repeat(64),
+    schedule_locked: false,
+    tasks: [
+      dayTask(8, 2, "路线第一位客户", 0),
+      dayTask(3, 1, "同单第一次上门", 1),
+      dayTask(4, 1, "同单第二次上门", 2),
+      dayTask(9, 3, "已取消客户", 3, "cancelled"),
+    ],
+  });
+  renderPage(false, "/admin/orders?date=2030-10-01");
+
+  const visitList = await screen.findByLabelText("2030-10-01 当天上门");
+  const visitButtons = within(visitList).getAllByRole("button", { name: /路线第/ });
+  expect(visitButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
+    "路线第 1 站，路线第一位客户，订单 #2",
+    "路线第 2 站，同单第一次上门，订单 #1",
+    "路线第 3 站，同单第二次上门，订单 #1",
+  ]);
+  expect(within(visitList).queryByText("已取消客户")).not.toBeInTheDocument();
+  expect(within(visitList).getByRole("link", { name: "去路线图调整顺序" })).toHaveAttribute("href", "/admin/routes?date=2030-10-01");
 });
 
 it("shows an order, authoritative pricing, and seven generated tasks", async () => {
@@ -190,7 +297,7 @@ it("shows an order, authoritative pricing, and seven generated tasks", async () 
   ).toBeInTheDocument();
   expect(screen.getByText("7 个日期 · 7 次")).toBeInTheDocument();
   expect(screen.getAllByText("¥245.00").length).toBeGreaterThanOrEqual(2);
-  expect(screen.getByText("共 7 个任务；具体时间与排序请在“按天计划”中设置。")).toBeInTheDocument();
+  expect(screen.getByText("共 7 个任务；具体时间与顺序由“路线图”维护。")).toBeInTheDocument();
   expect(screen.getAllByText("2030-10-01").length).toBeGreaterThanOrEqual(1);
   expect(screen.getAllByText("2030-10-07").length).toBeGreaterThanOrEqual(1);
   expect(apiMocks.getOrder).toHaveBeenCalledWith(1);

@@ -15,6 +15,7 @@ import type {
   PlanRoutePath,
   PlanRouteWorkspace as PlanRouteWorkspaceData,
   PlanTaskSummary,
+  PlanGeoPoint,
 } from "./types";
 
 const issueLabels: Record<PlanRouteIssueReason, string> = {
@@ -60,6 +61,10 @@ interface RouteWorkspaceProps {
   onPreview: () => void;
   onRetry: () => void;
   onAdopt: () => void;
+  locationEditing?: boolean;
+  draftPosition?: PlanGeoPoint | null;
+  onDraftPositionChange?: (position: PlanGeoPoint) => void;
+  onAmapReadyChange?: (ready: boolean) => void;
 }
 
 export function RouteWorkspace({
@@ -75,6 +80,10 @@ export function RouteWorkspace({
   onPreview,
   onRetry,
   onAdopt,
+  locationEditing = false,
+  draftPosition = null,
+  onDraftPositionChange,
+  onAmapReadyChange,
 }: RouteWorkspaceProps) {
   const optimization = workspace?.optimization ?? null;
   const roadRoute = workspace?.road_route ?? null;
@@ -110,7 +119,8 @@ export function RouteWorkspace({
     && activeTaskCount
     && !dirty
     && !previewing
-    && !adopting,
+    && !adopting
+    && !locationEditing,
   );
   const closedRouteLabel = optimization && workspace?.start
     ? [workspace.start.label, ...markers.map((marker) => marker.customer_name), workspace.start.label].join(" → ")
@@ -156,6 +166,7 @@ export function RouteWorkspace({
             ) : null}
           </div>
           {dirty ? <p className="mt-2 text-xs text-amber-700">请先保存或撤销人工排程，再规划路线。</p> : null}
+          {locationEditing ? <p className="mt-2 text-xs font-medium text-orange-700">正在修改客户定位：请点击地图放置新锚点，或拖动橙色锚点微调；此时不能规划路线。</p> : null}
           {optimization && !workspace?.can_adopt_recommendation ? (
             <p className="mt-2 text-xs text-slate-500">
               {workspace?.schedule_locked ? "已有执行历史，路线只能查看，不能改变顺序。" : "当前排程已经采用这个优化顺序。"}
@@ -179,6 +190,10 @@ export function RouteWorkspace({
             route={mapRoute}
             selectedTaskId={selectedTaskId}
             onSelectTask={onSelectTask}
+            locationEditing={locationEditing}
+            draftPosition={draftPosition}
+            onDraftPositionChange={onDraftPositionChange}
+            onAmapReadyChange={onAmapReadyChange}
           />
         )}
 

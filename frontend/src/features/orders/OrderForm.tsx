@@ -18,6 +18,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
+import { CalendarMonthGrid } from "../../components/ui/CalendarMonthGrid";
+import { localDateValue, parseLocalDate } from "../../components/ui/calendarDates";
 import { serviceItemOptions } from "./constants";
 import { parseOrderAddress } from "./addressParser";
 import {
@@ -41,30 +43,6 @@ import type {
 const inputClass = "mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100";
 const labelClass = "block text-sm font-medium text-slate-700";
 const defaultServices: ServiceItem[] = ["feed", "water", "litter", "photo"];
-const weekDays = ["一", "二", "三", "四", "五", "六", "日"];
-
-function localDateValue(date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function parseLocalDate(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function monthGrid(month: Date): Array<Date | null> {
-  const first = new Date(month.getFullYear(), month.getMonth(), 1);
-  const offset = (first.getDay() + 6) % 7;
-  const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-  return Array.from({ length: 42 }, (_, index) => {
-    const day = index - offset + 1;
-    return day >= 1 && day <= days ? new Date(month.getFullYear(), month.getMonth(), day) : null;
-  });
-}
-
 function optionalValue(value: string): string | null {
   return value.trim() || null;
 }
@@ -175,7 +153,6 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
   }, [onCancel, saving]);
 
   const selectedSet = useMemo(() => new Set(selectedDates), [selectedDates]);
-  const calendarDays = useMemo(() => monthGrid(visibleMonth), [visibleMonth]);
   const adjustmentValue = adjustmentType === "none" ? 0 : Number(adjustmentAmount) || 0;
   const initialVisitCounts = useMemo(
     () => new Map(initial?.service_schedule.map((entry) => [entry.service_date, entry.visit_count]) ?? []),
@@ -449,7 +426,13 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
                   <div className="flex items-center justify-between gap-3"><div><h3 id="order-schedule-fields" className="text-sm font-semibold text-slate-950">服务日期</h3><p className="mt-1 text-xs text-slate-500">点击日期添加，再次点击取消；可以选择不连续日期。</p></div><span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">已选 {selectedDates.length} 天</span></div>
                   <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
                     <div className="flex items-center justify-between"><button type="button" className="cc-icon-button" aria-label="上个月" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))}><ChevronLeft size={17} /></button><p className="text-sm font-semibold">{visibleMonth.getFullYear()} 年 {visibleMonth.getMonth() + 1} 月</p><button type="button" className="cc-icon-button" aria-label="下个月" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))}><ChevronRight size={17} /></button></div>
-                    <div className="mt-3 grid grid-cols-7 gap-1 text-center">{weekDays.map((day) => <span key={day} className="py-2 text-xs font-medium text-slate-400">{day}</span>)}{calendarDays.map((date, index) => date ? <button key={localDateValue(date)} type="button" aria-pressed={selectedSet.has(localDateValue(date))} className={`aspect-square min-h-10 rounded-xl text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${selectedSet.has(localDateValue(date)) ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "text-slate-700 hover:bg-orange-50 hover:text-orange-700"}`} onClick={() => toggleDate(date)} disabled={historyLocked}>{date.getDate()}</button> : <span key={`empty-${index}`} />)}</div>
+                    <CalendarMonthGrid
+                      month={visibleMonth}
+                      weekStartsOn={1}
+                      fixedWeeks
+                      className="mt-3 grid grid-cols-7 gap-1 text-center"
+                      renderDay={(date) => <button type="button" aria-pressed={selectedSet.has(localDateValue(date))} className={`aspect-square min-h-10 w-full rounded-xl text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${selectedSet.has(localDateValue(date)) ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "text-slate-700 hover:bg-orange-50 hover:text-orange-700"}`} onClick={() => toggleDate(date)} disabled={historyLocked}>{date.getDate()}</button>}
+                    />
                   </div>
                 </section>
 

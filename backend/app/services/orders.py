@@ -361,6 +361,20 @@ def order_geocode_address(order: Order) -> str | None:
     )
 
 
+def customer_geocode_address(customer: Customer) -> str | None:
+    """Return the customer's current routable address using the order rules."""
+
+    return default_geocode_service_area(
+        _deduplicated_address(
+            [
+                _routable_address_part(customer.address),
+                customer.community,
+                customer.building,
+            ]
+        )
+    )
+
+
 DEFAULT_MAP_CITY = "深圳市"
 DEFAULT_MAP_DISTRICT = "龙岗区"
 _CITY_PATTERN = re.compile(r"(?:^|省|\s)([^省区县乡镇街道路\s]{2,8}市)")

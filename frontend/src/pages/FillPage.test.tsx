@@ -109,15 +109,16 @@ it("requires a name and one contact method before opening confirmation", async (
   expect(apiMocks.submitPublicIntake).not.toHaveBeenCalled();
 });
 
-it("allows a partial date, uses visit choices, and submits only after confirmation", async () => {
+it("preserves an untouched legacy schedule and submits only after confirmation", async () => {
   apiMocks.getPublicIntake.mockResolvedValue(responseFor(legacyDraft));
   renderPage();
 
   await screen.findByDisplayValue("P24 页面虚构客户");
   expect(screen.getByRole("button", { name: /地址与交接/ })).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByRole("button", { name: /猫咪资料/ })).toHaveAttribute("aria-expanded", "true");
-  fireEvent.click(screen.getByRole("button", { name: "每天 2 次" }));
-  expect(screen.getByRole("button", { name: "每天 2 次" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.queryByRole("button", { name: "每天 2 次" })).not.toBeInTheDocument();
+  expect(document.querySelector('input[type="date"]')).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /选择预计上门日期/ })).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "提交资料" }));
   const dialog = screen.getByRole("alertdialog", { name: "确认提交资料？" });
@@ -136,7 +137,7 @@ it("allows a partial date, uses visit choices, and submits only after confirmati
       service: expect.objectContaining({
         start_date: "2031-05-01",
         end_date: null,
-        visits_per_day: 2,
+        visits_per_day: 1,
       }),
       notes: "客户填写的待审核备注",
     }),
