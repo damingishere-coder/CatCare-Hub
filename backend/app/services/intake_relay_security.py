@@ -20,6 +20,22 @@ PRIVATE_RESPONSE_HEADERS = {
 }
 
 
+async def _read_public_body_bounded(request: Request) -> bool:
+    """Cache an accepted body for downstream without reading past the hard limit."""
+
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > MAX_PUBLIC_BODY_BYTES:
+            return False
+        if chunk:
+            chunks.append(chunk)
+    # Starlette's cached request wrapper replays this bounded body to the endpoint.
+    setattr(request, "_body", b"".join(chunks))
+    return True
+
+
 def require_relay_service(
     authorization: str | None = Header(default=None),
 ) -> None:
@@ -115,8 +131,7 @@ def install_intake_relay_guards(app) -> None:
                         headers=PRIVATE_RESPONSE_HEADERS,
                     )
             if request.method in {"PUT", "POST", "PATCH"}:
-                body = await request.body()
-                if len(body) > MAX_PUBLIC_BODY_BYTES:
+                if not await _read_public_body_bounded(request):
                     return JSONResponse(
                         status_code=413,
                         content={"detail": "提交内容过大"},

@@ -85,6 +85,28 @@ class FakeRelayClient:
         )
 
 
+def test_remote_client_requires_https_except_for_loopback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CATCARE_INTAKE_RELAY_KEY", "relay-test-secret")
+    monkeypatch.setenv("CATCARE_PUBLIC_FILL_ORIGIN", "https://fill.example.test")
+    monkeypatch.setenv("CATCARE_INTAKE_RELAY_URL", "http://192.168.1.30:18081")
+
+    with pytest.raises(HTTPException, match="必须使用 HTTPS"):
+        intake_remote.RemoteIntakeClient()
+
+    monkeypatch.setenv(
+        "CATCARE_INTAKE_RELAY_URL",
+        "https://nas-name.example.ts.net:8443/",
+    )
+    secure = intake_remote.RemoteIntakeClient()
+    assert secure.base_url == "https://nas-name.example.ts.net:8443"
+
+    monkeypatch.setenv("CATCARE_INTAKE_RELAY_URL", "http://127.0.0.1:18081/")
+    loopback = intake_remote.RemoteIntakeClient()
+    assert loopback.base_url == "http://127.0.0.1:18081"
+
+
 def test_remote_complete_failure_retry_returns_local_receipt_without_duplicates(
     migrated_database_url: str,
     monkeypatch: pytest.MonkeyPatch,

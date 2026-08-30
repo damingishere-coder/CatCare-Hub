@@ -52,7 +52,7 @@ services:
       - postgres_app_password
       - relay_key
     ports:
-      - "${CATCARE_NAS_LAN_IP}:${CATCARE_RELAY_LAN_PORT:-18081}:8080"
+      - "127.0.0.1:${CATCARE_RELAY_LAN_PORT:-18081}:8080"
     networks:
       - edge
       - data

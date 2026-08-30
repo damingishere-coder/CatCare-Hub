@@ -5,11 +5,15 @@
 ## 已确认的目标结构
 
 ```text
-互联网 HTTPS
-  -> Tailscale Funnel（只转发 NAS 127.0.0.1:18080）
+互联网 HTTPS :443
+  -> Tailscale Funnel（只转发 NAS 127.0.0.1:18080 的公开 Gateway）
   -> gateway（只允许填写页和 public fill API）
-  -> relay（局域网管理口另绑定 192.168.1.30:18081 + Bearer Secret）
+  -> relay
   -> PostgreSQL（仅内部 Docker 网络）
+
+Windows 管理端 -> Tailnet HTTPS :8443
+  -> Tailscale Serve（只转发 NAS 127.0.0.1:18081）
+  -> relay（Bearer Secret 只在 TLS 内传输）
 ```
 
 ## 本地生成镜像和部署包
@@ -45,10 +49,31 @@
 ## 网络边界
 
 - Funnel 目标：`http://127.0.0.1:18080`。
-- 本地 CatCare 中转地址：`http://192.168.1.30:18081`。
+- Relay 宿主机端口只绑定 NAS 回环：`http://127.0.0.1:18081`，不得改回 NAS 局域网 IP 或 `0.0.0.0`。
+- Windows 侧 `CATCARE_INTAKE_RELAY_URL` 必须使用 Tailscale Serve 提供的 `https://<NAS 的 tailnet DNS 名>:8443`，不能使用 `http://<NAS-LAN-IP>:18081`。
 - PostgreSQL 无 `ports`，只能由内部 `data` 网络访问。
 - 公网网关明确拒绝 `/api/admin/*`，其余非白名单路径统一 404。
 - DS218+ 的群晖内核不支持 Docker `NanoCPUs` 硬配额，因此使用兼容的 `cpu_shares` 相对权重。该内核也会忽略 `pids_limit`；实际硬限制只有内存，进程数限制不能作为已生效的安全边界。
+
+### Tailnet 内管理 HTTPS
+
+以下命令属于设备侧网络变更，本仓库不会自动执行。首次配置或变更前，必须确认 Windows 和 NAS 位于同一 tailnet、MagicDNS/HTTPS 已启用，并在 tailnet ACL 中只允许指定 Windows 设备或用户访问 NAS 的 TCP 8443。然后由用户在 NAS SSH 终端执行：
+
+```sh
+tailscale serve --https=8443 --bg http://127.0.0.1:18081
+tailscale serve status --json
+```
+
+Serve 8443 只在 tailnet 内可达并自动终止 TLS；公网 Funnel 继续使用 443。两者不得配置到同一端口。设备侧验收至少包括：
+
+命令语法与端口隔离规则以 [Tailscale Serve CLI](https://tailscale.com/docs/reference/tailscale-cli/serve) 和 [Tailscale Funnel 限制](https://tailscale.com/kb/1223/funnel) 为准。
+
+```powershell
+Test-NetConnection '<NAS-LAN-IP>' -Port 18081
+Invoke-RestMethod 'https://<NAS-tailnet-DNS>:8443/api/ready'
+```
+
+第一条必须显示 LAN 直连失败，第二条必须通过系统信任链完成 HTTPS 校验并返回 `ready`。不得使用 `-SkipCertificateCheck`。Windows 防火墙三个 Profile 应继续启用且默认阻止入站，不要为 CatCare 的 8000、5180、18080 或 18081 新增入站放行规则。
 
 ## 公开 Gateway 的受限更新
 
@@ -100,8 +125,9 @@ sudo sh /volume3/docker/CatCare/install-catcare-restricted-ssh.sh
 ## 公开前闸门
 
 1. 四个容器均健康。
-2. 局域网填写、保存、提交和本地审核链路通过。
+2. 公网填写、保存、提交和 tailnet HTTPS 审核链路通过；NAS LAN 的 18081 直连失败。
 3. 网关对 `/admin`、`/api/admin/intake/tokens`、订单、财务和数据库端口拒绝。
-4. 用户再次确认“将 CatCare 指定入口公开到互联网”后，才执行 `tailscale funnel --bg http://127.0.0.1:18080`。
+4. `tailscale serve status --json` 证明管理入口只在 8443，且 tailnet ACL 已限制管理来源。
+5. 用户再次确认“将 CatCare 指定入口公开到互联网”后，才执行 `tailscale funnel --bg http://127.0.0.1:18080`。
 
 Funnel 当前仍是 Beta，存在带宽限制；家庭断网、断电、NAS 故障和第三方服务异常都会造成公网填写不可用，不构成正式生产 SLA。
