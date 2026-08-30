@@ -348,6 +348,7 @@ def register_payment(
         update(Order)
         .where(
             Order.id == order.id,
+            Order.write_revision_number == order.write_revision_number,
             Order.total_amount == order.total_amount,
             Order.paid_amount == order.paid_amount,
             Order.payment_status == order.payment_status,
@@ -357,7 +358,11 @@ def register_payment(
             Order.adjustment_amount == order.adjustment_amount,
             Order.adjustment_service_date == order.adjustment_service_date,
         )
-        .values(paid_amount=next_paid, payment_status=next_status)
+        .values(
+            paid_amount=next_paid,
+            payment_status=next_status,
+            write_revision_number=order.write_revision_number + 1,
+        )
         .execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:
@@ -472,6 +477,7 @@ def void_payment(
         update(Order)
         .where(
             Order.id == order.id,
+            Order.write_revision_number == order.write_revision_number,
             Order.total_amount == order.total_amount,
             Order.paid_amount == previous_paid,
             Order.payment_status == previous_status,
@@ -481,7 +487,11 @@ def void_payment(
             Order.adjustment_amount == order.adjustment_amount,
             Order.adjustment_service_date == order.adjustment_service_date,
         )
-        .values(paid_amount=next_paid, payment_status=next_status)
+        .values(
+            paid_amount=next_paid,
+            payment_status=next_status,
+            write_revision_number=order.write_revision_number + 1,
+        )
         .execution_options(synchronize_session=False)
     )
     if order_result.rowcount != 1:

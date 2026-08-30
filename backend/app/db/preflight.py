@@ -56,6 +56,20 @@ def _backup_sqlite(database_path: Path, backup_dir: Path) -> Path | None:
     return backup_path
 
 
+def _verify_sqlite_integrity(database_path: Path | None) -> None:
+    if database_path is None or not database_path.exists() or database_path.stat().st_size == 0:
+        return
+    source_uri = f"file:{database_path.as_posix()}?mode=ro"
+    try:
+        with sqlite3.connect(source_uri, uri=True) as connection:
+            integrity = [row[0] for row in connection.execute("PRAGMA integrity_check")]
+            foreign_keys = list(connection.execute("PRAGMA foreign_key_check"))
+    except sqlite3.Error as exc:
+        raise DatabasePreparationError("数据库完整性检查失败，操作已停止。") from exc
+    if integrity != ["ok"] or foreign_keys:
+        raise DatabasePreparationError("数据库完整性或外键检查未通过，操作已停止。")
+
+
 def _upgrade_database(database_url: str, config_path: Path) -> None:
     config = Config(str(config_path))
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
@@ -86,16 +100,17 @@ def ensure_database_ready(
     """Prepare the local SQLite DB for startup, refusing unsafe external migration."""
 
     resolved_url = get_database_url(database_url)
+    sqlite_path = _sqlite_database_path(resolved_url)
+    _verify_sqlite_integrity(sqlite_path)
     initial = _readiness_for(resolved_url)
     if initial.ready:
         return DatabasePreparation(False, None, initial)
     if initial.reason != "schema_outdated":
         raise DatabasePreparationError(initial.message)
 
-    sqlite_path = _sqlite_database_path(resolved_url)
     if sqlite_path is None:
         raise DatabasePreparationError(
-            "检测到非本机 SQLite 数据库且版本不一致；为避免误迁移，请人工运行 migrate.bat。"
+            "检测到非本机 SQLite 数据库且版本不一致；本地脚本不会盲目升级，请使用受控部署迁移流程。"
         )
 
     try:
@@ -113,5 +128,10 @@ def ensure_database_ready(
     if not final.ready:
         location = f"；备份位于 {backup_path}" if backup_path else ""
         raise DatabasePreparationError(f"数据库迁移后仍未就绪{location}。")
+    try:
+        _verify_sqlite_integrity(sqlite_path)
+    except DatabasePreparationError as exc:
+        location = f"；备份位于 {backup_path}" if backup_path else ""
+        raise DatabasePreparationError(f"{exc}{location}") from exc
 
     return DatabasePreparation(True, backup_path, final)

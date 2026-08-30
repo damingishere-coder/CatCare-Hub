@@ -12,6 +12,7 @@ from app.models.order import Order, OrderCat
 from app.models.task import Task
 from app.schemas.plan import PlanScheduleItem
 from app.services.orders import task_has_execution_history
+from app.services.order_revisions import reserve_internal_task_revision
 
 
 PLANNING_TASK_STATUSES = {
@@ -71,6 +72,7 @@ def day_plan_revision(tasks: Sequence[Task]) -> str:
             "estimated_arrival": _datetime_value(task.estimated_arrival),
             "sort_order": task.sort_order,
             "status": task.status.value,
+            "execution_revision_number": task.execution_revision_number,
             "customer_map_state": {
                 "id": task.order.customer_id,
                 "geocode_status": task.order.route_geocode_status,
@@ -88,6 +90,7 @@ def day_plan_revision(tasks: Sequence[Task]) -> str:
                     else None
                 ),
                 "updated_at": _datetime_value(task.order.updated_at),
+                "write_revision_number": task.order.write_revision_number,
             },
             "updated_at": _datetime_value(task.updated_at),
             "started_at": _datetime_value(task.started_at),
@@ -153,11 +156,13 @@ def apply_day_schedule(
 
     for sort_order, item in enumerate(schedule):
         task = tasks_by_id[item.task_id]
+        reserve_internal_task_revision(session, task)
         task.sort_order = sort_order
         task.planned_time = item.planned_time
         task.estimated_arrival = None
 
     session.commit()
+    session.expire_all()
     return load_day_tasks(session, service_date)
 
 
@@ -188,6 +193,9 @@ def update_task_planning_status(
             detail="任务已有执行记录，不能改回计划状态",
         )
 
-    task.status = task_status
+    if task.status is not task_status:
+        reserve_internal_task_revision(session, task)
+        task.status = task_status
     session.commit()
+    session.expire_all()
     return load_plan_task(session, task_id)

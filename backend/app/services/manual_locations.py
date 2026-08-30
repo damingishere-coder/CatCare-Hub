@@ -23,6 +23,10 @@ from app.services.orders import (
     task_has_execution_history,
 )
 from app.services.plans import day_plan_revision, load_day_tasks, require_current_revision
+from app.services.order_revisions import (
+    bump_task_revision,
+    reserve_internal_order_revision,
+)
 
 
 def _order_options() -> tuple:
@@ -75,6 +79,7 @@ def _eligible_order(order: Order, address: str) -> bool:
 
 
 def _apply_order_location(
+    session: Session,
     order: Order,
     *,
     latitude: Decimal,
@@ -84,6 +89,7 @@ def _apply_order_location(
     adcode: str | None,
     level: str,
 ) -> int:
+    reserve_internal_order_revision(session, order)
     order.route_latitude = latitude
     order.route_longitude = longitude
     order.route_geocode_status = status
@@ -97,6 +103,7 @@ def _apply_order_location(
             task.planned_lat = latitude
             task.planned_lng = longitude
             task.estimated_arrival = None
+            bump_task_revision(task)
             affected_tasks += 1
     return affected_tasks
 
@@ -205,6 +212,7 @@ def update_customer_location(
         if not _eligible_order(order, address):
             continue
         affected_tasks += _apply_order_location(
+            session,
             order,
             latitude=lat,
             longitude=lng,
@@ -257,6 +265,7 @@ def update_order_location(
     status = "resolved" if automatic_result is not None else "manual"
     fingerprint = geocode_fingerprint(provider_name, address)
     affected_tasks = _apply_order_location(
+        session,
         order,
         latitude=lat,
         longitude=lng,

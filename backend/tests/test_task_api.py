@@ -4,6 +4,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import select
@@ -14,6 +15,11 @@ from app.db.session import build_engine, get_db
 from app.main import app
 from app.models import Task, TaskPhoto, TaskStatus
 from app.services import task_uploads
+from app.services.task_execution import (
+    execution_revision,
+    load_execution_task,
+    update_task_text,
+)
 
 
 @dataclass(frozen=True)
@@ -144,6 +150,45 @@ def complete_non_photo_items(client: TestClient, detail: dict) -> dict:
         assert response.status_code == 200
         detail = response.json()
     return detail
+
+
+def test_task_database_cas_rejects_a_preloaded_stale_session(
+    task_api_context: TaskApiContext,
+) -> None:
+    order = create_task_order(task_api_context.client, service_items=["feed"])
+    task_id = order["tasks"][0]["id"]
+    started = start(task_api_context.client, task_id)
+
+    with (
+        task_api_context.session_factory() as first_session,
+        task_api_context.session_factory() as stale_session,
+    ):
+        first_task = load_execution_task(first_session, task_id)
+        stale_task = load_execution_task(stale_session, task_id)
+        revision = execution_revision(first_task)
+        assert execution_revision(stale_task) == revision == started["revision"]
+
+        saved = update_task_text(
+            first_session,
+            task_id,
+            revision,
+            notes="第一会话写入",
+            cat_status=None,
+        )
+        assert saved.notes == "第一会话写入"
+
+        with pytest.raises(HTTPException) as conflict:
+            update_task_text(
+                stale_session,
+                task_id,
+                revision,
+                notes="不应覆盖",
+                cat_status=None,
+            )
+        assert conflict.value.status_code == 409
+        stale_session.rollback()
+
+    assert get_task(task_api_context.client, task_id)["notes"] == "第一会话写入"
 
 
 def test_execution_detail_start_text_and_revision_protection(

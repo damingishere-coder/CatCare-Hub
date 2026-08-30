@@ -65,18 +65,23 @@ def _insert_demo_records(session: Session) -> None:
         address="仅用于开发演示，不对应任何真实地址",
         is_repeat_customer=False,
         notes=None,
+        seed_source=DEMO_SYSTEM_KEY,
     )
     cat_one = Cat(
         name="演示猫咪一号",
         breed="虚构品种",
         personality="开发测试用虚构档案",
+        seed_source=DEMO_SYSTEM_KEY,
     )
     cat_two = Cat(
         name="演示猫咪二号",
         breed="虚构品种",
         personality="开发测试用虚构档案",
+        seed_source=DEMO_SYSTEM_KEY,
     )
     customer.cats.extend([cat_one, cat_two])
+    session.add(customer)
+    session.flush()
 
     order = Order(
         customer=customer,
@@ -104,6 +109,7 @@ def _insert_demo_records(session: Session) -> None:
         payment_status=OrderPaymentStatus.PAID,
         order_status=OrderStatus.CONFIRMED,
         notes="仅用于开发测试的虚构订单",
+        seed_source=DEMO_SYSTEM_KEY,
     )
     session.add(order)
     session.flush()
@@ -124,13 +130,14 @@ def _insert_demo_records(session: Session) -> None:
             sort_order=day_offset,
             status=TaskStatus.CONFIRMED,
             notes="虚构演示任务",
+            seed_source=DEMO_SYSTEM_KEY,
         )
         task.items.extend(
             [
-                TaskItem(item_type=TaskItemType.FEED),
-                TaskItem(item_type=TaskItemType.WATER),
-                TaskItem(item_type=TaskItemType.LITTER),
-                TaskItem(item_type=TaskItemType.PHOTO),
+                TaskItem(item_type=TaskItemType.FEED, seed_source=DEMO_SYSTEM_KEY),
+                TaskItem(item_type=TaskItemType.WATER, seed_source=DEMO_SYSTEM_KEY),
+                TaskItem(item_type=TaskItemType.LITTER, seed_source=DEMO_SYSTEM_KEY),
+                TaskItem(item_type=TaskItemType.PHOTO, seed_source=DEMO_SYSTEM_KEY),
             ]
         )
         session.add(task)
@@ -144,6 +151,7 @@ def _insert_demo_records(session: Session) -> None:
             payment_status=PaymentRecordStatus.COMPLETED,
             paid_at=datetime.now(timezone.utc),
             notes="虚构演示收款",
+            seed_source=DEMO_SYSTEM_KEY,
         )
     )
 

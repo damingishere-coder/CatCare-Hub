@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,7 +12,17 @@ from app.db.session import build_engine, get_db
 from app.main import app
 from app.maps import GeoPoint, GeocodeResult, MapServices
 from app.maps.factory import UnavailableMapProvider, get_map_services
-from app.models import Cat, Customer, Order, Payment, SystemFlag, Task
+from app.models import (
+    Cat,
+    Customer,
+    Order,
+    Payment,
+    SystemFlag,
+    Task,
+    TaskItem,
+    TaskItemType,
+    TaskStatus,
+)
 from app.services.demo_data import DEMO_CLEARED_FLAG
 
 
@@ -329,10 +340,68 @@ def test_failed_auto_geocode_does_not_rollback_and_retry_resolves(
     ]
 
 
+def test_failed_geocode_clears_stale_order_and_unexecuted_task_coordinates(
+    p18_context: P18Context,
+) -> None:
+    created = p18_context.client.post(
+        "/api/admin/orders",
+        json=direct_order_payload(service_dates=["2038-09-01", "2038-09-02"]),
+    ).json()
+    with p18_context.session_factory.begin() as session:
+        order = session.get(Order, created["id"])
+        assert order is not None
+        order.route_latitude = Decimal("22.5000000")
+        order.route_longitude = Decimal("114.0000000")
+        order.route_geocode_status = "resolved"
+        order.route_geocode_fingerprint = "f" * 64
+        order.route_geocode_adcode = "440307"
+        order.route_geocode_level = "门牌号"
+        tasks = list(
+            session.scalars(
+                select(Task).where(Task.order_id == order.id).order_by(Task.id)
+            )
+        )
+        for task in tasks:
+            task.planned_lat = Decimal("22.5000000")
+            task.planned_lng = Decimal("114.0000000")
+        tasks[1].status = TaskStatus.IN_PROGRESS
+
+    p18_context.geocoder.results[:] = [None]
+    response = p18_context.client.post(
+        f"/api/admin/orders/{created['id']}/geocode"
+    )
+
+    assert response.status_code == 200
+    failed = response.json()
+    assert failed["route_geocode_status"] == "failed"
+    with p18_context.session_factory() as session:
+        order = session.get(Order, created["id"])
+        assert order is not None
+        assert order.route_latitude is None
+        assert order.route_longitude is None
+        assert order.route_geocode_fingerprint is None
+        assert order.route_geocode_adcode is None
+        assert order.route_geocode_level is None
+        tasks = list(
+            session.scalars(
+                select(Task).where(Task.order_id == order.id).order_by(Task.id)
+            )
+        )
+        assert tasks[0].planned_lat is None and tasks[0].planned_lng is None
+        assert tasks[1].planned_lat == Decimal("22.5000000")
+        assert tasks[1].planned_lng == Decimal("114.0000000")
+
+
 def test_demo_cleanup_is_exact_and_seed_tombstone_prevents_recreation(
     p18_context: P18Context,
 ) -> None:
     assert seed_database(p18_context.database_url) is True
+    with p18_context.session_factory() as session:
+        seeded_order = session.scalar(
+            select(Order).where(Order.seed_source == "catcare-demo-seed-v1")
+        )
+        assert seeded_order is not None
+        assert all(item["source_cat_id"] is not None for item in seeded_order.cat_snapshot)
     unrelated = p18_context.client.post(
         "/api/admin/customers", json={"name": "P18 保留客户（虚构）"}
     ).json()
@@ -365,3 +434,40 @@ def test_demo_cleanup_is_exact_and_seed_tombstone_prevents_recreation(
             )
         ) == 0
         assert session.scalar(select(func.count(Order.id))) == 0
+
+
+def test_demo_cleanup_fails_closed_when_unmarked_data_is_mixed_in(
+    p18_context: P18Context,
+) -> None:
+    assert seed_database(p18_context.database_url) is True
+    with p18_context.session_factory.begin() as session:
+        task = session.scalar(
+            select(Task).where(Task.seed_source == "catcare-demo-seed-v1")
+        )
+        assert task is not None
+        session.add(
+            TaskItem(
+                task_id=task.id,
+                item_type=TaskItemType.OTHER,
+                required=False,
+            )
+        )
+
+    before = {}
+    with p18_context.session_factory() as session:
+        for model in (Customer, Cat, Order, Task, Payment):
+            before[model] = session.scalar(select(func.count(model.id)))
+
+    response = p18_context.client.post(
+        "/api/admin/settings/demo-data/clear",
+        json={
+            "system_key": "catcare-demo-seed-v1",
+            "confirmation": "永久清除演示数据",
+        },
+    )
+
+    assert response.status_code == 409
+    with p18_context.session_factory() as session:
+        for model, count in before.items():
+            assert session.scalar(select(func.count(model.id))) == count
+        assert session.get(SystemFlag, DEMO_CLEARED_FLAG) is None

@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 from alembic import command
 from alembic.config import Config
@@ -94,3 +95,21 @@ def test_preflight_keeps_backup_and_stops_when_upgrade_fails(
     backups = list(backup_dir.glob("*.db"))
     assert len(backups) == 1
     assert backups[0].stat().st_size > 0
+
+
+def test_preflight_stops_when_sqlite_foreign_key_check_fails(tmp_path: Path) -> None:
+    database_path = tmp_path / "broken-foreign-key.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    command.upgrade(alembic_config(database_url), "head")
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("PRAGMA foreign_keys=OFF")
+        connection.execute(
+            "INSERT INTO tasks (order_id, service_date, sort_order, status) "
+            "VALUES (999999, '2039-01-01', 0, 'pending')"
+        )
+        connection.commit()
+
+    with pytest.raises(DatabasePreparationError, match="完整性或外键"):
+        ensure_database_ready(database_url, backup_dir=tmp_path / "backups")
+
+    assert not (tmp_path / "backups").exists()

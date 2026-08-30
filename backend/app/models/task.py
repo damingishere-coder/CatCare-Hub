@@ -48,6 +48,10 @@ class Task(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    seed_source: Mapped[str | None] = mapped_column(String(64), index=True)
+    execution_revision_number: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
     order_id: Mapped[int] = mapped_column(
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
@@ -103,6 +107,7 @@ class TaskItem(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    seed_source: Mapped[str | None] = mapped_column(String(64), index=True)
     task_id: Mapped[int] = mapped_column(
         ForeignKey("tasks.id", ondelete="CASCADE"),
         nullable=False,
@@ -132,6 +137,7 @@ class TaskPhoto(Base):
     __tablename__ = "task_photos"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    seed_source: Mapped[str | None] = mapped_column(String(64), index=True)
     task_id: Mapped[int] = mapped_column(
         ForeignKey("tasks.id", ondelete="CASCADE"),
         nullable=False,

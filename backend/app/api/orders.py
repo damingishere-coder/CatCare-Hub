@@ -1,8 +1,9 @@
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import get_db
@@ -68,17 +69,31 @@ from app.services.orders import (
     overpaid_amount,
     payment_status_for_order,
     require_tasks_are_rebuildable,
+    require_order_status_transition,
     replace_order_schedule,
     reprice_order,
     synchronize_task_statuses,
     apply_amount_adjustment,
 )
 from app.services.payments import payment_revision, require_payment_revision
+from app.services.order_revisions import (
+    order_payload_hash,
+    order_write_revision,
+    reserve_order_revision,
+)
 
 
 router = APIRouter(prefix="/api/admin/orders", tags=["admin-orders"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 MapServicesDependency = Annotated[MapServices, Depends(get_map_services)]
+OrderRevisionHeader = Annotated[
+    str,
+    Header(alias="If-Match", pattern=r"^[0-9a-f]{64}$"),
+]
+IdempotencyKeyHeader = Annotated[
+    str,
+    Header(alias="Idempotency-Key", min_length=16, max_length=128),
+]
 
 
 def _order_load_options() -> tuple:
@@ -159,6 +174,7 @@ def _order_summary(order: Order, *, customer_resolution: str | None = None) -> O
     )
     return OrderSummary(
         id=order.id,
+        write_revision=order_write_revision(order),
         source_customer_id=order.customer_id,
         service_contact=service_contact,
         cat_snapshot=order.cat_snapshot or [],
@@ -391,7 +407,22 @@ def create_order(
     payload: OrderCreate | OrderWrite,
     session: DatabaseSession,
     services: MapServicesDependency,
+    response: Response,
+    idempotency_key: IdempotencyKeyHeader,
 ) -> OrderDetail:
+    payload_hash = order_payload_hash(payload)
+    existing = session.scalar(
+        select(Order)
+        .options(*_order_load_options())
+        .where(Order.idempotency_key == idempotency_key)
+    )
+    if existing is not None:
+        if existing.idempotency_payload_hash != payload_hash:
+            raise HTTPException(status_code=409, detail="幂等键已用于不同的订单内容")
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotent-Replayed"] = "true"
+        return _order_detail(existing)
+
     if isinstance(payload, OrderCreate):
         explicit_customer_id = payload.source_customer_id or payload.customer_id
         selected_customer = _load_source_customer(
@@ -410,8 +441,23 @@ def create_order(
             explicit_customer_id=explicit_customer_id,
         )
         order = build_simple_order(payload, source_customer=resolution.customer)
+        order.idempotency_key = idempotency_key
+        order.idempotency_payload_hash = payload_hash
         session.add(order)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            replay = session.scalar(
+                select(Order)
+                .options(*_order_load_options())
+                .where(Order.idempotency_key == idempotency_key)
+            )
+            if replay is None or replay.idempotency_payload_hash != payload_hash:
+                raise
+            response.status_code = status.HTTP_200_OK
+            response.headers["Idempotent-Replayed"] = "true"
+            return _order_detail(replay)
         geocode_order(session, order.id, services)
         return _order_detail(
             _load_order(session, order.id), customer_resolution=resolution.result
@@ -429,8 +475,23 @@ def create_order(
         cat_ids=payload.cat_ids,
     )
     order = build_order(payload, cats=cats, customer=customer)
+    order.idempotency_key = idempotency_key
+    order.idempotency_payload_hash = payload_hash
     session.add(order)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        replay = session.scalar(
+            select(Order)
+            .options(*_order_load_options())
+            .where(Order.idempotency_key == idempotency_key)
+        )
+        if replay is None or replay.idempotency_payload_hash != payload_hash:
+            raise
+        response.status_code = status.HTTP_200_OK
+        response.headers["Idempotent-Replayed"] = "true"
+        return _order_detail(replay)
     geocode_order(session, order.id, services)
     return _order_detail(_load_order(session, order.id))
 
@@ -441,6 +502,7 @@ def patch_order(
     payload: OrderPatch,
     session: DatabaseSession,
     services: MapServicesDependency,
+    expected_revision: OrderRevisionHeader,
 ) -> OrderDetail:
     order = _load_order(session, order_id)
     fields = payload.model_fields_set
@@ -471,6 +533,7 @@ def patch_order(
     requested_cat_count = payload.cat_count if payload.cat_count is not None else order.cat_count
     structural_change = any(
         (
+            source_changed,
             requested_dates != order_schedule(order),
             requested_items != order.service_items,
             requested_cat_count != order.cat_count,
@@ -495,6 +558,11 @@ def patch_order(
             raise HTTPException(status_code=409, detail="请刷新订单后再调整价格")
         require_payment_revision(order, payload.expected_financial_revision)
 
+    if source_changed and order.payments:
+        raise HTTPException(status_code=409, detail="订单已有收款记录，不能更换客户来源")
+
+    reserve_order_revision(session, order, expected_revision)
+
     if source_changed:
         order.customer_id = requested_customer_id
         order.cat_links.clear()
@@ -503,7 +571,9 @@ def patch_order(
         if requested_customer is not None:
             apply_service_contact(order, customer_service_contact(requested_customer))
             active_cats = [cat for cat in requested_customer.cats if cat.is_active]
-            order.cat_snapshot = cat_snapshot(active_cats[:requested_cat_count])
+            selected_cats = active_cats[:requested_cat_count]
+            order.cat_snapshot = cat_snapshot(selected_cats)
+            order.cat_links.extend(OrderCat(cat=cat) for cat in selected_cats)
     if "service_contact" in fields and payload.service_contact is not None:
         apply_service_contact(order, payload.service_contact)
     elif "customer_name" in fields and payload.customer_name is not None:
@@ -553,8 +623,11 @@ def retry_order_geocode(
     order_id: int,
     session: DatabaseSession,
     services: MapServicesDependency,
+    expected_revision: OrderRevisionHeader,
 ) -> OrderDetail:
-    _load_order(session, order_id)
+    order = _load_order(session, order_id)
+    reserve_order_revision(session, order, expected_revision)
+    session.commit()
     geocode_order(session, order_id, services)
     return _order_detail(_load_order(session, order_id))
 
@@ -615,6 +688,7 @@ def update_order(
     payload: OrderWrite,
     session: DatabaseSession,
     services: MapServicesDependency,
+    expected_revision: OrderRevisionHeader,
 ) -> OrderDetail:
     order = _load_order(session, order_id)
     existing_cat_ids = {link.cat_id for link in order.cat_links}
@@ -671,6 +745,9 @@ def update_order(
             detail="不能在重建任务的同时把订单标记为已完成",
         )
 
+    require_order_status_transition(order, payload.order_status)
+    reserve_order_revision(session, order, expected_revision)
+
     order.customer_id = payload.customer_id
     apply_service_contact(order, customer_service_contact(customer))
     order.cat_snapshot = cat_snapshot(cats)
@@ -714,8 +791,11 @@ def update_order_status(
     order_id: int,
     payload: OrderStatusUpdate,
     session: DatabaseSession,
+    expected_revision: OrderRevisionHeader,
 ) -> OrderDetail:
     order = _load_order(session, order_id)
+    require_order_status_transition(order, payload.order_status)
+    reserve_order_revision(session, order, expected_revision)
     synchronize_task_statuses(order, payload.order_status)
     order.order_status = payload.order_status
     session.commit()
@@ -723,14 +803,15 @@ def update_order_status(
 
 
 @router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_order(order_id: int, session: DatabaseSession) -> None:
+def delete_order(
+    order_id: int,
+    session: DatabaseSession,
+    expected_revision: OrderRevisionHeader,
+) -> None:
     order = _load_order(session, order_id)
     reason = _delete_block_reason(order)
     if reason is not None:
         raise HTTPException(status_code=409, detail=reason)
+    reserve_order_revision(session, order, expected_revision)
     session.delete(order)
     session.commit()
-    cat_snapshot,
-    customer_service_contact,
-    order_has_execution_history,
-    order_service_contact,

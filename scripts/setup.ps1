@@ -40,9 +40,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "[4/5] Applying database migrations..."
-Push-Location $projectRoot
+Push-Location (Join-Path $projectRoot "backend")
 try {
-    & $venvPython -m alembic -c (Join-Path $projectRoot "backend\alembic.ini") upgrade head
+    & $venvPython -m app.db.preflight_cli
     if ($LASTEXITCODE -ne 0) {
         throw "Database migration failed."
     }

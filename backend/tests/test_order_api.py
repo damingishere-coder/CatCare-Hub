@@ -719,3 +719,86 @@ def test_each_execution_history_signal_blocks_order_delete(
     assert response.status_code == 409
     assert "只能取消" in response.json()["detail"]
     assert client.get(f"/api/admin/orders/{created['id']}").json()["deletable"] is False
+
+
+def test_order_create_requires_and_replays_idempotency_key(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+    payload = simple_order_payload(service_dates=["2032-09-01"])
+
+    missing = client.post(
+        "/api/admin/orders",
+        json=payload,
+        headers={"X-Test-Skip-Order-Guards": "1"},
+    )
+    assert missing.status_code == 422
+
+    headers = {"Idempotency-Key": "test-order-idempotency-20320901"}
+    created = client.post("/api/admin/orders", json=payload, headers=headers)
+    replayed = client.post("/api/admin/orders", json=payload, headers=headers)
+    conflict = client.post(
+        "/api/admin/orders",
+        json={**payload, "notes": "同键不同内容"},
+        headers=headers,
+    )
+
+    assert created.status_code == 201
+    assert replayed.status_code == 200
+    assert replayed.headers["Idempotent-Replayed"] == "true"
+    assert replayed.json()["id"] == created.json()["id"]
+    assert conflict.status_code == 409
+    with order_api_context.session_factory() as session:
+        assert session.scalar(select(func.count(Order.id))) == 1
+
+
+def test_order_if_match_rejects_missing_and_stale_writes(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+    created = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(service_dates=["2032-10-01"]),
+    ).json()
+    path = f"/api/admin/orders/{created['id']}"
+
+    missing = client.patch(
+        path,
+        json={"notes": "缺少版本"},
+        headers={"X-Test-Skip-Order-Guards": "1"},
+    )
+    first = client.patch(
+        path,
+        json={"notes": "第一次写入"},
+        headers={"If-Match": created["write_revision"]},
+    )
+    stale = client.patch(
+        path,
+        json={"notes": "不应覆盖"},
+        headers={"If-Match": created["write_revision"]},
+    )
+
+    assert missing.status_code == 422
+    assert first.status_code == 200
+    assert first.json()["write_revision"] != created["write_revision"]
+    assert stale.status_code == 409
+    assert client.get(path).json()["notes"] == "第一次写入"
+
+
+def test_execution_states_cannot_be_set_by_order_admin(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+    created = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(service_dates=["2032-11-01"]),
+    ).json()
+
+    response = client.patch(
+        f"/api/admin/orders/{created['id']}/status",
+        json={"order_status": "in_progress"},
+        headers={"If-Match": created["write_revision"]},
+    )
+
+    assert response.status_code == 409
+    assert "任务执行结果" in response.json()["detail"]
