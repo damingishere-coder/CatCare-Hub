@@ -29,6 +29,7 @@ class Customer(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    seed_source: Mapped[str | None] = mapped_column(String(64), index=True)
     system_key: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     wechat_name: Mapped[str | None] = mapped_column(String(100))
@@ -84,6 +85,7 @@ class Cat(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    seed_source: Mapped[str | None] = mapped_column(String(64), index=True)
     customer_id: Mapped[int] = mapped_column(
         ForeignKey("customers.id", ondelete="CASCADE"),
         nullable=False,

@@ -32,6 +32,7 @@ from app.services.task_execution import (
     execution_revision,
     load_execution_task,
     require_execution_revision,
+    reserve_execution_revision,
 )
 
 
@@ -334,6 +335,7 @@ def mark_task_photos_sent(
     if task.photos_sent_at is not None:
         raise HTTPException(status_code=409, detail="任务照片已经标记发送")
 
+    reserve_execution_revision(session, task, expected_revision)
     task.photos_sent_at = datetime.now(timezone.utc)
     session.commit()
     session.expire_all()

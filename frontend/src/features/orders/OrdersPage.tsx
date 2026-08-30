@@ -127,6 +127,12 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
   const [listCollapsed, setListCollapsed] = useState(false);
   const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
   const listRequestId = useRef(0);
+  const createIdempotencyKey = useRef(crypto.randomUUID());
+
+  function beginCreate() {
+    createIdempotencyKey.current = crypto.randomUUID();
+    setFormMode("create");
+  }
 
   const applyOrders = useCallback((items: OrderSummary[]) => {
     setOrders(items);
@@ -193,8 +199,12 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
   async function handleSave(payload: OrderCreateInput | OrderPatchInput) {
     const saved =
       formMode === "edit" && orderDetail
-        ? await updateOrder(orderDetail.id, payload as OrderPatchInput)
-        : await createOrder(payload as OrderCreateInput);
+        ? await updateOrder(
+            orderDetail.id,
+            payload as OrderPatchInput,
+            orderDetail.write_revision,
+          )
+        : await createOrder(payload as OrderCreateInput, createIdempotencyKey.current);
     setOrderDetail(saved);
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -204,6 +214,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
     setFormMode(null);
     await refreshOrders();
     setScheduleRefreshKey((current) => current + 1);
+    createIdempotencyKey.current = crypto.randomUUID();
   }
 
   function selectOrder(orderId: number) {
@@ -241,7 +252,11 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
     setStatusSaving(true);
     setPageError(null);
     try {
-      const updated = await updateOrderStatus(orderDetail.id, status);
+      const updated = await updateOrderStatus(
+        orderDetail.id,
+        status,
+        orderDetail.write_revision,
+      );
       setOrderDetail(updated);
       await refreshOrders();
       setScheduleRefreshKey((current) => current + 1);
@@ -258,7 +273,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
     setDeleting(true);
     setPageError(null);
     try {
-      await deleteOrder(orderDetail.id);
+      await deleteOrder(orderDetail.id, orderDetail.write_revision);
       closeOrderDetail();
       await refreshOrders();
       setScheduleRefreshKey((current) => current + 1);
@@ -296,7 +311,10 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
     setGeocoding(true);
     setPageError(null);
     try {
-      const updated = await retryOrderGeocode(orderDetail.id);
+      const updated = await retryOrderGeocode(
+        orderDetail.id,
+        orderDetail.write_revision,
+      );
       setOrderDetail(updated);
       await refreshOrders();
       setScheduleRefreshKey((current) => current + 1);
@@ -331,7 +349,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
           <button
             type="button"
             className="cc-button cc-button--primary"
-            onClick={() => setFormMode("create")}
+            onClick={beginCreate}
             disabled={!formOptions}
           >
             <Plus size={17} />
@@ -418,7 +436,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={closeOrderDetail} aria-label="关闭订单详情"><X size={15} />关闭</button>
-                  {!(["cancelled", "completed"] as OrderStatus[]).includes(orderDetail.order_status) ? <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700" onClick={() => void handleStatusChange("cancelled")} disabled={statusSaving}>{statusSaving ? <LoaderCircle className="animate-spin" size={15} /> : null}取消订单</button> : null}
+                  {(["pending_confirmation", "confirmed"] as OrderStatus[]).includes(orderDetail.order_status) ? <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700" onClick={() => void handleStatusChange("cancelled")} disabled={statusSaving}>{statusSaving ? <LoaderCircle className="animate-spin" size={15} /> : null}取消订单</button> : null}
                   {orderDetail.is_demo_data ? <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700" onClick={() => void handleDemoClear()} disabled={deleting}>{deleting ? <LoaderCircle className="animate-spin" size={15} /> : <Trash2 size={15} />}清除整套演示数据</button> : <button type="button" className="cc-button cc-button--secondary min-h-10 px-3 text-red-700 disabled:cursor-not-allowed disabled:opacity-45" onClick={() => void handleDelete()} disabled={!orderDetail.deletable || deleting} title={orderDetail.delete_block_reason ?? "永久删除订单"}>{deleting ? <LoaderCircle className="animate-spin" size={15} /> : <Trash2 size={15} />}删除订单</button>}
                   <button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={() => setFormMode("edit")}>
                     <Pencil size={15} />编辑订单

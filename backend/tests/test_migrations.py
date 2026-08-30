@@ -556,3 +556,146 @@ def test_p15_migration_backfills_schedule_cat_count_and_internal_seed_marker(
         assert restored_notes == "[catcare-demo-seed-v1]"
     finally:
         engine.dispose()
+
+
+def test_consistency_guard_migration_adds_versions_markers_and_unique_key(
+    migrated_database_url: str,
+) -> None:
+    engine = build_engine(migrated_database_url)
+    try:
+        database = inspect(engine)
+        assert "seed_source" in {item["name"] for item in database.get_columns("customers")}
+        assert "seed_source" in {item["name"] for item in database.get_columns("cats")}
+        order_columns = {item["name"] for item in database.get_columns("orders")}
+        assert {
+            "seed_source",
+            "write_revision_number",
+            "idempotency_key",
+            "idempotency_payload_hash",
+        }.issubset(order_columns)
+        task_columns = {item["name"] for item in database.get_columns("tasks")}
+        assert {"seed_source", "execution_revision_number"}.issubset(task_columns)
+        assert "seed_source" in {
+            item["name"] for item in database.get_columns("task_items")
+        }
+        assert "seed_source" in {
+            item["name"] for item in database.get_columns("task_photos")
+        }
+        assert "seed_source" in {item["name"] for item in database.get_columns("payments")}
+
+        order_indexes = {item["name"]: item for item in database.get_indexes("orders")}
+        assert order_indexes["ix_orders_idempotency_key"]["unique"] == 1
+    finally:
+        engine.dispose()
+
+
+def test_consistency_guard_migration_backfills_only_exact_historical_demo_seed(
+    tmp_path,
+) -> None:
+    database_path = tmp_path / "consistency-demo-backfill.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = alembic_config(database_url)
+    command.upgrade(config, "0013_intake_audit_events")
+    engine = build_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO customers "
+                    "(id, system_key, name, wechat_name, community, address, is_repeat_customer) "
+                    "VALUES (1, 'catcare-demo-seed-v1', '演示客户（虚构）', "
+                    "'演示账号（虚构）', '虚构演示小区', '仅用于开发演示，不对应任何真实地址', 0)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO cats "
+                    "(id, customer_id, name, breed, personality, medication_required, is_active) "
+                    "VALUES (1, 1, '演示猫咪一号', '虚构品种', '开发测试用虚构档案', 0, 1), "
+                    "(2, 1, '演示猫咪二号', '虚构品种', '开发测试用虚构档案', 0, 1)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO orders "
+                    "(id, customer_id, contact_name, contact_wechat_name, contact_community, "
+                    "contact_address, cat_snapshot, start_date, end_date, visits_per_day, "
+                    "cat_count, service_items, pricing_mode, settlement_mode, adjustment_type, "
+                    "adjustment_amount, base_price, extra_cat_fee, stairs_fee, other_fee, "
+                    "total_amount, paid_amount, payment_status, order_status, notes) VALUES "
+                    "(1, 1, '演示客户（虚构）', '演示账号（虚构）', '虚构演示小区', "
+                    "'仅用于开发演示，不对应任何真实地址', :cat_snapshot, "
+                    "'2039-02-01', '2039-02-03', 1, 2, "
+                    "'[\"feed\",\"water\",\"litter\",\"photo\"]', 'legacy_components', "
+                    "'order_total', 'none', 0, 30, 5, 0, 0, 105, 105, 'paid', "
+                    "'confirmed', '仅用于开发测试的虚构订单')"
+                ),
+                {
+                    "cat_snapshot": json.dumps(
+                        [
+                            {"source_cat_id": None, "name": "演示猫咪一号"},
+                            {"source_cat_id": None, "name": "演示猫咪二号"},
+                        ],
+                        ensure_ascii=False,
+                    )
+                },
+            )
+            for task_id, day in enumerate(("01", "02", "03"), start=1):
+                connection.execute(
+                    text(
+                        "INSERT INTO tasks "
+                        "(id, order_id, customer_id, service_date, planned_time, sort_order, status, notes) "
+                        "VALUES (:id, 1, 1, :service_date, '09:30:00', :sort_order, "
+                        "'confirmed', '虚构演示任务')"
+                    ),
+                    {
+                        "id": task_id,
+                        "service_date": f"2039-02-{day}",
+                        "sort_order": task_id - 1,
+                    },
+                )
+                for offset, item_type in enumerate(
+                    ("feed", "water", "litter", "photo"), start=1
+                ):
+                    connection.execute(
+                        text(
+                            "INSERT INTO task_items "
+                            "(id, task_id, item_type, required, completed) "
+                            "VALUES (:id, :task_id, :item_type, 1, 0)"
+                        ),
+                        {
+                            "id": (task_id - 1) * 4 + offset,
+                            "task_id": task_id,
+                            "item_type": item_type,
+                        },
+                    )
+            connection.execute(
+                text(
+                    "INSERT INTO payments "
+                    "(id, order_id, customer_id, amount, payment_method, payment_status, paid_at, notes) "
+                    "VALUES (1, 1, 1, 105, 'wechat', 'completed', CURRENT_TIMESTAMP, "
+                    "'虚构演示收款')"
+                )
+            )
+
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            markers = connection.execute(
+                text(
+                    "SELECT "
+                    "(SELECT seed_source FROM customers WHERE id = 1), "
+                    "(SELECT COUNT(*) FROM cats WHERE seed_source = 'catcare-demo-seed-v1'), "
+                    "(SELECT seed_source FROM orders WHERE id = 1), "
+                    "(SELECT COUNT(*) FROM tasks WHERE seed_source = 'catcare-demo-seed-v1'), "
+                    "(SELECT COUNT(*) FROM task_items WHERE seed_source = 'catcare-demo-seed-v1'), "
+                    "(SELECT seed_source FROM payments WHERE id = 1)"
+                )
+            ).one()
+            snapshot = connection.execute(
+                text("SELECT cat_snapshot FROM orders WHERE id = 1")
+            ).scalar_one()
+        assert tuple(markers) == ("catcare-demo-seed-v1", 2, "catcare-demo-seed-v1", 3, 12, "catcare-demo-seed-v1")
+        parsed = json.loads(snapshot) if isinstance(snapshot, str) else snapshot
+        assert [item["source_cat_id"] for item in parsed] == [1, 2]
+    finally:
+        engine.dispose()

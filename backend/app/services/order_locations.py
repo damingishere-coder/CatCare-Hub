@@ -16,6 +16,29 @@ from app.services.orders import (
     order_geocode_address,
     task_has_execution_history,
 )
+from app.services.order_revisions import (
+    bump_task_revision,
+    reserve_internal_order_revision,
+)
+
+
+def _set_unexecuted_task_location(
+    task: Task,
+    latitude: Decimal | None,
+    longitude: Decimal | None,
+) -> None:
+    if task_has_execution_history(task):
+        return
+    if (
+        task.planned_lat == latitude
+        and task.planned_lng == longitude
+        and task.estimated_arrival is None
+    ):
+        return
+    task.planned_lat = latitude
+    task.planned_lng = longitude
+    task.estimated_arrival = None
+    bump_task_revision(task)
 
 
 def clear_order_location(order: Order) -> None:
@@ -26,9 +49,7 @@ def clear_order_location(order: Order) -> None:
     order.route_geocode_adcode = None
     order.route_geocode_level = None
     for task in order.tasks:
-        if not task_has_execution_history(task):
-            task.planned_lat = None
-            task.planned_lng = None
+        _set_unexecuted_task_location(task, None, None)
 
 
 def trusted_order_point(order: Order, services: MapServices) -> GeoPoint | None:
@@ -77,12 +98,9 @@ def _mark_geocode_failure(
     order: Order,
     *,
     status: str,
-    result: GeocodeResult | None = None,
 ) -> None:
+    clear_order_location(order)
     order.route_geocode_status = status
-    if result is not None:
-        order.route_geocode_adcode = result.adcode
-        order.route_geocode_level = result.level
 
 
 def _apply_geocode_result(
@@ -105,9 +123,7 @@ def _apply_geocode_result(
     order.route_geocode_adcode = result.adcode
     order.route_geocode_level = result.level
     for task in order.tasks:
-        if not task_has_execution_history(task):
-            task.planned_lat = latitude
-            task.planned_lng = longitude
+        _set_unexecuted_task_location(task, latitude, longitude)
 
     customer_address = (
         customer_geocode_address(order.customer) if order.customer is not None else None
@@ -142,6 +158,7 @@ def geocode_order(
     )
     if order is None:
         return "missing_order"
+    reserve_internal_order_revision(session, order)
     address = order_geocode_address(order)
     if not address:
         clear_order_location(order)
@@ -164,9 +181,11 @@ def geocode_order(
         order.route_geocode_adcode = None
         order.route_geocode_level = "manual_pin"
         for task in order.tasks:
-            if not task_has_execution_history(task):
-                task.planned_lat = customer.latitude
-                task.planned_lng = customer.longitude
+            _set_unexecuted_task_location(
+                task,
+                Decimal(str(customer.latitude)),
+                Decimal(str(customer.longitude)),
+            )
         session.commit()
         return "manual"
 
@@ -184,7 +203,7 @@ def geocode_order(
         return "failed"
 
     if not geocode_result_matches_address(address, result):
-        _mark_geocode_failure(order, status="geocode_mismatch", result=result)
+        _mark_geocode_failure(order, status="geocode_mismatch")
         session.commit()
         return "geocode_mismatch"
 

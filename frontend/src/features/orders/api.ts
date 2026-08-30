@@ -39,16 +39,25 @@ export function getOrderFormOptions(): Promise<OrderFormOptions> {
   return request<OrderFormOptions>(`${ordersPath}/form-options`);
 }
 
-export function createOrder(payload: OrderCreateInput): Promise<OrderDetail> {
+export function createOrder(
+  payload: OrderCreateInput,
+  idempotencyKey: string,
+): Promise<OrderDetail> {
   return request<OrderDetail>(ordersPath, {
     method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(payload),
   });
 }
 
-export function updateOrder(orderId: number, payload: OrderPatchInput): Promise<OrderDetail> {
+export function updateOrder(
+  orderId: number,
+  payload: OrderPatchInput,
+  writeRevision: string,
+): Promise<OrderDetail> {
   return request<OrderDetail>(`${ordersPath}/${orderId}`, {
     method: "PATCH",
+    headers: { "If-Match": writeRevision },
     body: JSON.stringify(payload),
   });
 }
@@ -56,19 +65,30 @@ export function updateOrder(orderId: number, payload: OrderPatchInput): Promise<
 export function updateOrderStatus(
   orderId: number,
   orderStatus: OrderStatus,
+  writeRevision: string,
 ): Promise<OrderDetail> {
   return request<OrderDetail>(`${ordersPath}/${orderId}/status`, {
     method: "PATCH",
+    headers: { "If-Match": writeRevision },
     body: JSON.stringify({ order_status: orderStatus }),
   });
 }
 
-export function deleteOrder(orderId: number): Promise<void> {
-  return request<void>(`${ordersPath}/${orderId}`, { method: "DELETE" });
+export function deleteOrder(orderId: number, writeRevision: string): Promise<void> {
+  return request<void>(`${ordersPath}/${orderId}`, {
+    method: "DELETE",
+    headers: { "If-Match": writeRevision },
+  });
 }
 
-export function retryOrderGeocode(orderId: number): Promise<OrderDetail> {
-  return request<OrderDetail>(`${ordersPath}/${orderId}/geocode`, { method: "POST" });
+export function retryOrderGeocode(
+  orderId: number,
+  writeRevision: string,
+): Promise<OrderDetail> {
+  return request<OrderDetail>(`${ordersPath}/${orderId}/geocode`, {
+    method: "POST",
+    headers: { "If-Match": writeRevision },
+  });
 }
 
 export interface DemoDataCounts {

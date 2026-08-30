@@ -3,9 +3,10 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.models.enums import OrderStatus, TaskItemType, TaskStatus
 from app.models.order import Order, OrderCat
@@ -69,11 +70,13 @@ def execution_revision(task: Task) -> str:
             "cat_status": task.cat_status,
             "exception_notes": task.exception_notes,
             "updated_at": _datetime_value(task.updated_at),
+            "revision_number": task.execution_revision_number,
         },
         "order": {
             "id": task.order.id,
             "status": task.order.order_status.value,
             "updated_at": _datetime_value(task.order.updated_at),
+            "write_revision_number": task.order.write_revision_number,
         },
         "items": [
             {
@@ -108,6 +111,44 @@ def require_execution_revision(task: Task, expected_revision: str) -> None:
             status_code=409,
             detail="任务执行记录已在其他页面更新，请刷新后重试",
         )
+
+
+def reserve_execution_revision(
+    session: Session,
+    task: Task,
+    expected_revision: str,
+) -> None:
+    """Reserve both task and order versions before changing execution state."""
+
+    require_execution_revision(task, expected_revision)
+    task_revision = task.execution_revision_number
+    order_revision = task.order.write_revision_number
+    task_result = session.execute(
+        update(Task)
+        .where(
+            Task.id == task.id,
+            Task.execution_revision_number == task_revision,
+        )
+        .values(execution_revision_number=task_revision + 1)
+        .execution_options(synchronize_session=False)
+    )
+    order_result = session.execute(
+        update(Order)
+        .where(
+            Order.id == task.order_id,
+            Order.write_revision_number == order_revision,
+        )
+        .values(write_revision_number=order_revision + 1)
+        .execution_options(synchronize_session=False)
+    )
+    if task_result.rowcount != 1 or order_result.rowcount != 1:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="任务或订单已在其他页面更新，请刷新后重试",
+        )
+    set_committed_value(task, "execution_revision_number", task_revision + 1)
+    set_committed_value(task.order, "write_revision_number", order_revision + 1)
 
 
 def task_execution_detail(task: Task) -> TaskExecutionDetail:
@@ -242,6 +283,7 @@ def start_task(
     if task.status not in STARTABLE_STATUSES:
         raise HTTPException(status_code=409, detail="只有已确认或待出发任务可以开始")
 
+    reserve_execution_revision(session, task, expected_revision)
     task.status = TaskStatus.IN_PROGRESS
     task.started_at = datetime.now(timezone.utc)
     task.completed_at = None
@@ -266,6 +308,7 @@ def update_task_item(
         raise HTTPException(status_code=409, detail="拍照事项由实际上传图片自动完成")
     if item.completed == completed:
         return task_execution_detail(task)
+    reserve_execution_revision(session, task, expected_revision)
     item.completed = completed
     return _commit_and_reload(session, task)
 
@@ -283,6 +326,7 @@ def update_task_text(
     _require_in_progress(task)
     if task.notes == notes and task.cat_status == cat_status:
         return task_execution_detail(task)
+    reserve_execution_revision(session, task, expected_revision)
     task.notes = notes
     task.cat_status = cat_status
     return _commit_and_reload(session, task)
@@ -306,6 +350,7 @@ async def add_task_photo(
     task = load_execution_task(session, task_id)
     require_execution_revision(task, expected_revision)
     _require_in_progress(task)
+    reserve_execution_revision(session, task, expected_revision)
     file_url = persist_uploaded_image(image, task.service_date)
     try:
         task.photos.append(TaskPhoto(file_url=file_url))
@@ -336,6 +381,7 @@ def complete_task(
         if not task.photos:
             raise HTTPException(status_code=409, detail="必做拍照事项需要至少上传一张图片")
 
+    reserve_execution_revision(session, task, expected_revision)
     task.status = TaskStatus.COMPLETED
     task.completed_at = datetime.now(timezone.utc)
     _sync_order_progress(task.order)
@@ -351,6 +397,7 @@ def mark_task_exception(
     task = load_execution_task(session, task_id)
     require_execution_revision(task, expected_revision)
     _require_in_progress(task)
+    reserve_execution_revision(session, task, expected_revision)
     task.exception_notes = exception_notes
     task.status = TaskStatus.EXCEPTION
     task.completed_at = datetime.now(timezone.utc)

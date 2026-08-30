@@ -23,6 +23,7 @@ from app.schemas.order import (
     OrderServiceContact,
     OrderWrite,
 )
+from app.services.order_revisions import bump_task_revision
 
 
 MONEY = Decimal("0.01")
@@ -686,6 +687,37 @@ def order_has_execution_history(order: Order) -> bool:
     return any(task_has_execution_history(task) for task in order.tasks)
 
 
+def require_order_status_transition(order: Order, new_status: OrderStatus) -> None:
+    if new_status is order.order_status:
+        return
+    if new_status in {OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED}:
+        raise HTTPException(
+            status_code=409,
+            detail="进行中和已完成状态只能由任务执行结果生成",
+        )
+    if order.order_status in {OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED}:
+        raise HTTPException(
+            status_code=409,
+            detail="执行中或已完成订单不能人工变更状态",
+        )
+    if order_has_execution_history(order):
+        raise HTTPException(status_code=409, detail="订单已有执行记录，不能人工变更状态")
+
+    allowed = {
+        OrderStatus.PENDING_CONFIRMATION: {
+            OrderStatus.CONFIRMED,
+            OrderStatus.CANCELLED,
+        },
+        OrderStatus.CONFIRMED: {
+            OrderStatus.PENDING_CONFIRMATION,
+            OrderStatus.CANCELLED,
+        },
+        OrderStatus.CANCELLED: {OrderStatus.CONFIRMED},
+    }
+    if new_status not in allowed.get(order.order_status, set()):
+        raise HTTPException(status_code=409, detail="不允许的订单状态变更")
+
+
 def require_tasks_are_rebuildable(order: Order) -> None:
     if order_has_execution_history(order):
         raise HTTPException(
@@ -705,5 +737,6 @@ def synchronize_task_statuses(order: Order, new_status: OrderStatus) -> None:
 
     target_status = initial_task_status(new_status)
     for task in order.tasks:
-        if task.status in MUTABLE_TASK_STATUSES:
+        if task.status in MUTABLE_TASK_STATUSES and task.status is not target_status:
             task.status = target_status
+            bump_task_revision(task)

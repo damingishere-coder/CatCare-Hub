@@ -77,6 +77,7 @@ const catDefaults = {
 
 const summary: OrderSummary = {
   id: 1,
+  write_revision: "a".repeat(64),
   source_customer_id: 1,
   service_contact: serviceContact,
   cat_snapshot: [
@@ -464,6 +465,7 @@ it("edits an order and keeps cancellation as a separate protected action", async
     expect(apiMocks.updateOrder).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ cat_count: 3 }),
+      "a".repeat(64),
     ),
   );
 
@@ -477,7 +479,11 @@ it("edits an order and keeps cancellation as a separate protected action", async
   fireEvent.click(screen.getByRole("button", { name: "取消订单" }));
 
   await waitFor(() =>
-    expect(apiMocks.updateOrderStatus).toHaveBeenCalledWith(1, "cancelled"),
+    expect(apiMocks.updateOrderStatus).toHaveBeenCalledWith(
+      1,
+      "cancelled",
+      "a".repeat(64),
+    ),
   );
 });
 
@@ -505,8 +511,12 @@ it("allows a payment-history order to change only unit price with its revision",
   fireEvent.click(within(dialog).getByRole("button", { name: "每次价格增加 5 元" }));
   fireEvent.click(within(dialog).getByRole("button", { name: "保存订单" }));
 
-  await waitFor(() => expect(apiMocks.updateOrder).toHaveBeenCalledWith(1, {
-    unit_price: "35.03",
-    expected_financial_revision: "c".repeat(64),
-  }));
+  await waitFor(() => expect(apiMocks.updateOrder).toHaveBeenCalledWith(
+    1,
+    {
+      unit_price: "35.03",
+      expected_financial_revision: "c".repeat(64),
+    },
+    "a".repeat(64),
+  ));
 });

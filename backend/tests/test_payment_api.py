@@ -307,6 +307,7 @@ def test_register_partial_and_final_payment_updates_order_and_dashboard(
     assert refreshed["receivables"] == []
     assert len(refreshed["records"]) == 2
     order_detail = client.get(f"/api/admin/orders/{order['id']}").json()
+    assert order_detail["write_revision"] != order["write_revision"]
     assert order_detail["paid_amount"] == "30.00"
     assert order_detail["due_amount"] == "0.00"
     assert order_detail["payment_status"] == "paid"
