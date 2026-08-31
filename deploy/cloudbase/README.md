@@ -53,7 +53,7 @@ docker build -f deploy/cloudbase/intake-relay/Dockerfile -t catcare-intake-relay
 
 ## 静态托管要求
 
-- 上传 `frontend/dist-public/`，将所有 `/fill/*` 回退到 `index.html`。
+- 上传 `frontend/dist-public/`，将 `/f/*` 和兼容路径 `/fill/*` 都回退到 `index.html`；新生成的正式分享链接使用 `/f/{token}`。
 - 只允许公开页 Origin 调用 CloudBase Run；不要使用 `*` CORS。
 - 首次联调可使用平台默认 HTTPS 域名，第一版不创建公众号或小程序资源；CloudBase 官方说明默认 HTTP 访问域名仅适合开发测试，正式对客前应换成已备案自定义域名，避免安全提示中间页和默认域名限制。
 - 公网检查必须确认 `/admin`、`/mobile`、`/api/admin/customers`、`/api/orders` 等路径均不可访问。

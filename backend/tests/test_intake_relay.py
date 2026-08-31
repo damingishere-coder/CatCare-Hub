@@ -1,13 +1,17 @@
+import asyncio
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 
+import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.session import build_engine, get_db
 from app.intake_relay import create_relay_app
 from app.models.intake import CustomerFormSubmission
+from app.services.intake import claim_submission
 
 
 @pytest.fixture
@@ -105,6 +109,34 @@ def test_relay_cors_auth_body_limit_and_route_isolation(
         assert relay_client.get(private_path).status_code == 404
 
 
+def test_relay_stops_streaming_unknown_length_body_at_limit(
+    relay_client: TestClient,
+) -> None:
+    yielded_chunks: list[int] = []
+
+    async def oversized_chunks():
+        for index in range(4):
+            yielded_chunks.append(index)
+            yield b"x" * (100 * 1024)
+
+    async def request() -> httpx.Response:
+        transport = httpx.ASGITransport(app=relay_client.app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as client:
+            return await client.put(
+                "/api/fill/streamed-test-token",
+                content=oversized_chunks(),
+            )
+
+    response = asyncio.run(request())
+
+    assert response.status_code == 413
+    assert response.headers["cache-control"] == "no-store"
+    assert yielded_chunks == [0, 1, 2]
+
+
 def test_relay_rate_limit_applies_to_token(
     relay_client: TestClient,
 ) -> None:
@@ -159,11 +191,36 @@ def test_relay_claim_complete_and_redaction_keep_only_receipt(
         },
     )
     assert claim.status_code == 200
+
+    session_factory = relay_client.app.state.testing_session
+    with session_factory() as first_session, session_factory() as stale_session:
+        first_submission = first_session.get(CustomerFormSubmission, summary["id"])
+        stale_submission = stale_session.get(CustomerFormSubmission, summary["id"])
+        assert first_submission is not None and stale_submission is not None
+        reclaimed = claim_submission(
+            first_session,
+            first_submission,
+            expected_revision=claim.json()["revision"],
+            idempotency_key="relay-decision-idempotency-0001",
+            decision_mode="customer",
+        )
+        assert reclaimed.claim_token is not None
+        first_session.commit()
+        with pytest.raises(HTTPException) as conflict:
+            claim_submission(
+                stale_session,
+                stale_submission,
+                expected_revision=claim.json()["revision"],
+                idempotency_key="relay-decision-idempotency-0001",
+                decision_mode="customer",
+            )
+        assert conflict.value.status_code == 409
+
     complete = relay_client.post(
         f"/api/admin/intake/submissions/{summary['id']}/complete",
         headers=_auth(),
         json={
-            "claim_token": claim.json()["claim_token"],
+            "claim_token": reclaimed.claim_token,
             "idempotency_key": "relay-decision-idempotency-0001",
             "decision_mode": "customer",
             "customer_id": 987654,
@@ -184,6 +241,7 @@ def test_relay_claim_complete_and_redaction_keep_only_receipt(
     assert [event["event_type"] for event in detail["audit_events"]] == [
         "submitted",
         "processing_claimed",
+        "processing_reclaimed",
         "completed_customer",
     ]
     assert "TEST-CONTACT" not in str(detail["audit_events"])

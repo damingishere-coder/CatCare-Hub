@@ -1079,11 +1079,27 @@ def claim_submission(
         ):
             raise HTTPException(status_code=409, detail="该提交正在执行其他审核动作")
         raw_claim = secrets.token_urlsafe(32)
-        submission.claim_token_hash = token_digest(raw_claim)
-        submission.claim_expires_at = changed_at + CLAIM_TTL
-        submission.revision_number += 1
-        submission.updated_at = changed_at
-        session.flush()
+        result = session.execute(
+            update(CustomerFormSubmission)
+            .where(
+                CustomerFormSubmission.id == submission.id,
+                CustomerFormSubmission.status == FormSubmissionStatus.PROCESSING,
+                CustomerFormSubmission.revision_number == submission.revision_number,
+                CustomerFormSubmission.idempotency_key == idempotency_key,
+                CustomerFormSubmission.decision_mode == decision_mode,
+            )
+            .values(
+                claim_token_hash=token_digest(raw_claim),
+                claim_expires_at=changed_at + CLAIM_TTL,
+                revision_number=submission.revision_number + 1,
+                updated_at=changed_at,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount != 1:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="处理租约已被其他请求重领")
+        session.expire(submission)
         record_intake_audit_event(
             session,
             event_type="processing_reclaimed",

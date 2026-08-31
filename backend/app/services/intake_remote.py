@@ -1,5 +1,5 @@
 import os
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from fastapi import HTTPException
@@ -34,6 +34,7 @@ RELAY_KEY_ENV = "CATCARE_INTAKE_RELAY_KEY"
 PUBLIC_ORIGIN_ENV = "CATCARE_PUBLIC_FILL_ORIGIN"
 RELAY_TIMEOUT_SECONDS = 12.0
 RELAY_SERVER_ENV = "CATCARE_INTAKE_RELAY_SERVER"
+LOOPBACK_RELAY_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 def remote_intake_enabled() -> bool:
@@ -43,13 +44,35 @@ def remote_intake_enabled() -> bool:
     )
 
 
+def _validated_relay_url(raw_url: str) -> str:
+    value = raw_url.strip().rstrip("/")
+    parsed = urlsplit(value)
+    if (
+        not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise HTTPException(status_code=503, detail="云端填写中转地址无效")
+    if parsed.scheme == "https":
+        return value
+    if parsed.scheme == "http" and parsed.hostname.lower() in LOOPBACK_RELAY_HOSTS:
+        return value
+    raise HTTPException(
+        status_code=503,
+        detail="云端填写中转地址必须使用 HTTPS，明文 HTTP 仅允许本机回环",
+    )
+
+
 class RemoteIntakeClient:
     def __init__(self) -> None:
-        self.base_url = os.getenv(RELAY_URL_ENV, "").strip().rstrip("/")
+        raw_url = os.getenv(RELAY_URL_ENV, "")
         self.key = os.getenv(RELAY_KEY_ENV, "")
         self.public_origin = os.getenv(PUBLIC_ORIGIN_ENV, "").strip().rstrip("/")
-        if not self.base_url:
+        if not raw_url.strip():
             raise HTTPException(status_code=503, detail="云端填写中转地址未配置")
+        self.base_url = _validated_relay_url(raw_url)
         if not self.key:
             raise HTTPException(status_code=503, detail="云端填写中转凭据未配置")
         if not self.public_origin:
