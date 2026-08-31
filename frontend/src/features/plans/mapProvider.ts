@@ -154,6 +154,26 @@ function markerContent(
   return content;
 }
 
+function customerMarkerContent(
+  orderId: number | undefined,
+  tooltip: string,
+  selected = false,
+  offset: MarkerDisplayOffset = { x: 0, y: 0 },
+  muted = false,
+): HTMLDivElement {
+  const content = document.createElement("div");
+  content.className = [
+    "flex size-9 items-center justify-center rounded-full border-2 border-white",
+    "text-[11px] font-bold whitespace-nowrap text-white shadow-md",
+    selected ? "bg-amber-600 ring-2 ring-amber-300" : muted ? "bg-slate-400" : "bg-slate-900",
+  ].join(" ");
+  content.textContent = orderId === undefined ? "#?" : `#${orderId}`;
+  content.title = tooltip;
+  content.setAttribute("aria-label", tooltip);
+  content.style.transform = `translate(${offset.x}px, ${offset.y}px)`;
+  return content;
+}
+
 function draftMarkerContent(): HTMLDivElement {
   const content = document.createElement("div");
   content.className = "relative flex size-12 cursor-move items-center justify-center";
@@ -258,13 +278,14 @@ export class AmapMapProvider implements MapProvider {
         );
       }
       for (const [index, item] of model.markers.entries()) {
+        const tooltip = `订单 #${item.order_id ?? "?"} · ${item.customer_name} · 路线第 ${item.sequence} 站`;
         const marker = new AMap.Marker({
           position: position(item.position),
-          title: item.address || item.community || item.customer_name,
+          title: tooltip,
           anchor: "center",
-          content: markerContent(
-            String(item.sequence),
-            item.customer_name,
+          content: customerMarkerContent(
+            item.order_id,
+            tooltip,
             item.task_id === model.selectedTaskId && !model.locationEditing,
             markerDisplayOffset(model.markers, index),
             model.locationEditing && item.task_id === model.selectedTaskId,

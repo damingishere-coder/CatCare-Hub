@@ -80,6 +80,8 @@ class PaymentRecordRead(BaseModel):
     paid_at: datetime | None
     voided_at: datetime | None
     voided_reason: str | None
+    deleted_at: datetime | None
+    deleted_reason: str | None
     revision: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
@@ -89,6 +91,7 @@ class PaymentsOverview(BaseModel):
     metrics: PaymentMetrics
     receivables: list[PaymentReceivable]
     records: list[PaymentRecordRead]
+    deleted_records: list[PaymentRecordRead]
 
 
 class PaymentRegistration(BaseModel):
@@ -103,6 +106,16 @@ class PaymentVoidRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class PaymentDeleteRequest(PaymentVoidRequest):
+    pass
+
+
+class PaymentRestoreRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    expected_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class PaymentVoidResult(BaseModel):
     payment: PaymentRecordRead
     order_id: int
@@ -111,3 +124,7 @@ class PaymentVoidResult(BaseModel):
     overpaid_amount: Decimal = Field(ge=0)
     payment_status: OrderPaymentStatus
     revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PaymentMutationResult(PaymentVoidResult):
+    pass

@@ -62,6 +62,8 @@ const detail: CustomerDetail = {
   unit: "测试单元",
   room: "测试房号",
   access_method: "虚构门禁",
+  community_access_method: null,
+  building_access_method: null,
   access_info: "虚构入户说明",
   key_status: "未提供",
   key_code: "TEST-KEY",
@@ -94,7 +96,9 @@ it("loads the customer list with one address and only the visible access fields"
   expect(
     await screen.findByRole("heading", { name: "测试客户（虚构）", level: 2 }, { timeout: 5_000 }),
   ).toBeInTheDocument();
-  expect(screen.getByText("敏感信息，仅本地后台可见")).toBeInTheDocument();
+  expect(screen.queryByText("敏感信息，仅本地后台可见")).not.toBeInTheDocument();
+  expect(screen.getByText("历史门禁方式（待分类）")).toBeInTheDocument();
+  expect(screen.getByText("虚构门禁")).toBeInTheDocument();
   expect(screen.getByText("不对应真实地点")).toBeInTheDocument();
   expect(screen.getByText("未提供 · TEST-KEY")).toBeInTheDocument();
   expect(screen.queryByText("虚构入户说明")).not.toBeInTheDocument();
@@ -122,7 +126,8 @@ it("creates a simplified customer without submitting hidden legacy fields", asyn
     target: { value: "测试客户（虚构）" },
   });
   fireEvent.change(within(dialog).getByRole("textbox", { name: "地址" }), { target: { value: "虚构完整地址" } });
-  fireEvent.change(within(dialog).getByRole("combobox", { name: "门禁方式" }), { target: { value: "密码" } });
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "小区门禁" }), { target: { value: "密码" } });
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "楼下门禁" }), { target: { value: "门卡" } });
   fireEvent.change(within(dialog).getByRole("combobox", { name: "钥匙状态" }), { target: { value: "待取" } });
   fireEvent.change(within(dialog).getByRole("textbox", { name: "钥匙编号" }), {
     target: { value: "TEST-KEY" },
@@ -135,7 +140,9 @@ it("creates a simplified customer without submitting hidden legacy fields", asyn
       expect.objectContaining({
         name: "测试客户（虚构）",
         address: "虚构完整地址",
-        access_method: "密码",
+        access_method: null,
+        community_access_method: "密码",
+        building_access_method: "门卡",
         key_status: "待取",
         key_code: "TEST-KEY",
         is_repeat_customer: true,

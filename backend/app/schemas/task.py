@@ -27,6 +27,8 @@ class TaskExecutionCustomer(BaseModel):
     unit: str | None
     room: str | None
     access_method: str | None
+    community_access_method: str | None
+    building_access_method: str | None
     access_info: str | None
     key_status: str | None
     key_code: str | None

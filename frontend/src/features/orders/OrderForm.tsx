@@ -66,6 +66,8 @@ function emptyContact(name = ""): OrderServiceContact {
     unit: null,
     room: null,
     access_method: null,
+    community_access_method: null,
+    building_access_method: null,
     access_info: null,
     key_status: null,
     key_code: null,
@@ -184,6 +186,8 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
       unit: customer.unit,
       room: customer.room,
       access_method: customer.access_method,
+      community_access_method: customer.community_access_method,
+      building_access_method: customer.building_access_method,
       access_info: customer.access_info,
       key_status: customer.key_status,
       key_code: customer.key_code,
@@ -209,6 +213,11 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
     setServiceContact((current) => ({
       ...current,
       [field]: value,
+      ...(
+        ["community_access_method", "building_access_method"].includes(field)
+          ? { access_method: null }
+          : {}
+      ),
       ...(
         ["community", "address", "building"].includes(field)
           ? { latitude: null, longitude: null, geocode_status: null }
@@ -409,9 +418,11 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
                     <label className={`${labelClass} sm:col-span-2`}>详细地址<input className={inputClass} value={serviceContact.address ?? ""} placeholder="未填写时订单仍可保存，但不能自动规划路线" onChange={(event) => updateContact("address", optionalValue(event.target.value))} /></label>
                     <label className={labelClass}>楼栋<input className={inputClass} value={serviceContact.building ?? ""} onChange={(event) => updateContact("building", optionalValue(event.target.value))} /></label>
                     <label className={labelClass}>单元 / 房间<input className={inputClass} value={[serviceContact.unit, serviceContact.room].filter(Boolean).join(" / ")} placeholder="例如 2 单元 / 1201" onChange={(event) => { const [unit, room] = event.target.value.split("/"); updateContact("unit", optionalValue(unit ?? "")); updateContact("room", optionalValue(room ?? "")); }} /></label>
-                    <label className={labelClass}>入户方式<select className={inputClass} value={serviceContact.access_method ?? ""} onChange={(event) => updateContact("access_method", optionalValue(event.target.value))}><option value="">请选择</option>{optionsWithLegacy(accessMethodOptions, serviceContact.access_method).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+                    <label className={labelClass}>小区门禁<select className={inputClass} value={serviceContact.community_access_method ?? ""} onChange={(event) => updateContact("community_access_method", optionalValue(event.target.value))}><option value="">请选择</option>{optionsWithLegacy(accessMethodOptions, serviceContact.community_access_method).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+                    <label className={labelClass}>楼下门禁<select className={inputClass} value={serviceContact.building_access_method ?? ""} onChange={(event) => updateContact("building_access_method", optionalValue(event.target.value))}><option value="">请选择</option>{optionsWithLegacy(accessMethodOptions, serviceContact.building_access_method).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
                     <label className={labelClass}>钥匙状态<select className={inputClass} value={serviceContact.key_status ?? ""} onChange={(event) => updateContact("key_status", optionalValue(event.target.value))}><option value="">请选择</option>{optionsWithLegacy(keyStatusOptions, serviceContact.key_status).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
                     <label className={labelClass}>钥匙编号<input className={inputClass} value={serviceContact.key_code ?? ""} onChange={(event) => updateContact("key_code", optionalValue(event.target.value))} /></label>
+                    {serviceContact.access_method ? <p className="rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-600 sm:col-span-2">历史门禁方式（待分类）：{serviceContact.access_method}</p> : null}
                     <label className={`${labelClass} sm:col-span-2`}>门禁与入户说明<textarea className={`${inputClass} min-h-20 resize-y`} value={serviceContact.access_info ?? ""} onChange={(event) => updateContact("access_info", optionalValue(event.target.value))} /></label>
                     <label className={`${labelClass} sm:col-span-2`}>客户备注<textarea className={`${inputClass} min-h-20 resize-y`} value={serviceContact.notes ?? ""} onChange={(event) => updateContact("notes", optionalValue(event.target.value))} /></label>
                   </div>

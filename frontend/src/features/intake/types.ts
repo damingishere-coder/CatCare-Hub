@@ -33,6 +33,8 @@ export interface IntakeCustomerDraft {
   unit: string | null;
   room: string | null;
   access_method: string | null;
+  community_access_method: string | null;
+  building_access_method: string | null;
   access_info: string | null;
   key_status: string | null;
   key_code: string | null;

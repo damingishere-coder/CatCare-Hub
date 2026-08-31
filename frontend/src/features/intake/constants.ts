@@ -29,6 +29,8 @@ export const emptyCustomer: IntakeCustomerDraft = {
   unit: null,
   room: null,
   access_method: null,
+  community_access_method: null,
+  building_access_method: null,
   access_info: null,
   key_status: null,
   key_code: null,

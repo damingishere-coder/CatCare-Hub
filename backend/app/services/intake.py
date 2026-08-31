@@ -237,13 +237,11 @@ def _stored_payload_from_public(
 ) -> IntakeDraftPayload:
     public_data = payload.model_dump(mode="json")
     customer = dict(public_data["customer"])
-    community_access = customer.pop("community_access_method", None)
-    building_access = customer.pop("building_access_method", None)
-    if community_access is not None or building_access is not None:
-        customer["access_method"] = (
-            f"小区门禁：{community_access or '待确认'}；"
-            f"楼下门禁：{building_access or '待确认'}"
-        )
+    if (
+        customer.get("community_access_method") is not None
+        or customer.get("building_access_method") is not None
+    ):
+        customer["access_method"] = None
     return IntakeDraftPayload.model_validate(
         {
             "customer": customer,
@@ -280,9 +278,16 @@ def _split_public_access_method(
 
 def _public_payload_from_stored(payload: dict[str, object]) -> PublicIntakeDraftPayload:
     stored = IntakeDraftPayload.model_validate(payload or {})
-    community_access, building_access, legacy_access = _split_public_access_method(
-        stored.customer.access_method
-    )
+    community_access = stored.customer.community_access_method
+    building_access = stored.customer.building_access_method
+    legacy_access = stored.customer.access_method
+    if community_access is None and building_access is None:
+        parsed_community, parsed_building, parsed_legacy = _split_public_access_method(
+            legacy_access
+        )
+        community_access = parsed_community
+        building_access = parsed_building
+        legacy_access = parsed_legacy
     return PublicIntakeDraftPayload.model_validate(
         {
             "customer": {

@@ -7,12 +7,21 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.payment import (
     PaymentCreate,
+    PaymentDeleteRequest,
+    PaymentMutationResult,
     PaymentRegistration,
+    PaymentRestoreRequest,
     PaymentVoidRequest,
     PaymentVoidResult,
     PaymentsOverview,
 )
-from app.services.payments import get_payments_overview, register_payment, void_payment
+from app.services.payments import (
+    delete_payment,
+    get_payments_overview,
+    register_payment,
+    restore_payment,
+    void_payment,
+)
 
 
 router = APIRouter(prefix="/api/admin/payments", tags=["admin-payments"])
@@ -43,3 +52,21 @@ def void_payment_record(
     session: DatabaseSession,
 ) -> PaymentVoidResult:
     return void_payment(session, payment_id, payload)
+
+
+@router.post("/{payment_id}/delete", response_model=PaymentMutationResult)
+def delete_payment_record(
+    payment_id: int,
+    payload: PaymentDeleteRequest,
+    session: DatabaseSession,
+) -> PaymentMutationResult:
+    return delete_payment(session, payment_id, payload)
+
+
+@router.post("/{payment_id}/restore", response_model=PaymentMutationResult)
+def restore_payment_record(
+    payment_id: int,
+    payload: PaymentRestoreRequest,
+    session: DatabaseSession,
+) -> PaymentMutationResult:
+    return restore_payment(session, payment_id, payload)

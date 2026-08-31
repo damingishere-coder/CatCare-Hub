@@ -211,6 +211,8 @@ def test_execution_detail_start_text_and_revision_protection(
         "unit": "6 单元",
         "room": "606",
         "access_method": "虚构门禁方式",
+        "community_access_method": None,
+        "building_access_method": None,
         "access_info": "虚构门禁说明",
         "key_status": "虚构钥匙状态",
         "key_code": "FAKE-P6-KEY",

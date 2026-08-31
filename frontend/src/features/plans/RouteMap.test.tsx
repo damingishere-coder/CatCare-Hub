@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { RouteMap } from "./RouteMap";
 import type { MapRenderModel } from "./mapProvider";
@@ -8,14 +8,16 @@ const mapMocks = vi.hoisted(() => ({
   mount: vi.fn(),
   update: vi.fn(),
   dispose: vi.fn(),
+  hasKey: vi.fn(),
+  hasSecurityCode: vi.fn(),
 }));
 
 vi.mock("./mapProvider", async () => {
   const actual = await vi.importActual<typeof import("./mapProvider")>("./mapProvider");
   return {
     ...actual,
-    hasAmapBrowserKey: () => true,
-    hasAmapBrowserSecurityCode: () => true,
+    hasAmapBrowserKey: mapMocks.hasKey,
+    hasAmapBrowserSecurityCode: mapMocks.hasSecurityCode,
     AmapMapProvider: class {
       mount(container: HTMLElement, model: MapRenderModel) {
         mapMocks.mount(container, model);
@@ -27,6 +29,7 @@ vi.mock("./mapProvider", async () => {
 
 const markers: PlanRouteMarker[] = [{
   task_id: 7,
+  order_id: 12,
   sequence: 1,
   customer_name: "虚构定位客户",
   community: "虚构小区",
@@ -37,6 +40,8 @@ const markers: PlanRouteMarker[] = [{
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mapMocks.hasKey.mockReturnValue(true);
+  mapMocks.hasSecurityCode.mockReturnValue(true);
 });
 
 it("keeps one map controller while draft coordinates and selection change", async () => {
@@ -101,4 +106,26 @@ it("keeps one map controller while draft coordinates and selection change", asyn
 
   view.unmount();
   expect(mapMocks.dispose).toHaveBeenCalledTimes(1);
+});
+
+it("uses the same compact order number and full hover label on the fallback map", () => {
+  mapMocks.hasKey.mockReturnValue(false);
+  const onSelectTask = vi.fn();
+  render(
+    <RouteMap
+      providerName="amap"
+      start={{ label: "家", position: { latitude: 22.54, longitude: 114.05 } }}
+      markers={markers}
+      route={null}
+      selectedTaskId={null}
+      onSelectTask={onSelectTask}
+    />,
+  );
+
+  const marker = screen.getByRole("button", { name: "订单 #12，虚构定位客户，路线第 1 站" });
+  expect(marker).toHaveTextContent("#12");
+  expect(marker).toHaveAttribute("title", "订单 #12 · 虚构定位客户 · 路线第 1 站");
+  expect(screen.queryByText("虚构定位客户")).not.toBeInTheDocument();
+  fireEvent.click(marker);
+  expect(onSelectTask).toHaveBeenCalledWith(7);
 });

@@ -327,7 +327,7 @@ it("previews real route metrics and adopts the revision-protected recommendation
   expect(screen.getByText("9.8 km · 37 分钟")).toBeInTheDocument();
   expect(screen.getByText("家 → P4 第三位虚构客户 → P4 第二位虚构客户 → P4 第一位虚构客户 → 家")).toBeInTheDocument();
 
-  expect(screen.getByRole("button", { name: "地图任务 1：P4 第三位虚构客户" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "订单 #3，P4 第三位虚构客户，路线第 1 站" })).toHaveTextContent("#3");
   fireEvent.click(screen.getByRole("button", { name: "采用优化顺序" }));
 
   await waitFor(() => expect(apiMocks.saveDaySchedule).toHaveBeenCalledWith(

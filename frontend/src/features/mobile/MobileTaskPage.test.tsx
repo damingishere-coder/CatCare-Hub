@@ -55,7 +55,9 @@ const confirmed: MobileTaskExecutionDetail = {
     building: "9 栋",
     unit: "9 单元",
     room: "909",
-    access_method: "虚构入户方式",
+    access_method: null,
+    community_access_method: "小区门卡",
+    building_access_method: "楼下钥匙",
     access_info: "虚构门禁说明",
     key_status: "虚构钥匙状态",
     key_code: "FAKE-P9-KEY",
@@ -94,7 +96,7 @@ beforeEach(() => {
   apiMocks.getMobileTask.mockResolvedValue(confirmed);
 });
 
-it("shows sensitive field context only on detail and starts a confirmed task", async () => {
+it("shows the two access fields on detail and starts a confirmed task", async () => {
   apiMocks.startMobileTask.mockResolvedValue({
     ...confirmed,
     status: "in_progress",
@@ -107,7 +109,9 @@ it("shows sensitive field context only on detail and starts a confirmed task", a
   expect(await screen.findByText("P9 虚构客户")).toBeInTheDocument();
   expect(screen.getByText(/P9 虚构路 9 号/)).toBeInTheDocument();
   expect(screen.queryByText("000-P9-TEST")).not.toBeInTheDocument();
-  expect(screen.getByText(/虚构入户方式/)).toBeInTheDocument();
+  expect(screen.getByText("小区门卡")).toBeInTheDocument();
+  expect(screen.getByText("楼下钥匙")).toBeInTheDocument();
+  expect(screen.queryByText(/敏感信息/)).not.toBeInTheDocument();
   expect(screen.queryByText(/虚构门禁说明/)).not.toBeInTheDocument();
   expect(screen.getByText(/虚构用药说明/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "一键导航" })).toHaveAttribute("href", confirmed.navigation_url);

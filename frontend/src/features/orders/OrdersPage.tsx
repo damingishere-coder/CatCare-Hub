@@ -225,6 +225,14 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
     });
   }
 
+  function toggleListedOrder(orderId: number) {
+    if (selectedOrderId === orderId) {
+      closeOrderDetail();
+      return;
+    }
+    selectOrder(orderId);
+  }
+
   function closeOrderDetail() {
     setOrderDetail(null);
     setSearchParams((current) => {
@@ -384,11 +392,11 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                     <button
                       type="button"
                       className={`w-full rounded-xl px-3 py-3 text-left transition-colors ${selectedOrderId === order.id ? "bg-orange-50 text-slate-950 shadow-sm ring-1 ring-orange-200" : "hover:bg-slate-100"}`}
-                      onClick={() => selectOrder(order.id)}
+                      onClick={() => toggleListedOrder(order.id)}
                       aria-pressed={selectedOrderId === order.id}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <span className="truncate text-sm font-semibold">{order.customer.name}</span>
+                        <span className="truncate text-sm font-semibold">#{order.id} · {order.customer.name}</span>
                         <StatusBadge status={order.order_status} />
                       </div>
                       <p className={`mt-1 text-xs ${selectedOrderId === order.id ? "text-orange-800" : "text-slate-500"}`}>
@@ -464,7 +472,9 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                   <DetailItem label="联系人" value={orderDetail.service_contact.name} />
                   <DetailItem label="电话 / 微信" value={[orderDetail.service_contact.phone, orderDetail.service_contact.wechat_name].filter(Boolean).join(" / ") || "未填写"} />
                   <DetailItem label="上门地址" value={orderDetail.customer.address || "未填写（无法自动规划路线）"} />
-                  <DetailItem label="入户方式" value={orderDetail.service_contact.access_method || "未填写"} />
+                  <DetailItem label="小区门禁" value={orderDetail.service_contact.community_access_method || "未填写"} />
+                  <DetailItem label="楼下门禁" value={orderDetail.service_contact.building_access_method || "未填写"} />
+                  {orderDetail.service_contact.access_method ? <DetailItem label="历史门禁方式（待分类）" value={orderDetail.service_contact.access_method} /> : null}
                   <div className="sm:col-span-2 xl:col-span-4"><DetailItem label="门禁 / 钥匙 / 客户备注" value={[orderDetail.service_contact.access_info, orderDetail.service_contact.key_status, orderDetail.service_contact.key_code, orderDetail.service_contact.notes].filter(Boolean).join("；") || "未填写"} /></div>
                 </dl>
                 {!orderDetail.deletable && orderDetail.delete_block_reason ? <p className="mt-4 text-xs text-slate-500">删除限制：{orderDetail.delete_block_reason}</p> : null}

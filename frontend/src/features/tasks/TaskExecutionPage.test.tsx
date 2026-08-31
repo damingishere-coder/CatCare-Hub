@@ -54,7 +54,9 @@ const confirmed: TaskExecutionDetail = {
     building: "6 栋",
     unit: "6 单元",
     room: "606",
-    access_method: "虚构门禁方式",
+    access_method: null,
+    community_access_method: "小区门卡",
+    building_access_method: "楼下钥匙",
     access_info: "虚构门禁说明",
     key_status: "虚构钥匙状态",
     key_code: "FAKE-P6-KEY",
@@ -106,7 +108,9 @@ it("shows the single-task field context and starts a confirmed task", async () =
   expect(await screen.findByText("P6 虚构客户")).toBeInTheDocument();
   expect(screen.getByText(/P6 虚构路 6 号/)).toBeInTheDocument();
   expect(screen.queryByText("000-P6-TEST")).not.toBeInTheDocument();
-  expect(screen.getByText(/虚构门禁方式/)).toBeInTheDocument();
+  expect(screen.getByText("小区门卡")).toBeInTheDocument();
+  expect(screen.getByText("楼下钥匙")).toBeInTheDocument();
+  expect(screen.queryByText(/敏感信息/)).not.toBeInTheDocument();
   expect(screen.queryByText(/虚构门禁说明/)).not.toBeInTheDocument();
   expect(screen.getByText(/虚构用药说明/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "返回路线图" })).toHaveAttribute("href", "/admin/routes");

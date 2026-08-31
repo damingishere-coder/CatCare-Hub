@@ -41,10 +41,16 @@ export function CustomerFormDialog({ initial, onCancel, onSave }: CustomerFormDi
       return;
     }
 
+    const communityAccessMethod = optionalValue(formData, "community_access_method");
+    const buildingAccessMethod = optionalValue(formData, "building_access_method");
     const payload: CustomerInput = {
       name,
       address: optionalValue(formData, "address"),
-      access_method: optionalValue(formData, "access_method"),
+      access_method: communityAccessMethod || buildingAccessMethod
+        ? null
+        : initial?.access_method ?? null,
+      community_access_method: communityAccessMethod,
+      building_access_method: buildingAccessMethod,
       key_status: optionalValue(formData, "key_status"),
       key_code: optionalValue(formData, "key_code"),
       notes: optionalValue(formData, "notes"),
@@ -102,10 +108,19 @@ export function CustomerFormDialog({ initial, onCancel, onSave }: CustomerFormDi
         </h3>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <label className={labelClass}>
-            门禁方式
-            <select className={inputClass} name="access_method" defaultValue={initial?.access_method ?? ""}>
+            小区门禁
+            <select className={inputClass} name="community_access_method" defaultValue={initial?.community_access_method ?? ""}>
               <option value="">未选择</option>
-              {optionsWithLegacy(accessMethodOptions, initial?.access_method).map((option) => (
+              {optionsWithLegacy(accessMethodOptions, initial?.community_access_method).map((option) => (
+                <option key={option} value={option}>{accessMethodOptions.includes(option as typeof accessMethodOptions[number]) ? option : `历史值：${option}`}</option>
+              ))}
+            </select>
+          </label>
+          <label className={labelClass}>
+            楼下门禁
+            <select className={inputClass} name="building_access_method" defaultValue={initial?.building_access_method ?? ""}>
+              <option value="">未选择</option>
+              {optionsWithLegacy(accessMethodOptions, initial?.building_access_method).map((option) => (
                 <option key={option} value={option}>{accessMethodOptions.includes(option as typeof accessMethodOptions[number]) ? option : `历史值：${option}`}</option>
               ))}
             </select>
@@ -123,6 +138,11 @@ export function CustomerFormDialog({ initial, onCancel, onSave }: CustomerFormDi
             钥匙编号
             <input className={inputClass} name="key_code" defaultValue={initial?.key_code ?? ""} maxLength={100} />
           </label>
+          {initial?.access_method ? (
+            <p className="rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-600 sm:col-span-2">
+              历史门禁方式（待分类）：{initial.access_method}。选择任一新门禁字段后会完成分类。
+            </p>
+          ) : null}
         </div>
       </section>
 

@@ -14,13 +14,16 @@ from app.models.enums import (
     PaymentRecordStatus,
 )
 from app.models.order import Order, OrderCat
-from app.models.payment import Payment
+from app.models.payment import Payment, PaymentRecordAuditEvent
 from app.schemas.payment import (
     PaymentCreate,
+    PaymentDeleteRequest,
     PaymentMetrics,
+    PaymentMutationResult,
     PaymentReceivable,
     PaymentRecordRead,
     PaymentRegistration,
+    PaymentRestoreRequest,
     PaymentVoidRequest,
     PaymentVoidResult,
     PaymentsOverview,
@@ -110,6 +113,8 @@ def payment_revision(order: Order) -> str:
                 "payment_method": payment.payment_method.value,
                 "voided_at": _datetime_value(payment.voided_at),
                 "voided_reason": payment.voided_reason,
+                "deleted_at": _datetime_value(payment.deleted_at),
+                "deleted_reason": payment.deleted_reason,
             }
             for payment in sorted(order.payments, key=lambda entry: entry.id)
         ],
@@ -210,6 +215,8 @@ def _payment_record(payment: Payment) -> PaymentRecordRead:
         paid_at=as_utc(payment.paid_at),
         voided_at=as_utc(payment.voided_at),
         voided_reason=payment.voided_reason,
+        deleted_at=as_utc(payment.deleted_at),
+        deleted_reason=payment.deleted_reason,
         revision=payment_revision(order),
     )
 
@@ -250,6 +257,7 @@ def _completed_income(
     total = session.scalar(
         select(func.sum(Payment.amount)).where(
             Payment.payment_status == PaymentRecordStatus.COMPLETED,
+            Payment.deleted_at.is_(None),
             Payment.paid_at.is_not(None),
             Payment.paid_at >= start_utc,
             Payment.paid_at < end_utc,
@@ -270,6 +278,7 @@ def get_payments_overview(
         select(func.count(Order.id)).where(Order.order_status == OrderStatus.COMPLETED)
     )
     receivables = [item for order in receivable_orders for item in _receivables(order)]
+    payment_records = _load_payment_records(session)
     return PaymentsOverview(
         business_date=target_date,
         month_start=target_date.replace(day=1),
@@ -280,7 +289,16 @@ def get_payments_overview(
             completed_order_count=completed_order_count or 0,
         ),
         receivables=receivables,
-        records=[_payment_record(payment) for payment in _load_payment_records(session)],
+        records=[
+            _payment_record(payment)
+            for payment in payment_records
+            if payment.deleted_at is None
+        ],
+        deleted_records=[
+            _payment_record(payment)
+            for payment in payment_records
+            if payment.deleted_at is not None
+        ],
     )
 
 
@@ -412,67 +430,32 @@ def register_payment(
     )
 
 
-def void_payment(
-    session: Session,
-    payment_id: int,
-    payload: PaymentVoidRequest,
-) -> PaymentVoidResult:
-    payment = session.get(Payment, payment_id)
-    if payment is None:
-        raise HTTPException(status_code=404, detail="收款流水不存在")
-
-    order = _load_payment_order(session, payment.order_id)
-    payment = next(entry for entry in order.payments if entry.id == payment_id)
-    if payment.payment_status is not PaymentRecordStatus.COMPLETED:
-        raise HTTPException(status_code=409, detail="只有已完成的收款流水可以撤销")
-    if order.payment_status is OrderPaymentStatus.REFUNDED:
-        raise HTTPException(status_code=409, detail="已退款订单不能再使用误登记撤销")
-    require_payment_revision(order, payload.expected_revision)
-
-    previous_paid = money(order.paid_amount)
-    previous_status = order.payment_status
-    voided_at = datetime.now(timezone.utc)
-    payment_result = session.execute(
-        update(Payment)
-        .where(
-            Payment.id == payment.id,
-            Payment.order_id == order.id,
-            Payment.payment_status == PaymentRecordStatus.COMPLETED,
-        )
-        .values(
-            payment_status=PaymentRecordStatus.VOIDED,
-            voided_at=voided_at,
-            voided_reason=payload.reason,
-        )
-        .execution_options(synchronize_session="fetch")
-    )
-    if payment_result.rowcount != 1:
-        session.rollback()
-        raise HTTPException(status_code=409, detail="收款流水状态已变化，请刷新后重试")
-
-    next_paid = money(
-        sum(
-            (
-                entry.amount
-                for entry in order.payments
-                if entry.payment_status is PaymentRecordStatus.COMPLETED
-            ),
-            Decimal("0.00"),
-        )
-    )
+def _payment_status_after_completed_amount(
+    order: Order,
+    next_paid: Decimal,
+) -> OrderPaymentStatus:
     if next_paid <= 0:
-        next_status = OrderPaymentStatus.UNPAID
-    elif (
+        return OrderPaymentStatus.UNPAID
+    if (
         order.settlement_mode is OrderSettlementMode.DAILY
         and any(item.due_amount > 0 for item in order_daily_receivables(order))
     ):
-        next_status = OrderPaymentStatus.PARTIAL
-    else:
-        next_status = payment_status_for_amounts(
-            total_amount=order.total_amount,
-            paid_amount=next_paid,
-        )
+        return OrderPaymentStatus.PARTIAL
+    return payment_status_for_amounts(
+        total_amount=order.total_amount,
+        paid_amount=next_paid,
+    )
 
+
+def _update_order_payment_state(
+    session: Session,
+    *,
+    order: Order,
+    previous_paid: Decimal,
+    previous_status: OrderPaymentStatus,
+    next_paid: Decimal,
+    next_status: OrderPaymentStatus,
+) -> None:
     order_result = session.execute(
         update(Order)
         .where(
@@ -498,6 +481,90 @@ def void_payment(
         session.rollback()
         raise HTTPException(status_code=409, detail="订单收款信息已变化，请刷新后重试")
 
+
+def _payment_mutation_result(
+    session: Session,
+    *,
+    order_id: int,
+    payment_id: int,
+) -> PaymentMutationResult:
+    session.expire_all()
+    refreshed_order = _load_payment_order(session, order_id)
+    refreshed_payment = next(
+        entry for entry in refreshed_order.payments if entry.id == payment_id
+    )
+    return PaymentMutationResult(
+        payment=_payment_record(refreshed_payment),
+        order_id=refreshed_order.id,
+        paid_amount=money(refreshed_order.paid_amount),
+        due_amount=due_amount(refreshed_order),
+        overpaid_amount=overpaid_amount(refreshed_order),
+        payment_status=refreshed_order.payment_status,
+        revision=payment_revision(refreshed_order),
+    )
+
+
+def void_payment(
+    session: Session,
+    payment_id: int,
+    payload: PaymentVoidRequest,
+) -> PaymentVoidResult:
+    payment = session.get(Payment, payment_id)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="收款流水不存在")
+
+    order = _load_payment_order(session, payment.order_id)
+    payment = next(entry for entry in order.payments if entry.id == payment_id)
+    if payment.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="已删除的收款流水不能撤销")
+    if payment.payment_status is not PaymentRecordStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="只有已完成的收款流水可以撤销")
+    if order.payment_status is OrderPaymentStatus.REFUNDED:
+        raise HTTPException(status_code=409, detail="已退款订单不能再使用误登记撤销")
+    require_payment_revision(order, payload.expected_revision)
+
+    previous_paid = money(order.paid_amount)
+    previous_status = order.payment_status
+    voided_at = datetime.now(timezone.utc)
+    payment_result = session.execute(
+        update(Payment)
+        .where(
+            Payment.id == payment.id,
+            Payment.order_id == order.id,
+            Payment.payment_status == PaymentRecordStatus.COMPLETED,
+            Payment.deleted_at.is_(None),
+        )
+        .values(
+            payment_status=PaymentRecordStatus.VOIDED,
+            voided_at=voided_at,
+            voided_reason=payload.reason,
+        )
+        .execution_options(synchronize_session="fetch")
+    )
+    if payment_result.rowcount != 1:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="收款流水状态已变化，请刷新后重试")
+
+    next_paid = money(
+        sum(
+            (
+                entry.amount
+                for entry in order.payments
+                if entry.payment_status is PaymentRecordStatus.COMPLETED
+            ),
+            Decimal("0.00"),
+        )
+    )
+    next_status = _payment_status_after_completed_amount(order, next_paid)
+    _update_order_payment_state(
+        session,
+        order=order,
+        previous_paid=previous_paid,
+        previous_status=previous_status,
+        next_paid=next_paid,
+        next_status=next_status,
+    )
+
     session.commit()
     session.expire_all()
     refreshed_order = _load_payment_order(session, order.id)
@@ -512,4 +579,146 @@ def void_payment(
         overpaid_amount=overpaid_amount(refreshed_order),
         payment_status=refreshed_order.payment_status,
         revision=payment_revision(refreshed_order),
+    )
+
+
+def delete_payment(
+    session: Session,
+    payment_id: int,
+    payload: PaymentDeleteRequest,
+) -> PaymentMutationResult:
+    payment = session.get(Payment, payment_id)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="收款流水不存在")
+
+    order = _load_payment_order(session, payment.order_id)
+    payment = next(entry for entry in order.payments if entry.id == payment_id)
+    require_payment_revision(order, payload.expected_revision)
+    if payment.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="收款流水已经删除")
+    if (
+        payment.payment_status is PaymentRecordStatus.COMPLETED
+        and order.payment_status is OrderPaymentStatus.REFUNDED
+    ):
+        raise HTTPException(status_code=409, detail="已退款订单的完成流水不能自动撤销删除")
+
+    previous_paid = money(order.paid_amount)
+    previous_status = order.payment_status
+    previous_payment_status = payment.payment_status
+    deleted_at = datetime.now(timezone.utc)
+    values: dict[str, object] = {
+        "deleted_at": deleted_at,
+        "deleted_reason": payload.reason,
+    }
+    if previous_payment_status is PaymentRecordStatus.COMPLETED:
+        values.update(
+            payment_status=PaymentRecordStatus.VOIDED,
+            voided_at=deleted_at,
+            voided_reason=payload.reason,
+        )
+    payment_result = session.execute(
+        update(Payment)
+        .where(
+            Payment.id == payment.id,
+            Payment.order_id == order.id,
+            Payment.payment_status == previous_payment_status,
+            Payment.deleted_at.is_(None),
+        )
+        .values(**values)
+        .execution_options(synchronize_session="fetch")
+    )
+    if payment_result.rowcount != 1:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="收款流水状态已变化，请刷新后重试")
+
+    next_paid = previous_paid
+    next_status = previous_status
+    if previous_payment_status is PaymentRecordStatus.COMPLETED:
+        next_paid = money(
+            sum(
+                (
+                    entry.amount
+                    for entry in order.payments
+                    if entry.payment_status is PaymentRecordStatus.COMPLETED
+                ),
+                Decimal("0.00"),
+            )
+        )
+        next_status = _payment_status_after_completed_amount(order, next_paid)
+    _update_order_payment_state(
+        session,
+        order=order,
+        previous_paid=previous_paid,
+        previous_status=previous_status,
+        next_paid=next_paid,
+        next_status=next_status,
+    )
+    session.add(
+        PaymentRecordAuditEvent(
+            payment_id=payment.id,
+            action="deleted",
+            reason=payload.reason,
+        )
+    )
+    session.commit()
+    return _payment_mutation_result(
+        session,
+        order_id=order.id,
+        payment_id=payment.id,
+    )
+
+
+def restore_payment(
+    session: Session,
+    payment_id: int,
+    payload: PaymentRestoreRequest,
+) -> PaymentMutationResult:
+    payment = session.get(Payment, payment_id)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="收款流水不存在")
+
+    order = _load_payment_order(session, payment.order_id)
+    payment = next(entry for entry in order.payments if entry.id == payment_id)
+    require_payment_revision(order, payload.expected_revision)
+    if payment.deleted_at is None:
+        raise HTTPException(status_code=409, detail="收款流水当前未删除")
+
+    previous_paid = money(order.paid_amount)
+    previous_status = order.payment_status
+    payment_result = session.execute(
+        update(Payment)
+        .where(
+            Payment.id == payment.id,
+            Payment.order_id == order.id,
+            Payment.payment_status == payment.payment_status,
+            Payment.deleted_at == payment.deleted_at,
+            Payment.deleted_reason == payment.deleted_reason,
+        )
+        .values(deleted_at=None, deleted_reason=None)
+        .execution_options(synchronize_session="fetch")
+    )
+    if payment_result.rowcount != 1:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="收款流水状态已变化，请刷新后重试")
+
+    _update_order_payment_state(
+        session,
+        order=order,
+        previous_paid=previous_paid,
+        previous_status=previous_status,
+        next_paid=previous_paid,
+        next_status=previous_status,
+    )
+    session.add(
+        PaymentRecordAuditEvent(
+            payment_id=payment.id,
+            action="restored",
+            reason=None,
+        )
+    )
+    session.commit()
+    return _payment_mutation_result(
+        session,
+        order_id=order.id,
+        payment_id=payment.id,
     )

@@ -102,7 +102,7 @@ def direct_order_payload(**overrides: object) -> dict[str, object]:
     return payload
 
 
-def test_direct_order_matches_restores_and_only_fills_empty_customer_fields(
+def test_direct_order_matches_restores_and_classifies_legacy_customer_access(
     p18_context: P18Context,
 ) -> None:
     client = p18_context.client
@@ -119,7 +119,12 @@ def test_direct_order_matches_restores_and_only_fills_empty_customer_fields(
         f"/api/admin/customers/{created['id']}/archive", json={"archived": True}
     ).status_code == 200
 
-    response = client.post("/api/admin/orders", json=direct_order_payload())
+    payload = direct_order_payload()
+    service_contact = payload["service_contact"]
+    assert isinstance(service_contact, dict)
+    service_contact["community_access_method"] = "门卡"
+    service_contact["building_access_method"] = "钥匙"
+    response = client.post("/api/admin/orders", json=payload)
     assert response.status_code == 201
     order = response.json()
     assert order["source_customer_id"] == created["id"]
@@ -132,7 +137,9 @@ def test_direct_order_matches_restores_and_only_fills_empty_customer_fields(
     profile = client.get(f"/api/admin/customers/{created['id']}").json()
     assert profile["archived_at"] is None
     assert profile["wechat_name"] == "P18-wechat"
-    assert profile["access_method"] == "门卡"
+    assert profile["access_method"] is None
+    assert profile["community_access_method"] == "门卡"
+    assert profile["building_access_method"] == "钥匙"
     assert profile["pending_cat_profile_count"] == 2
     assert profile["cats"] == []
     with p18_context.session_factory() as session:

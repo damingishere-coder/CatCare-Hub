@@ -22,6 +22,7 @@ BUSINESS_TABLES = {
     "order_service_dates",
     "orders",
     "payments",
+    "payment_record_audit_events",
     "system_flags",
     "task_items",
     "task_photos",
@@ -585,6 +586,106 @@ def test_consistency_guard_migration_adds_versions_markers_and_unique_key(
 
         order_indexes = {item["name"]: item for item in database.get_indexes("orders")}
         assert order_indexes["ix_orders_idempotency_key"]["unique"] == 1
+    finally:
+        engine.dispose()
+
+
+def test_customer_access_split_migration_preserves_legacy_and_round_trips(tmp_path) -> None:
+    database_path = tmp_path / "customer-access-split.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = alembic_config(database_url)
+    command.upgrade(config, "0014_consistency_guards")
+    engine = build_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO customers (id, name, access_method, is_repeat_customer) VALUES "
+                    "(1, '可拆分客户', '小区门禁：联系管家；楼下门禁：钥匙', 0), "
+                    "(2, '历史客户', '旧门禁备注', 0), "
+                    "(3, '单侧待确认客户', '小区门禁：待确认；楼下门禁：门卡', 0)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO orders "
+                    "(id, customer_id, contact_name, contact_access_method, cat_snapshot, "
+                    "start_date, end_date, visits_per_day, cat_count, service_items, "
+                    "pricing_mode, settlement_mode, adjustment_type, adjustment_amount, "
+                    "base_price, extra_cat_fee, stairs_fee, other_fee, total_amount, "
+                    "paid_amount, payment_status, order_status) VALUES "
+                    "(1, 1, '可拆分客户', '小区门禁：无；楼下门禁：门卡', '[]', "
+                    "'2035-10-06', '2035-10-06', 1, 1, '[]', 'per_visit', "
+                    "'order_total', 'none', 0, 30, 0, 0, 0, 30, 0, 'unpaid', 'confirmed')"
+                )
+            )
+
+        command.upgrade(config, "0015_customer_access_split")
+        with engine.connect() as connection:
+            customers = connection.execute(
+                text(
+                    "SELECT id, access_method, community_access_method, "
+                    "building_access_method FROM customers ORDER BY id"
+                )
+            ).all()
+            order = connection.execute(
+                text(
+                    "SELECT contact_access_method, contact_community_access_method, "
+                    "contact_building_access_method FROM orders WHERE id = 1"
+                )
+            ).one()
+            assert connection.execute(text("PRAGMA integrity_check")).scalar_one() == "ok"
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+        assert tuple(customers[0]) == (1, None, "联系管家", "钥匙")
+        assert tuple(customers[1]) == (2, "旧门禁备注", None, None)
+        assert tuple(customers[2]) == (3, None, None, "门卡")
+        assert tuple(order) == (None, "无", "门卡")
+
+        command.downgrade(config, "0014_consistency_guards")
+        with engine.connect() as connection:
+            restored = connection.execute(
+                text("SELECT access_method FROM customers ORDER BY id")
+            ).scalars().all()
+            assert connection.execute(text("PRAGMA integrity_check")).scalar_one() == "ok"
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+        assert restored == [
+            "小区门禁：联系管家；楼下门禁：钥匙",
+            "旧门禁备注",
+            "小区门禁：待确认；楼下门禁：门卡",
+        ]
+        command.upgrade(config, "head")
+    finally:
+        engine.dispose()
+
+
+def test_payment_soft_delete_migration_upgrades_and_downgrades_0015(tmp_path) -> None:
+    database_path = tmp_path / "payment-soft-delete.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = alembic_config(database_url)
+    command.upgrade(config, "0015_customer_access_split")
+    engine = build_engine(database_url)
+    try:
+        before = inspect(engine)
+        assert "deleted_at" not in {item["name"] for item in before.get_columns("payments")}
+        assert "payment_record_audit_events" not in before.get_table_names()
+
+        command.upgrade(config, "0016_payment_soft_delete")
+        after = inspect(engine)
+        assert {"deleted_at", "deleted_reason"}.issubset(
+            item["name"] for item in after.get_columns("payments")
+        )
+        assert "payment_record_audit_events" in after.get_table_names()
+        with engine.connect() as connection:
+            assert connection.execute(text("PRAGMA integrity_check")).scalar_one() == "ok"
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+
+        command.downgrade(config, "0015_customer_access_split")
+        downgraded = inspect(engine)
+        assert "deleted_at" not in {
+            item["name"] for item in downgraded.get_columns("payments")
+        }
+        assert "payment_record_audit_events" not in downgraded.get_table_names()
+        command.upgrade(config, "head")
     finally:
         engine.dispose()
 

@@ -50,6 +50,8 @@ const serviceContact = {
   unit: null,
   room: null,
   access_method: null,
+  community_access_method: null,
+  building_access_method: null,
   access_info: null,
   key_status: null,
   key_code: null,
@@ -152,6 +154,8 @@ const options: OrderFormOptions = {
       unit: null,
       room: null,
       access_method: null,
+      community_access_method: null,
+      building_access_method: null,
       access_info: null,
       key_status: null,
       key_code: null,
@@ -220,7 +224,7 @@ it("uses the month calendar as the primary view and opens details on demand", as
 
   expect(await screen.findByRole("heading", { name: "订单月历" })).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "订单 #1", level: 2 })).not.toBeInTheDocument();
-  const marker = await screen.findByRole("button", { name: /#1 ×2/ });
+  const marker = await screen.findByRole("button", { name: /订单 #1，订单页面客户（虚构），2 次上门/ });
   fireEvent.click(marker);
   expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
   expect(apiMocks.getOrder).toHaveBeenCalledWith(1);
@@ -229,7 +233,8 @@ it("uses the month calendar as the primary view and opens details on demand", as
   expect(screen.queryByRole("heading", { name: "路线地图" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "保存排程" })).not.toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "关闭订单详情" }));
+  const orderList = screen.getByLabelText("订单列表");
+  fireEvent.click(within(orderList).getByRole("button", { name: /#1 · 订单页面客户（虚构）/ }));
   expect(screen.queryByRole("heading", { name: "订单 #1", level: 2 })).not.toBeInTheDocument();
   expect(await screen.findByRole("heading", { name: "订单月历" })).toBeInTheDocument();
   expect(screen.getByLabelText("2030-10-01 当天上门")).toBeInTheDocument();
@@ -315,9 +320,11 @@ it("creates a daily order with standard access selects and a dated surcharge", a
   const dialog = screen.getByRole("dialog", { name: "新建订单" });
   fireEvent.change(within(dialog).getByLabelText(/^联系人名称/), { target: { value: "直接输入的订单联系人" } });
   fireEvent.change(within(dialog).getByLabelText("详细地址"), { target: { value: "虚构订单地址 8 号" } });
-  expect(within(dialog).getByLabelText("入户方式").tagName).toBe("SELECT");
+  expect(within(dialog).getByLabelText("小区门禁").tagName).toBe("SELECT");
+  expect(within(dialog).getByLabelText("楼下门禁").tagName).toBe("SELECT");
   expect(within(dialog).getByLabelText("钥匙状态").tagName).toBe("SELECT");
-  fireEvent.change(within(dialog).getByLabelText("入户方式"), { target: { value: "钥匙" } });
+  fireEvent.change(within(dialog).getByLabelText("小区门禁"), { target: { value: "无需门禁" } });
+  fireEvent.change(within(dialog).getByLabelText("楼下门禁"), { target: { value: "钥匙" } });
   fireEvent.change(within(dialog).getByLabelText("钥匙状态"), { target: { value: "已取" } });
   fireEvent.change(within(dialog).getByLabelText("钥匙编号"), { target: { value: "TEST-KEY-18" } });
   fireEvent.change(within(dialog).getByLabelText("猫咪数量"), { target: { value: "2" } });
@@ -339,6 +346,9 @@ it("creates a daily order with standard access selects and a dated surcharge", a
       service_contact: expect.objectContaining({
         name: "直接输入的订单联系人",
         address: "虚构订单地址 8 号",
+        access_method: null,
+        community_access_method: "无需门禁",
+        building_access_method: "钥匙",
       }),
       cat_count: 2,
       service_dates: [expect.any(String)],

@@ -26,11 +26,22 @@ class CustomerFields(NormalizedModel):
     unit: str | None = Field(default=None, max_length=50)
     room: str | None = Field(default=None, max_length=50)
     access_method: str | None = Field(default=None, max_length=100)
+    community_access_method: str | None = Field(default=None, max_length=100)
+    building_access_method: str | None = Field(default=None, max_length=100)
     access_info: str | None = Field(default=None, max_length=4000)
     key_status: str | None = Field(default=None, max_length=50)
     key_code: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=4000)
     is_repeat_customer: bool = False
+
+    @model_validator(mode="after")
+    def clear_classified_legacy_access(self) -> Self:
+        if (
+            self.community_access_method is not None
+            or self.building_access_method is not None
+        ):
+            self.access_method = None
+        return self
 
 
 class CustomerCreate(CustomerFields):
@@ -47,6 +58,8 @@ class CustomerUpdate(NormalizedModel):
     unit: str | None = Field(default=None, max_length=50)
     room: str | None = Field(default=None, max_length=50)
     access_method: str | None = Field(default=None, max_length=100)
+    community_access_method: str | None = Field(default=None, max_length=100)
+    building_access_method: str | None = Field(default=None, max_length=100)
     access_info: str | None = Field(default=None, max_length=4000)
     key_status: str | None = Field(default=None, max_length=50)
     key_code: str | None = Field(default=None, max_length=100)

@@ -29,6 +29,8 @@ class IntakeCustomerDraft(IntakeModel):
     unit: str | None = Field(default=None, max_length=50)
     room: str | None = Field(default=None, max_length=50)
     access_method: str | None = Field(default=None, max_length=100)
+    community_access_method: str | None = Field(default=None, max_length=100)
+    building_access_method: str | None = Field(default=None, max_length=100)
     access_info: str | None = Field(default=None, max_length=4000)
     key_status: str | None = Field(default=None, max_length=50)
     key_code: str | None = Field(default=None, max_length=100)

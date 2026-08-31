@@ -1,6 +1,9 @@
 import type {
   PaymentCreateInput,
+  PaymentDeleteInput,
+  PaymentMutationResult,
   PaymentRegistration,
+  PaymentRestoreInput,
   PaymentVoidInput,
   PaymentVoidResult,
   PaymentsOverview,
@@ -43,6 +46,26 @@ export function voidPayment(
   payload: PaymentVoidInput,
 ): Promise<PaymentVoidResult> {
   return request<PaymentVoidResult>(`${paymentsPath}/${paymentId}/void`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deletePayment(
+  paymentId: number,
+  payload: PaymentDeleteInput,
+): Promise<PaymentMutationResult> {
+  return request<PaymentMutationResult>(`${paymentsPath}/${paymentId}/delete`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function restorePayment(
+  paymentId: number,
+  payload: PaymentRestoreInput,
+): Promise<PaymentMutationResult> {
+  return request<PaymentMutationResult>(`${paymentsPath}/${paymentId}/restore`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
