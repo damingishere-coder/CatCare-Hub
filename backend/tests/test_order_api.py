@@ -57,7 +57,14 @@ def create_customer_with_cats(
     name: str = "订单测试客户（虚构）",
     cat_names: tuple[str, ...] = ("订单测试猫甲", "订单测试猫乙"),
 ) -> tuple[dict, list[dict]]:
-    customer_response = client.post("/api/admin/customers", json={"name": name})
+    customer_response = client.post(
+        "/api/admin/customers",
+        json={
+            "name": name,
+            "community_access_method": "门卡",
+            "building_access_method": "密码",
+        },
+    )
     assert customer_response.status_code == 201
     customer = customer_response.json()
     cats = []
@@ -129,6 +136,8 @@ def test_create_seven_day_order_generates_tasks_and_private_summary(
     assert len(order["tasks"]) == 7
     assert all(len(task["items"]) == 4 for task in order["tasks"])
     assert all(task["status"] == "pending" for task in order["tasks"])
+    assert order["service_contact"]["community_access_method"] == "门卡"
+    assert order["service_contact"]["building_access_method"] == "密码"
 
     list_response = client.get("/api/admin/orders")
     assert list_response.status_code == 200

@@ -76,6 +76,8 @@ class Order(TimestampMixin, Base):
     contact_unit: Mapped[str | None] = mapped_column(String(50))
     contact_room: Mapped[str | None] = mapped_column(String(50))
     contact_access_method: Mapped[str | None] = mapped_column(String(100))
+    contact_community_access_method: Mapped[str | None] = mapped_column(String(100))
+    contact_building_access_method: Mapped[str | None] = mapped_column(String(100))
     contact_access_info: Mapped[str | None] = mapped_column(Text)
     contact_key_status: Mapped[str | None] = mapped_column(String(50))
     contact_key_code: Mapped[str | None] = mapped_column(String(100))

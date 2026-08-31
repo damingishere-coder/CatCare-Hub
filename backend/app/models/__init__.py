@@ -13,7 +13,7 @@ from app.models.enums import (
 )
 from app.models.intake import CustomerFormSubmission, CustomerFormToken, IntakeAuditEvent
 from app.models.order import Order, OrderCat, OrderServiceDate
-from app.models.payment import Payment
+from app.models.payment import Payment, PaymentRecordAuditEvent
 from app.models.system import SystemFlag
 from app.models.task import Task, TaskItem, TaskPhoto
 
@@ -34,6 +34,7 @@ __all__ = [
     "OrderSettlementMode",
     "OrderStatus",
     "Payment",
+    "PaymentRecordAuditEvent",
     "PaymentMethod",
     "PaymentRecordStatus",
     "SystemFlag",

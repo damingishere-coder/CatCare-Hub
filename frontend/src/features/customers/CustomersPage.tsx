@@ -9,7 +9,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  ShieldCheck,
   Trash2,
   UserRound,
 } from "lucide-react";
@@ -481,21 +480,19 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                 </dl>
               </section>
 
-              <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50/50 p-4" aria-labelledby="customer-sensitive-title">
+              <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="customer-access-title">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 id="customer-sensitive-title" className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-                    <ShieldCheck size={16} />
+                  <h3 id="customer-access-title" className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+                    <LockKeyhole size={16} />
                     门禁与钥匙
                   </h3>
-                  <span className="text-xs font-medium text-amber-700">敏感信息，仅本地后台可见</span>
                 </div>
                 <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+                  <DetailItem label="小区门禁" value={customerDetail.community_access_method} />
+                  <DetailItem label="楼下门禁" value={customerDetail.building_access_method} />
+                  {customerDetail.access_method ? <DetailItem label="历史门禁方式（待分类）" value={customerDetail.access_method} /> : null}
                   <div className="flex gap-3">
-                    <LockKeyhole className="mt-0.5 shrink-0 text-amber-700" size={16} />
-                    <DetailItem label="门禁方式" value={customerDetail.access_method} />
-                  </div>
-                  <div className="flex gap-3">
-                    <KeyRound className="mt-0.5 shrink-0 text-amber-700" size={16} />
+                    <KeyRound className="mt-0.5 shrink-0 text-slate-500" size={16} />
                     <DetailItem label="钥匙状态 / 编号" value={[customerDetail.key_status, customerDetail.key_code].filter(Boolean).join(" · ") || null} />
                   </div>
                 </dl>

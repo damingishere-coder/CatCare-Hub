@@ -44,6 +44,8 @@ export interface PaymentRecord {
   paid_at: string | null;
   voided_at: string | null;
   voided_reason: string | null;
+  deleted_at: string | null;
+  deleted_reason: string | null;
   revision: string;
 }
 
@@ -53,6 +55,7 @@ export interface PaymentsOverview {
   metrics: PaymentMetrics;
   receivables: PaymentReceivable[];
   records: PaymentRecord[];
+  deleted_records: PaymentRecord[];
 }
 
 export interface PaymentCreateInput {
@@ -84,3 +87,11 @@ export interface PaymentVoidResult {
   payment_status: OrderPaymentStatus;
   revision: string;
 }
+
+export type PaymentDeleteInput = PaymentVoidInput;
+
+export interface PaymentRestoreInput {
+  expected_revision: string;
+}
+
+export type PaymentMutationResult = PaymentVoidResult;

@@ -132,6 +132,8 @@ class OrderServiceContact(NormalizedOrderModel):
     unit: str | None = Field(default=None, max_length=50)
     room: str | None = Field(default=None, max_length=50)
     access_method: str | None = Field(default=None, max_length=100)
+    community_access_method: str | None = Field(default=None, max_length=100)
+    building_access_method: str | None = Field(default=None, max_length=100)
     access_info: str | None = Field(default=None, max_length=4000)
     key_status: str | None = Field(default=None, max_length=50)
     key_code: str | None = Field(default=None, max_length=100)
@@ -140,6 +142,15 @@ class OrderServiceContact(NormalizedOrderModel):
     latitude: Decimal | None = Field(default=None, ge=-90, le=90)
     longitude: Decimal | None = Field(default=None, ge=-180, le=180)
     geocode_status: str | None = Field(default=None, max_length=32)
+
+    @model_validator(mode="after")
+    def clear_classified_legacy_access(self) -> Self:
+        if (
+            self.community_access_method is not None
+            or self.building_access_method is not None
+        ):
+            self.access_method = None
+        return self
 
 
 class OrderCatSnapshot(NormalizedOrderModel):
@@ -411,6 +422,8 @@ class OrderCustomerOption(BaseModel):
     unit: str | None
     room: str | None
     access_method: str | None
+    community_access_method: str | None
+    building_access_method: str | None
     access_info: str | None
     key_status: str | None
     key_code: str | None

@@ -179,6 +179,8 @@ def task_execution_detail(task: Task) -> TaskExecutionDetail:
             unit=order.contact_unit,
             room=order.contact_room,
             access_method=order.contact_access_method,
+            community_access_method=order.contact_community_access_method,
+            building_access_method=order.contact_building_access_method,
             access_info=order.contact_access_info,
             key_status=order.contact_key_status,
             key_code=order.contact_key_code,

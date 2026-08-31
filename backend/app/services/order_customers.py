@@ -46,6 +46,11 @@ def _ambiguous(stage: str, customers: list[Customer]) -> None:
 
 
 def _fill_empty_fields(customer: Customer, contact: OrderServiceContact) -> None:
+    if (
+        contact.community_access_method is not None
+        or contact.building_access_method is not None
+    ):
+        customer.access_method = None
     for field in (
         "wechat_name",
         "phone",
@@ -55,6 +60,8 @@ def _fill_empty_fields(customer: Customer, contact: OrderServiceContact) -> None
         "unit",
         "room",
         "access_method",
+        "community_access_method",
+        "building_access_method",
         "access_info",
         "key_status",
         "key_code",
@@ -148,6 +155,8 @@ def resolve_order_customer(
         unit=contact.unit,
         room=contact.room,
         access_method=contact.access_method,
+        community_access_method=contact.community_access_method,
+        building_access_method=contact.building_access_method,
         access_info=contact.access_info,
         key_status=contact.key_status,
         key_code=contact.key_code,

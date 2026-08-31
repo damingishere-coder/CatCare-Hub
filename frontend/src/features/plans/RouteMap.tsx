@@ -103,18 +103,17 @@ function CoordinateCanvas({
           <button
             key={marker.task_id}
             type="button"
-            className={`absolute flex max-w-36 -translate-1/2 items-center gap-1 rounded-full border-2 border-white px-2 py-1 text-xs font-bold whitespace-nowrap text-white shadow-md ${selectedTaskId === marker.task_id ? "bg-orange-700 ring-2 ring-orange-300" : "bg-[#FF9500]"}`}
+            className={`cc-route-order-marker absolute flex size-9 -translate-1/2 items-center justify-center rounded-full border-2 border-white text-[11px] font-bold whitespace-nowrap text-white shadow-md ${selectedTaskId === marker.task_id ? "bg-orange-700 ring-2 ring-orange-300" : "bg-slate-900"}`}
             style={{
               left: `${projected.left}%`,
               top: `${projected.top}%`,
               transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
             }}
-            aria-label={`地图任务 ${marker.sequence}：${marker.customer_name}`}
-            title={marker.address || marker.community || marker.customer_name}
+            aria-label={`订单 #${marker.order_id ?? "?"}，${marker.customer_name}，路线第 ${marker.sequence} 站`}
+            title={`订单 #${marker.order_id ?? "?"} · ${marker.customer_name} · 路线第 ${marker.sequence} 站`}
             onClick={() => onSelectTask(marker.task_id)}
           >
-            <span>{marker.sequence}</span>
-            <span className="hidden max-w-24 truncate md:inline">{marker.customer_name}</span>
+            <span>#{marker.order_id ?? "?"}</span>
           </button>
         );
       })}

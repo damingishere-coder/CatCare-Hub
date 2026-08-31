@@ -90,13 +90,18 @@ export function RouteWorkspace({
   const optimizedTaskIds = optimization?.optimized_task_ids ?? [];
   const markers = (() => {
     if (!workspace) return [];
+    const orderByTask = new Map(tasks.map((task) => [task.id, task.order_id]));
     const markerIds = new Set(workspace.markers.map((marker) => marker.task_id));
     const taskOrder = optimizedTaskIds.length
       ? optimizedTaskIds.filter((taskId) => markerIds.has(taskId))
       : tasks.filter((task) => task.status !== "cancelled").map((task) => task.id);
     const sequence = new Map(taskOrder.map((taskId, index) => [taskId, index + 1]));
     return workspace.markers
-      .map((marker) => ({ ...marker, sequence: sequence.get(marker.task_id) ?? marker.sequence }))
+      .map((marker) => ({
+        ...marker,
+        order_id: orderByTask.get(marker.task_id),
+        sequence: sequence.get(marker.task_id) ?? marker.sequence,
+      }))
       .sort((left, right) => left.sequence - right.sequence);
   })();
   let mapRoute: PlanRoutePath | null = roadRoute?.path ?? null;

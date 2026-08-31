@@ -8,6 +8,8 @@ const apiMocks = vi.hoisted(() => ({
   getPaymentsOverview: vi.fn(),
   registerPayment: vi.fn(),
   voidPayment: vi.fn(),
+  deletePayment: vi.fn(),
+  restorePayment: vi.fn(),
 }));
 
 vi.mock("./api", () => apiMocks);
@@ -57,9 +59,22 @@ const overview: PaymentsOverview = {
       paid_at: "2035-10-06T01:00:00Z",
       voided_at: null,
       voided_reason: null,
+      deleted_at: null,
+      deleted_reason: null,
       revision: "b".repeat(64),
     },
   ],
+  deleted_records: [],
+};
+
+const deletedRecord = {
+  ...overview.records[0]!,
+  payment_status: "voided" as const,
+  voided_at: "2035-10-06T02:00:00Z",
+  voided_reason: "删除时自动撤销",
+  deleted_at: "2035-10-06T02:01:00Z",
+  deleted_reason: "重复录入",
+  revision: "d".repeat(64),
 };
 
 function renderPage(props: { initialCreate?: boolean; initialOrderId?: number | null } = {}) {
@@ -82,6 +97,24 @@ beforeEach(() => {
     overpaid_amount: "0.00",
     payment_status: "unpaid",
     revision: "c".repeat(64),
+  });
+  apiMocks.deletePayment.mockResolvedValue({
+    payment: deletedRecord,
+    order_id: 12,
+    paid_amount: "0.00",
+    due_amount: "90.00",
+    overpaid_amount: "0.00",
+    payment_status: "unpaid",
+    revision: "e".repeat(64),
+  });
+  apiMocks.restorePayment.mockResolvedValue({
+    payment: { ...deletedRecord, deleted_at: null, deleted_reason: null, revision: "f".repeat(64) },
+    order_id: 12,
+    paid_amount: "0.00",
+    due_amount: "90.00",
+    overpaid_amount: "0.00",
+    payment_status: "unpaid",
+    revision: "g".repeat(64),
   });
 });
 
@@ -130,7 +163,44 @@ it("requires a reason and confirms a soft void before refreshing", async () => {
   }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "撤销误登记收款" })).not.toBeInTheDocument());
   expect(await screen.findByText("已撤销")).toBeInTheDocument();
-  expect(screen.getByText("原因：重复登记")).toBeInTheDocument();
+  expect(screen.getByText("撤销原因：重复登记")).toBeInTheDocument();
+});
+
+it("requires a delete reason, moves the record to deleted, and restores only its visibility", async () => {
+  const restoredRecord = {
+    ...deletedRecord,
+    deleted_at: null,
+    deleted_reason: null,
+    revision: "f".repeat(64),
+  };
+  apiMocks.getPaymentsOverview
+    .mockResolvedValueOnce(overview)
+    .mockResolvedValueOnce({ ...overview, records: [], deleted_records: [deletedRecord] })
+    .mockResolvedValueOnce({ ...overview, records: [restoredRecord], deleted_records: [] });
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderPage();
+
+  expect(await screen.findByRole("heading", { name: "收款记录" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "删除" }));
+  const dialog = screen.getByRole("dialog", { name: "删除收款流水" });
+  expect(within(dialog).getByText(/恢复显示不会重新计入金额/)).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "撤销并删除" }));
+  expect(within(dialog).getByRole("alert")).toHaveTextContent("请填写删除原因");
+  fireEvent.change(within(dialog).getByLabelText(/^删除原因/), { target: { value: "  重复录入  " } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "撤销并删除" }));
+
+  await waitFor(() => expect(apiMocks.deletePayment).toHaveBeenCalledWith(31, {
+    expected_revision: "b".repeat(64),
+    reason: "重复录入",
+  }));
+  expect(await screen.findByText("删除原因：重复录入")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "恢复显示" }));
+  await waitFor(() => expect(apiMocks.restorePayment).toHaveBeenCalledWith(31, {
+    expected_revision: "d".repeat(64),
+  }));
+  expect(confirmSpy).toHaveBeenCalledOnce();
+  expect(await screen.findByText("还没有已删除流水。")).toBeInTheDocument();
+  confirmSpy.mockRestore();
 });
 
 it("opens a targeted order, registers a payment, and refreshes", async () => {
@@ -185,7 +255,8 @@ it("recovers from an API error and shows clean empty states", async () => {
   });
   fireEvent.click(screen.getByRole("button", { name: "刷新" }));
 
-  expect(await screen.findByText("当前没有待收订单。")).toBeInTheDocument();
-  expect(screen.getByText("还没有收款流水。")).toBeInTheDocument();
+  expect(await screen.findByText(/当前没有待收订单。待收项目无需单独新建/)).toBeInTheDocument();
+  expect(screen.getByText("还没有当前收款流水。")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "查看或调整订单金额" })).toHaveAttribute("href", "/admin/orders");
   expect(screen.getByRole("button", { name: "登记收款" })).toBeDisabled();
 });

@@ -134,10 +134,12 @@ function PayloadDetail({ payload }: { payload: IntakeDraftPayload }) {
           <div className="sm:col-span-2 xl:col-span-3"><DetailRow label="地址" value={customerAddress(payload.customer)} /></div>
         </dl>
       </section>
-      <section className="rounded-lg border border-amber-200 bg-amber-50/60 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck size={16} />门禁与钥匙</h3><span className="text-xs font-medium text-amber-700">敏感信息，仅本地后台可见</span></div>
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">门禁与钥匙</h3></div>
         <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-          <DetailRow label="门禁方式" value={payload.customer.access_method} />
+          <DetailRow label="小区门禁" value={payload.customer.community_access_method} />
+          <DetailRow label="楼下门禁" value={payload.customer.building_access_method} />
+          {payload.customer.access_method ? <DetailRow label="历史门禁方式（待分类）" value={payload.customer.access_method} /> : null}
           <DetailRow label="进门说明" value={payload.customer.access_info} />
           <DetailRow label="钥匙状态 / 编号" value={[payload.customer.key_status, payload.customer.key_code].filter(Boolean).join(" / ")} />
         </dl>
@@ -226,7 +228,9 @@ function ReviewEditor({ payload, sourceNote, unitPrice, disabled, onPayloadChang
         <label className="text-xs font-medium text-slate-600">小区<input className={reviewInputClass} value={payload.customer.community ?? ""} disabled={disabled} onChange={(event) => customer("community", optional(event.target.value))} /></label>
         <label className="text-xs font-medium text-slate-600 sm:col-span-2">详细地址<input className={reviewInputClass} value={payload.customer.address ?? ""} disabled={disabled} onChange={(event) => customer("address", optional(event.target.value))} /></label>
         <label className="text-xs font-medium text-slate-600">楼栋 / 单元 / 房间<input className={reviewInputClass} value={[payload.customer.building, payload.customer.unit, payload.customer.room].filter(Boolean).join(" / ")} disabled={disabled} onChange={(event) => { const [building, unit, room] = event.target.value.split("/"); customerFields({ building: optional(building ?? ""), unit: optional(unit ?? ""), room: optional(room ?? "") }); }} /></label>
-        <label className="text-xs font-medium text-slate-600">入户方式<input className={reviewInputClass} value={payload.customer.access_method ?? ""} disabled={disabled} onChange={(event) => customer("access_method", optional(event.target.value))} /></label>
+        <label className="text-xs font-medium text-slate-600">小区门禁<input className={reviewInputClass} value={payload.customer.community_access_method ?? ""} disabled={disabled} onChange={(event) => customerFields({ community_access_method: optional(event.target.value), access_method: null })} /></label>
+        <label className="text-xs font-medium text-slate-600">楼下门禁<input className={reviewInputClass} value={payload.customer.building_access_method ?? ""} disabled={disabled} onChange={(event) => customerFields({ building_access_method: optional(event.target.value), access_method: null })} /></label>
+        {payload.customer.access_method ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:col-span-2">历史门禁方式（待分类）：{payload.customer.access_method}</p> : null}
         <label className="text-xs font-medium text-slate-600 sm:col-span-2">门禁说明<textarea className={`${reviewInputClass} min-h-20`} value={payload.customer.access_info ?? ""} disabled={disabled} onChange={(event) => customer("access_info", optional(event.target.value))} /></label>
         <label className="text-xs font-medium text-slate-600">钥匙状态<input className={reviewInputClass} value={payload.customer.key_status ?? ""} disabled={disabled} onChange={(event) => customer("key_status", optional(event.target.value))} /></label>
         <label className="text-xs font-medium text-slate-600">钥匙编号<input className={reviewInputClass} value={payload.customer.key_code ?? ""} disabled={disabled} onChange={(event) => customer("key_code", optional(event.target.value))} /></label>

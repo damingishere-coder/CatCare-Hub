@@ -40,6 +40,8 @@ class Customer(TimestampMixin, Base):
     unit: Mapped[str | None] = mapped_column(String(50))
     room: Mapped[str | None] = mapped_column(String(50))
     access_method: Mapped[str | None] = mapped_column(String(100))
+    community_access_method: Mapped[str | None] = mapped_column(String(100))
+    building_access_method: Mapped[str | None] = mapped_column(String(100))
     access_info: Mapped[str | None] = mapped_column(Text)
     key_status: Mapped[str | None] = mapped_column(String(50))
     key_code: Mapped[str | None] = mapped_column(String(100))

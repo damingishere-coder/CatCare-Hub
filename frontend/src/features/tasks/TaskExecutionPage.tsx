@@ -310,11 +310,12 @@ export function TaskExecutionPage() {
               </div>
               <dl className="mt-5 space-y-4 border-t border-slate-100 pt-4">
                 <div className="flex gap-2"><MapPin className="mt-0.5 shrink-0 text-slate-400" size={16} /><FieldValue label="服务地址" value={addressLine(detail)} /></div>
-                <FieldValue label="门禁方式" value={detail.customer.access_method} />
+                <FieldValue label="小区门禁" value={detail.customer.community_access_method} />
+                <FieldValue label="楼下门禁" value={detail.customer.building_access_method} />
+                {detail.customer.access_method ? <FieldValue label="历史门禁方式（待分类）" value={detail.customer.access_method} /> : null}
                 <div className="flex gap-2"><KeyRound className="mt-0.5 shrink-0 text-slate-400" size={16} /><FieldValue label="钥匙信息" value={[detail.customer.key_status, detail.customer.key_code].filter(Boolean).join(" · ") || null} /></div>
                 <FieldValue label="订单备注" value={detail.order_notes} />
               </dl>
-              <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">本页包含现场敏感信息，仅限本地后台或可信私网使用。</p>
             </section>
 
             <section className="cc-surface p-5">

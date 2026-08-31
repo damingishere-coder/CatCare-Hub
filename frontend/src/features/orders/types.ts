@@ -58,6 +58,8 @@ export interface OrderServiceContact {
   unit: string | null;
   room: string | null;
   access_method: string | null;
+  community_access_method: string | null;
+  building_access_method: string | null;
   access_info: string | null;
   key_status: string | null;
   key_code: string | null;
@@ -176,6 +178,8 @@ export interface OrderCustomerOption {
   unit: string | null;
   room: string | null;
   access_method: string | null;
+  community_access_method: string | null;
+  building_access_method: string | null;
   access_info: string | null;
   key_status: string | null;
   key_code: string | null;

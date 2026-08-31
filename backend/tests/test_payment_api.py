@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.session import build_engine, get_db
 from app.main import app
-from app.models import Order, Payment
+from app.models import Order, Payment, PaymentRecordAuditEvent
 from app.models.enums import (
     OrderPaymentStatus,
     OrderStatus,
@@ -119,6 +119,7 @@ def test_payments_empty_state_and_date_validation(
         },
         "receivables": [],
         "records": [],
+        "deleted_records": [],
     }
     assert payment_api_context.client.get(
         "/api/admin/payments",
@@ -409,6 +410,102 @@ def test_completed_payment_can_be_voided_with_audit_and_reopens_receivable(
         assert stored.voided_reason == "重复录入，保留本地审计记录"
 
 
+def test_completed_payment_delete_is_audited_reopens_receivable_and_restore_is_visibility_only(
+    payment_api_context: PaymentApiContext,
+) -> None:
+    client = payment_api_context.client
+    _, order = create_payment_order(client, name="P26 删除流水客户（虚构）")
+    with payment_api_context.session_factory.begin() as session:
+        model = session.get(Order, order["id"])
+        assert model is not None
+        model.order_status = OrderStatus.COMPLETED
+
+    overview = client.get("/api/admin/payments", params={"date": "2035-10-06"}).json()
+    receivable = next(item for item in overview["receivables"] if item["order_id"] == order["id"])
+    registered = client.post(
+        "/api/admin/payments",
+        json={
+            "order_id": order["id"],
+            "amount": "30.00",
+            "payment_method": "wechat",
+            "paid_at": "2035-10-06T09:15:00+08:00",
+            "expected_revision": receivable["revision"],
+        },
+    ).json()
+    record = registered["payment"]
+
+    stale = client.post(
+        f"/api/admin/payments/{record['id']}/delete",
+        json={"expected_revision": "0" * 64, "reason": "过期版本删除"},
+    )
+    assert stale.status_code == 409
+
+    deleted = client.post(
+        f"/api/admin/payments/{record['id']}/delete",
+        json={
+            "expected_revision": record["revision"],
+            "reason": "重复登记，移入已删除",
+        },
+    )
+    assert deleted.status_code == 200
+    deleted_payload = deleted.json()
+    assert deleted_payload["payment"]["payment_status"] == "voided"
+    assert deleted_payload["payment"]["voided_reason"] == "重复登记，移入已删除"
+    assert deleted_payload["payment"]["deleted_at"] is not None
+    assert deleted_payload["payment"]["deleted_reason"] == "重复登记，移入已删除"
+    assert deleted_payload["paid_amount"] == "0.00"
+    assert deleted_payload["due_amount"] == "30.00"
+    assert deleted_payload["payment_status"] == "unpaid"
+
+    after_delete = client.get("/api/admin/payments", params={"date": "2035-10-06"}).json()
+    assert after_delete["records"] == []
+    assert [item["id"] for item in after_delete["deleted_records"]] == [record["id"]]
+    assert after_delete["metrics"]["today_income"] == "0.00"
+    assert after_delete["metrics"]["pending_order_count"] == 1
+
+    repeated_delete = client.post(
+        f"/api/admin/payments/{record['id']}/delete",
+        json={
+            "expected_revision": deleted_payload["revision"],
+            "reason": "重复删除",
+        },
+    )
+    assert repeated_delete.status_code == 409
+
+    restored = client.post(
+        f"/api/admin/payments/{record['id']}/restore",
+        json={"expected_revision": deleted_payload["revision"]},
+    )
+    assert restored.status_code == 200
+    restored_payload = restored.json()
+    assert restored_payload["payment"]["deleted_at"] is None
+    assert restored_payload["payment"]["deleted_reason"] is None
+    assert restored_payload["payment"]["payment_status"] == "voided"
+    assert restored_payload["paid_amount"] == "0.00"
+    assert restored_payload["due_amount"] == "30.00"
+
+    repeated = client.post(
+        f"/api/admin/payments/{record['id']}/restore",
+        json={"expected_revision": restored_payload["revision"]},
+    )
+    assert repeated.status_code == 409
+
+    after_restore = client.get("/api/admin/payments", params={"date": "2035-10-06"}).json()
+    assert after_restore["deleted_records"] == []
+    assert after_restore["records"][0]["payment_status"] == "voided"
+    with payment_api_context.session_factory() as session:
+        events = list(
+            session.scalars(
+                select(PaymentRecordAuditEvent)
+                .where(PaymentRecordAuditEvent.payment_id == record["id"])
+                .order_by(PaymentRecordAuditEvent.id)
+            )
+        )
+        assert [event.action for event in events] == ["deleted", "restored"]
+        assert [event.reason for event in events] == ["重复登记，移入已删除", None]
+        assert all(event.created_at is not None for event in events)
+
+
 def test_cancelled_order_payment_can_be_voided_but_other_payment_states_cannot(
     payment_api_context: PaymentApiContext,
 ) -> None:
@@ -480,6 +577,29 @@ def test_cancelled_order_payment_can_be_voided_but_other_payment_states_cannot(
             },
         )
         assert response.status_code == 409
+
+    refreshed_records = client.get(
+        "/api/admin/payments", params={"date": "2035-10-06"}
+    ).json()["records"]
+    pending_record = next(item for item in refreshed_records if item["id"] == pending_id)
+    deleted_pending = client.post(
+        f"/api/admin/payments/{pending_id}/delete",
+        json={
+            "expected_revision": pending_record["revision"],
+            "reason": "待处理流水重复创建",
+        },
+    )
+    assert deleted_pending.status_code == 200
+    deleted_payload = deleted_pending.json()
+    assert deleted_payload["payment"]["payment_status"] == "pending"
+    assert deleted_payload["paid_amount"] == "0.00"
+    restored_pending = client.post(
+        f"/api/admin/payments/{pending_id}/restore",
+        json={"expected_revision": deleted_payload["revision"]},
+    )
+    assert restored_pending.status_code == 200
+    assert restored_pending.json()["payment"]["payment_status"] == "pending"
+    assert restored_pending.json()["paid_amount"] == "0.00"
 
 
 def test_refunded_order_context_rejects_payment_void(

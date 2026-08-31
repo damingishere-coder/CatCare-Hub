@@ -245,9 +245,9 @@ def test_public_access_classification_and_hidden_legacy_cat_fields_round_trip(
     with intake_api_context.session_factory() as session:
         submission = session.scalar(select(CustomerFormSubmission))
         assert submission is not None
-        assert submission.payload["customer"]["access_method"] == (
-            "小区门禁：无；楼下门禁：门卡"
-        )
+        assert submission.payload["customer"]["access_method"] is None
+        assert submission.payload["customer"]["community_access_method"] == "无"
+        assert submission.payload["customer"]["building_access_method"] == "门卡"
         assert submission.payload["cats"][0]["food"] == "旧草稿饮食"
 
     invalid = client.put(

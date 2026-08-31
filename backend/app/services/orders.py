@@ -234,6 +234,8 @@ def customer_service_contact(customer: Customer) -> OrderServiceContact:
         unit=customer.unit,
         room=customer.room,
         access_method=customer.access_method,
+        community_access_method=customer.community_access_method,
+        building_access_method=customer.building_access_method,
         access_info=customer.access_info,
         key_status=customer.key_status,
         key_code=customer.key_code,
@@ -277,6 +279,8 @@ def apply_service_contact(order: Order, contact: OrderServiceContact) -> None:
     order.contact_unit = contact.unit
     order.contact_room = contact.room
     order.contact_access_method = contact.access_method
+    order.contact_community_access_method = contact.community_access_method
+    order.contact_building_access_method = contact.building_access_method
     order.contact_access_info = contact.access_info
     order.contact_key_status = contact.key_status
     order.contact_key_code = contact.key_code
@@ -295,6 +299,8 @@ def order_service_contact(order: Order) -> OrderServiceContact:
         unit=order.contact_unit,
         room=order.contact_room,
         access_method=order.contact_access_method,
+        community_access_method=order.contact_community_access_method,
+        building_access_method=order.contact_building_access_method,
         access_info=order.contact_access_info,
         key_status=order.contact_key_status,
         key_code=order.contact_key_code,

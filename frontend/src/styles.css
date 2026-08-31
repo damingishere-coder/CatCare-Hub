@@ -81,6 +81,15 @@ select {
   min-height: 2.75rem;
 }
 
+button.cc-calendar-order-marker {
+  min-height: 1.5rem;
+}
+
+button.cc-route-order-marker {
+  min-height: 2.25rem;
+  min-width: 2.25rem;
+}
+
 button,
 a,
 input,

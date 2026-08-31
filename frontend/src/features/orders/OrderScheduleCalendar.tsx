@@ -107,8 +107,8 @@ export function OrderScheduleCalendar({
           return (
             <div className={`min-h-24 min-w-0 border-r border-b border-slate-100 p-1.5 text-left align-top transition hover:bg-orange-50 ${selectedDate === value ? "bg-orange-50 ring-2 ring-inset ring-orange-400" : "bg-white"}`} onClick={() => onSelectDate(value)}>
               <button type="button" className={`inline-flex size-6 items-center justify-center rounded-full text-xs font-semibold ${value === localDateValue(new Date()) ? "bg-slate-900 text-white" : "text-slate-600"}`} onClick={() => onSelectDate(value)} aria-label={`选择 ${value}`}>{date.getDate()}</button>
-              <span className="mt-1 block space-y-1">
-                {(day?.orders ?? []).slice(0, 3).map((order) => <button key={order.order_id} type="button" className={`block w-full truncate rounded px-1.5 py-1 text-left text-[11px] font-semibold ${order.order_status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-orange-100 text-orange-900"}`} onClick={(event) => { event.stopPropagation(); onSelectOrder(order.order_id); }}>#{order.order_id}{order.visit_count > 1 ? ` ×${order.visit_count}` : ""} · {order.customer_name}</button>)}
+              <span className="mt-1 flex flex-wrap gap-1">
+                {(day?.orders ?? []).slice(0, 3).map((order) => <button key={order.order_id} type="button" className={`cc-calendar-order-marker inline-flex rounded px-1.5 py-0.5 text-[11px] font-semibold ${order.order_status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-orange-100 text-orange-900"}`} title={`订单 #${order.order_id} · ${order.customer_name}${order.visit_count > 1 ? ` · ${order.visit_count} 次上门` : ""}`} aria-label={`订单 #${order.order_id}，${order.customer_name}${order.visit_count > 1 ? `，${order.visit_count} 次上门` : ""}`} onClick={(event) => { event.stopPropagation(); onSelectOrder(order.order_id); }}>#{order.order_id}</button>)}
                 {(day?.orders?.length ?? 0) > 3 ? <span className="block px-1 text-[11px] text-slate-500">还有 {day!.orders!.length - 3} 笔</span> : null}
               </span>
             </div>

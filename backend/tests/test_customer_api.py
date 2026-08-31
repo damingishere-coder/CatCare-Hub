@@ -49,7 +49,9 @@ def test_customer_and_multiple_cats_complete_workflow(
             "building": "测试楼",
             "unit": "测试单元",
             "room": "测试房号",
-            "access_method": "虚构门禁方式",
+            "access_method": "历史待分类门禁",
+            "community_access_method": "门卡",
+            "building_access_method": "密码",
             "access_info": "虚构入户说明",
             "key_status": "未提供",
             "key_code": "TEST-KEY-NOT-REAL",
@@ -61,6 +63,9 @@ def test_customer_and_multiple_cats_complete_workflow(
     customer = create_response.json()
     customer_id = customer["id"]
     assert customer["name"] == "演示客户甲（虚构）"
+    assert customer["access_method"] is None
+    assert customer["community_access_method"] == "门卡"
+    assert customer["building_access_method"] == "密码"
     assert customer["access_info"] == "虚构入户说明"
     assert customer["cats"] == []
 
@@ -256,6 +261,14 @@ def test_simplified_customer_patch_preserves_hidden_legacy_fields(
     assert updated["unit"] == "旧单元"
     assert updated["room"] == "旧房号"
     assert updated["access_info"] == "旧入户信息"
+
+    classified = client.patch(
+        f"/api/admin/customers/{created['id']}",
+        json={"community_access_method": "门卡"},
+    )
+    assert classified.status_code == 200
+    assert classified.json()["access_method"] is None
+    assert classified.json()["community_access_method"] == "门卡"
 
 
 def test_customer_api_validation_not_found_and_cat_ownership(

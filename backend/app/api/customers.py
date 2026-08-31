@@ -244,6 +244,10 @@ def update_customer(
 ) -> CustomerDetail:
     customer = _load_customer(session, customer_id)
     updates = payload.model_dump(exclude_unset=True)
+    if updates.get("community_access_method") is not None or updates.get(
+        "building_access_method"
+    ) is not None:
+        updates["access_method"] = None
     address_changed = any(
         field in GEOCODE_ADDRESS_FIELDS and getattr(customer, field) != value
         for field, value in updates.items()

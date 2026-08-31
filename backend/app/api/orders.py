@@ -352,6 +352,8 @@ def get_order_form_options(session: DatabaseSession) -> OrderFormOptions:
                 unit=customer.unit,
                 room=customer.room,
                 access_method=customer.access_method,
+                community_access_method=customer.community_access_method,
+                building_access_method=customer.building_access_method,
                 access_info=customer.access_info,
                 key_status=customer.key_status,
                 key_code=customer.key_code,
