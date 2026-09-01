@@ -50,6 +50,46 @@ const tokenStatusLabels: Record<FormTokenStatus, string> = {
   expired: "已过期",
 };
 
+interface LinkCopyNotice {
+  tone: "success" | "warning";
+  message: string;
+}
+
+function tokenCanExposeRawLink(token: IntakeTokenRead): boolean {
+  return token.status === "active" && token.submitted_at === null;
+}
+
+function newestTokensFirst(left: IntakeTokenRead, right: IntakeTokenRead): number {
+  return right.created_at.localeCompare(left.created_at) || right.id - left.id;
+}
+
+function mergeListedTokens(
+  listed: IntakeTokenRead[],
+  current: IntakeTokenRead[],
+  preserved: Map<number, IntakeTokenRead>,
+  preferCurrent: boolean,
+): IntakeTokenRead[] {
+  const currentById = new Map(current.map((token) => [token.id, token]));
+  const listedIds = new Set(listed.map((token) => token.id));
+  const merged = listed.map((listedToken) => {
+    const token = preferCurrent ? currentById.get(listedToken.id) ?? listedToken : listedToken;
+    if (!tokenCanExposeRawLink(token)) {
+      preserved.delete(token.id);
+      return token.fill_path === null ? token : { ...token, fill_path: null };
+    }
+    const fillPath = preserved.get(token.id)?.fill_path ?? token.fill_path;
+    return fillPath ? { ...token, fill_path: fillPath } : token;
+  });
+  const missing = (preferCurrent ? current : [...preserved.values()])
+    .filter((token) => !listedIds.has(token.id))
+    .filter((token) => {
+      if (tokenCanExposeRawLink(token)) return true;
+      preserved.delete(token.id);
+      return preferCurrent;
+    });
+  return [...merged, ...missing].sort(newestTokensFirst);
+}
+
 const submissionStatusLabels: Record<FormSubmissionStatus, string> = {
   draft: "草稿",
   submitted: "待审核",
@@ -271,16 +311,20 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
   const [action, setAction] = useState<string | null>(null);
   const [confirmingDecision, setConfirmingDecision] = useState<IntakeDecisionMode | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [linkCopyNotice, setLinkCopyNotice] = useState<LinkCopyNotice | null>(null);
   const [linksExpanded, setLinksExpanded] = useState(false);
   const [showRemoved, setShowRemoved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const decisionKeys = useRef(new Map<string, string>());
+  const preservedTokensRef = useRef(new Map<number, IntakeTokenRead>());
+  const tokenMutationEpochRef = useRef(0);
   const selectedIdRef = useRef<number | null>(null);
   const showRemovedRef = useRef(false);
 
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
 
   const refresh = useCallback(async (silent = false) => {
+    const tokenMutationEpoch = tokenMutationEpochRef.current;
     if (!silent) setLoading(true);
     setError(null);
     try {
@@ -288,7 +332,12 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
         listIntakeTokens(),
         listIntakeSubmissions(),
       ]);
-      setTokens(tokenResponse.items);
+      setTokens((current) => mergeListedTokens(
+        tokenResponse.items,
+        current,
+        preservedTokensRef.current,
+        tokenMutationEpoch !== tokenMutationEpochRef.current,
+      ));
       setSubmissions(submissionResponse.items);
       setLoadedOnce(true);
       const matchingSubmissions = submissionResponse.items.filter(
@@ -351,13 +400,42 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
     };
   }, [selectedId]);
 
+  async function copyTokenToClipboard(token: IntakeTokenRead): Promise<boolean> {
+    if (!token.fill_path) return false;
+    try {
+      await navigator.clipboard.writeText(new URL(token.fill_path, window.location.origin).toString());
+      setCopiedId(token.id);
+      window.setTimeout(() => setCopiedId(null), 1800);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAction("create");
     setError(null);
+    setLinkCopyNotice(null);
     try {
       const created = await createIntakeToken(expiresInDays);
-      setTokens((current) => [created, ...current]);
+      tokenMutationEpochRef.current += 1;
+      if (created.fill_path && tokenCanExposeRawLink(created)) {
+        preservedTokensRef.current.set(created.id, created);
+      }
+      setTokens((current) => mergeListedTokens(
+        [created, ...current.filter((token) => token.id !== created.id)],
+        current,
+        preservedTokensRef.current,
+        false,
+      ));
+      const copied = await copyTokenToClipboard(created);
+      setLinkCopyNotice({
+        tone: copied ? "success" : "warning",
+        message: copied
+          ? `链接 #${created.id} 已生成并复制到剪贴板。`
+          : `链接 #${created.id} 已生成，但自动复制失败。请点击下方“复制”按钮。`,
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "填写链接生成失败，请重试。");
     } finally {
@@ -367,16 +445,16 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
 
   async function handleCopy(token: IntakeTokenRead) {
     if (!token.fill_path) {
-      setError("该链接原文已不再保存。如未妥善留存，请关闭旧链接并重新生成。");
+      setLinkCopyNotice({ tone: "warning", message: "该链接原文已不再保存。如未妥善留存，请关闭旧链接并重新生成。" });
       return;
     }
-    try {
-      await navigator.clipboard.writeText(new URL(token.fill_path, window.location.origin).toString());
-      setCopiedId(token.id);
-      window.setTimeout(() => setCopiedId(null), 1800);
-    } catch {
-      setError("复制失败，请打开链接后手工复制浏览器地址。");
-    }
+    const copied = await copyTokenToClipboard(token);
+    setLinkCopyNotice({
+      tone: copied ? "success" : "warning",
+      message: copied
+        ? `链接 #${token.id} 已复制到剪贴板。`
+        : "复制失败，请打开链接后手工复制浏览器地址。",
+    });
   }
 
   async function handleTokenStatus(token: IntakeTokenRead) {
@@ -385,6 +463,10 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
     setError(null);
     try {
       const updated = await updateIntakeToken(token.id, next, token.revision);
+      tokenMutationEpochRef.current += 1;
+      preservedTokensRef.current.delete(token.id);
+      if (copiedId === token.id) setCopiedId(null);
+      setLinkCopyNotice(null);
       setTokens((current) => current.map((item) => item.id === token.id ? updated : item));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "链接状态修改失败，请刷新后重试。");
@@ -442,8 +524,14 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
       setSubmissions((current) => replaceSubmission(current, updated));
       setConfirmingDecision(null);
       decisionKeys.current.delete(keyName);
+      const tokenMutationEpoch = ++tokenMutationEpochRef.current;
       const tokenResponse = await listIntakeTokens();
-      setTokens(tokenResponse.items);
+      setTokens((current) => mergeListedTokens(
+        tokenResponse.items,
+        current,
+        preservedTokensRef.current,
+        tokenMutationEpoch !== tokenMutationEpochRef.current,
+      ));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "审核动作失败；请保留当前页面并重试。");
       try {
@@ -537,6 +625,7 @@ export function IntakeWorkspace({ embedded = false }: { embedded?: boolean }) {
           <section id="links" className="cc-surface p-5" aria-labelledby="new-link-title">
             <h2 id="new-link-title" className="flex items-center gap-2 font-semibold"><Link2 size={17} />生成填写链接</h2>
             <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={handleCreate}><label className="text-sm font-medium text-slate-700">有效天数<input className="mt-1.5 block min-h-10 w-32 rounded-lg border border-slate-300 px-3 py-2 text-sm" type="number" min={1} max={90} value={expiresInDays} onChange={(event) => setExpiresInDays(Number(event.target.value))} required /></label><button type="submit" className="cc-button cc-button--primary" disabled={action !== null}>{action === "create" ? <LoaderCircle className="animate-spin" size={15} /> : <Plus size={15} />}生成链接</button></form>
+            {linkCopyNotice ? <div className={`mt-4 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${linkCopyNotice.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`} role="status"><ClipboardCopy className="mt-0.5 shrink-0" size={15} /><span>{linkCopyNotice.message}</span></div> : null}
           </section>
 
           <section className="cc-surface overflow-hidden" aria-labelledby="links-title">
