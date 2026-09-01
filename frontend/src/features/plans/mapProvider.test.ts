@@ -77,6 +77,39 @@ afterEach(() => {
   delete window.AMap;
 });
 
+it("uses a warm route line and a green home marker", async () => {
+  const provider = new AmapMapProvider();
+  const controller = await provider.mount(document.createElement("div"), {
+    start: { label: "家", position: { latitude: 22.54, longitude: 114.05 } },
+    markers: [],
+    polyline: [
+      { latitude: 22.54, longitude: 114.05 },
+      { latitude: 22.55, longitude: 114.06 },
+    ],
+    selectedTaskId: null,
+    locationEditing: false,
+    draftPosition: null,
+  }, {
+    onSelectTask: vi.fn(),
+  });
+
+  const homeMarker = markerInstances.find((marker) => marker.options.title === "家");
+  const homeContent = homeMarker?.options.content as HTMLDivElement;
+  expect(homeContent.className).toContain("bg-emerald-600");
+  expect(homeContent.className).not.toContain("bg-slate-900");
+
+  const routeLine = markerInstances.find((marker) => marker.options.strokeColor);
+  expect(routeLine?.options).toMatchObject({
+    strokeColor: "#f97316",
+    strokeOpacity: 0.9,
+    isOutline: true,
+    outlineColor: "#fff7ed",
+    showDir: false,
+  });
+
+  controller.dispose();
+});
+
 it("places a GCJ-02 draft pin on map click and updates it after dragging", async () => {
   const onDraftPositionChange = vi.fn();
   const provider = new AmapMapProvider();

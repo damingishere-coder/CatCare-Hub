@@ -9,6 +9,9 @@ export interface MapRenderModel {
   draftPosition?: PlanGeoPoint | null;
 }
 
+export const ROUTE_LINE_COLOR = "#f97316";
+export const HOME_MARKER_COLOR_CLASS = "bg-emerald-600";
+
 export interface MapInteractionCallbacks {
   onSelectTask: (taskId: number) => void;
   onDraftPositionChange?: (position: PlanGeoPoint) => void;
@@ -128,18 +131,15 @@ function position(point: PlanGeoPoint): [number, number] {
   return [point.longitude, point.latitude];
 }
 
-function markerContent(
+function homeMarkerContent(
   label: string,
   name: string | null = null,
-  selected = false,
-  offset: MarkerDisplayOffset = { x: 0, y: 0 },
-  muted = false,
 ): HTMLDivElement {
   const content = document.createElement("div");
   content.className = [
-    "flex items-center gap-1 rounded-full border-2 border-white px-2 py-1",
+    "flex items-center gap-1 rounded-full border-2 border-emerald-100 px-2 py-1",
     "max-w-36 text-xs font-bold whitespace-nowrap text-white shadow-md",
-    selected ? "bg-amber-600 ring-2 ring-amber-300" : muted ? "bg-slate-400" : "bg-slate-900",
+    HOME_MARKER_COLOR_CLASS,
   ].join(" ");
   const sequence = document.createElement("span");
   sequence.textContent = label;
@@ -150,7 +150,6 @@ function markerContent(
     customerName.textContent = name;
     content.append(customerName);
   }
-  content.style.transform = `translate(${offset.x}px, ${offset.y}px)`;
   return content;
 }
 
@@ -273,7 +272,7 @@ export class AmapMapProvider implements MapProvider {
             position: position(model.start.position),
             title: model.start.label,
             anchor: "center",
-            content: markerContent("家", "起终点"),
+            content: homeMarkerContent("家", "起终点"),
           }),
         );
       }
@@ -302,11 +301,15 @@ export class AmapMapProvider implements MapProvider {
         overlays.push(
           new AMap.Polyline({
             path: model.polyline.map(position),
-            strokeColor: "#0f172a",
+            strokeColor: ROUTE_LINE_COLOR,
             strokeWeight: 5,
-            strokeOpacity: 0.82,
+            strokeOpacity: 0.9,
+            isOutline: true,
+            outlineColor: "#fff7ed",
+            borderWeight: 2,
             lineJoin: "round",
-            showDir: true,
+            lineCap: "round",
+            showDir: false,
           }),
         );
       }
