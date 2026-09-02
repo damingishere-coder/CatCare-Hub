@@ -116,15 +116,28 @@ it("uses the same compact order number and full hover label on the fallback map"
       providerName="amap"
       start={{ label: "家", position: { latitude: 22.54, longitude: 114.05 } }}
       markers={markers}
-      route={null}
+      route={{
+        task_ids: [7],
+        distance_meters: 1000,
+        duration_seconds: 600,
+        polyline: [
+          { latitude: 22.54, longitude: 114.05 },
+          { latitude: 22.55, longitude: 114.06 },
+        ],
+      }}
       selectedTaskId={null}
       onSelectTask={onSelectTask}
     />,
   );
 
   const marker = screen.getByRole("button", { name: "订单 #12，虚构定位客户，路线第 1 站" });
+  const homeMarker = screen.getByTitle("家（起点与终点）");
+  const routeLine = screen.getByRole("img", { name: "按真实坐标绘制的路线" }).querySelector("polyline");
   expect(marker).toHaveTextContent("#12");
   expect(marker).toHaveAttribute("title", "订单 #12 · 虚构定位客户 · 路线第 1 站");
+  expect(homeMarker).toHaveClass("bg-emerald-600");
+  expect(homeMarker).not.toHaveClass("bg-slate-900");
+  expect(routeLine).toHaveAttribute("stroke", "#f97316");
   expect(screen.queryByText("虚构定位客户")).not.toBeInTheDocument();
   fireEvent.click(marker);
   expect(onSelectTask).toHaveBeenCalledWith(7);

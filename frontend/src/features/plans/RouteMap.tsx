@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AmapMapProvider,
+  HOME_MARKER_COLOR_CLASS,
+  ROUTE_LINE_COLOR,
   hasAmapBrowserKey,
   hasAmapBrowserSecurityCode,
   markerDisplayOffset,
@@ -90,11 +92,11 @@ function CoordinateCanvas({
           </pattern>
         </defs>
         <rect width="100" height="100" fill="url(#route-grid)" />
-        {polyline ? <polyline points={polyline} fill="none" stroke="#0f172a" strokeWidth="1.3" strokeLinejoin="round" strokeLinecap="round" /> : null}
+        {polyline ? <polyline points={polyline} fill="none" stroke={ROUTE_LINE_COLOR} strokeWidth="1.3" strokeLinejoin="round" strokeLinecap="round" /> : null}
       </svg>
       {start ? (() => {
         const projected = project(start.position);
-        return <span className="absolute flex -translate-1/2 items-center gap-1 rounded-full border-2 border-white bg-emerald-700 px-2 py-1 text-xs font-bold whitespace-nowrap text-white shadow-md" style={{ left: `${projected.left}%`, top: `${projected.top}%` }} title={`${start.label}（起点与终点）`}>家 · 起终点</span>;
+        return <span className={`absolute flex -translate-1/2 items-center gap-1 rounded-full border-2 border-emerald-100 px-2 py-1 text-xs font-bold whitespace-nowrap text-white shadow-md ${HOME_MARKER_COLOR_CLASS}`} style={{ left: `${projected.left}%`, top: `${projected.top}%` }} title={`${start.label}（起点与终点）`}>家 · 起终点</span>;
       })() : null}
       {markers.map((marker, index) => {
         const projected = project(marker.position);
