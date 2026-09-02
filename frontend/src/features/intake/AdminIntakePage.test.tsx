@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { editableDraft } from "./constants";
@@ -90,6 +90,12 @@ const detail: IntakeSubmissionDetail = {
 
 function renderPage() {
   return render(<MemoryRouter><AdminIntakePage /></MemoryRouter>);
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve };
 }
 
 beforeEach(() => {
@@ -203,7 +209,7 @@ it("copies the public note into the chosen review destinations without changing 
   expect(detail.payload.customer.notes).toBeNull();
 });
 
-it("creates a link and copies the browser-origin URL", async () => {
+it("creates a link, copies it automatically, and keeps manual controls", async () => {
   renderPage();
   await screen.findByText("链接 #7");
 
@@ -212,11 +218,104 @@ it("creates a link and copies the browser-origin URL", async () => {
   await waitFor(() => expect(apiMocks.createIntakeToken).toHaveBeenCalledWith(21));
   expect(await screen.findByText("链接 #8")).toBeInTheDocument();
   expect(screen.getByText(/新链接仅本次可查看/)).toBeInTheDocument();
-
-  fireEvent.click(screen.getAllByRole("button", { name: "复制" })[0]);
   await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
     `${window.location.origin}/f/P10-test-token`,
   ));
+  expect(screen.getByRole("status")).toHaveTextContent("链接 #8 已生成并复制到剪贴板");
+  const newestLink = within(screen.getByText("链接 #8").closest("li")!);
+  expect(newestLink.getByRole("link", { name: "打开" })).toHaveAttribute("href", "/f/P10-test-token");
+  expect(newestLink.getByRole("button", { name: "已复制" })).toBeInTheDocument();
+});
+
+it("keeps manual copy available when automatic clipboard access fails", async () => {
+  const writeText = vi.mocked(navigator.clipboard.writeText);
+  writeText.mockRejectedValueOnce(new Error("clipboard blocked")).mockResolvedValueOnce(undefined);
+  renderPage();
+  await screen.findByText("链接 #7");
+
+  fireEvent.click(screen.getByRole("button", { name: "生成链接" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("自动复制失败");
+  const newestLink = within(screen.getByText("链接 #8").closest("li")!);
+  expect(newestLink.getByRole("link", { name: "打开" })).toBeInTheDocument();
+  fireEvent.click(newestLink.getByRole("button", { name: "复制" }));
+
+  await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole("status")).toHaveTextContent("链接 #8 已复制到剪贴板");
+});
+
+it("keeps a newly created link when an older initial list request finishes later", async () => {
+  const initialTokens = deferred<{ items: IntakeTokenRead[]; total: number }>();
+  apiMocks.listIntakeTokens.mockReturnValueOnce(initialTokens.promise);
+  renderPage();
+
+  fireEvent.click(screen.getByRole("button", { name: "生成链接" }));
+  await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+    `${window.location.origin}/f/P10-test-token`,
+  ));
+  initialTokens.resolve({ items: [token], total: 1 });
+
+  expect(await screen.findByText("链接 #8")).toBeInTheDocument();
+  const newestLink = within(screen.getByText("链接 #8").closest("li")!);
+  expect(newestLink.getByRole("link", { name: "打开" })).toBeInTheDocument();
+  expect(newestLink.getByRole("button", { name: "已复制" })).toBeInTheDocument();
+});
+
+it("preserves a new link across the 30-second background refresh", async () => {
+  vi.useFakeTimers();
+  const created = { ...token, id: 8, fill_path: "/f/P10-test-token", submitted_at: null, submission_status: null };
+  apiMocks.listIntakeTokens
+    .mockResolvedValueOnce({ items: [token], total: 1 })
+    .mockResolvedValue({ items: [{ ...created, fill_path: null }, token], total: 2 });
+  const view = renderPage();
+  try {
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    fireEvent.click(screen.getByRole("button", { name: "生成链接" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      `${window.location.origin}/f/P10-test-token`,
+    );
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+
+    expect(apiMocks.listIntakeTokens).toHaveBeenCalledTimes(2);
+    const newestLink = within(screen.getByText("链接 #8").closest("li")!);
+    expect(newestLink.getByRole("link", { name: "打开" })).toBeInTheDocument();
+    expect(newestLink.getByRole("button", { name: "复制" })).toBeInTheDocument();
+  } finally {
+    view.unmount();
+    vi.useRealTimers();
+  }
+});
+
+it("clears the raw link when closed and does not revive it from an older refresh", async () => {
+  const created = { ...token, id: 8, fill_path: "/f/P10-test-token", submitted_at: null, submission_status: null };
+  const staleTokens = deferred<{ items: IntakeTokenRead[]; total: number }>();
+  apiMocks.listIntakeTokens
+    .mockResolvedValueOnce({ items: [token], total: 1 })
+    .mockReturnValueOnce(staleTokens.promise);
+  apiMocks.updateIntakeToken.mockResolvedValue({ ...created, status: "disabled", fill_path: null });
+  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  renderPage();
+  try {
+    await screen.findByText("链接 #7");
+    fireEvent.click(screen.getByRole("button", { name: "生成链接" }));
+    expect(await screen.findByText("链接 #8")).toBeInTheDocument();
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(apiMocks.listIntakeTokens).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(screen.getByText("链接 #8").closest("li")!).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(apiMocks.updateIntakeToken).toHaveBeenCalledWith(8, "disabled", revision));
+    staleTokens.resolve({ items: [{ ...created, fill_path: null }, token], total: 2 });
+
+    await waitFor(() => {
+      const newestLink = within(screen.getByText("链接 #8").closest("li")!);
+      expect(newestLink.getByText("已关闭")).toBeInTheDocument();
+      expect(newestLink.queryByRole("link", { name: "打开" })).not.toBeInTheDocument();
+      expect(newestLink.queryByRole("button", { name: "复制" })).not.toBeInTheDocument();
+    });
+  } finally {
+    visibility.mockRestore();
+  }
 });
 
 it("saves a review and archives an order only through explicit admin actions", async () => {
