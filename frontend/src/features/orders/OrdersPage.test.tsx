@@ -79,6 +79,7 @@ const catDefaults = {
 
 const summary: OrderSummary = {
   id: 1,
+  order_number: 101,
   write_revision: "a".repeat(64),
   source_customer_id: 1,
   service_contact: serviceContact,
@@ -195,6 +196,7 @@ beforeEach(() => {
     tasks: [{
       id: 1,
       order_id: 1,
+      order_number: summary.order_number,
       service_date: "2030-10-01",
       planned_time: "09:30:00",
       sort_order: 0,
@@ -216,17 +218,17 @@ it("uses the month calendar as the primary view and opens details on demand", as
       order_count: 1,
       cat_count: 2,
       customer_names: [summary.customer.name],
-      orders: [{ order_id: 1, customer_name: summary.customer.name, visit_count: 2, order_status: "confirmed" }],
+      orders: [{ order_id: 1, order_number: summary.order_number, customer_name: summary.customer.name, visit_count: 2, order_status: "confirmed" }],
     }],
     total: 1,
   });
   renderPage(false, "/admin/orders?date=2030-10-01");
 
   expect(await screen.findByRole("heading", { name: "订单月历" })).toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "订单 #1", level: 2 })).not.toBeInTheDocument();
-  const marker = await screen.findByRole("button", { name: /订单 #1，订单页面客户（虚构），2 次上门/ });
+  expect(screen.queryByRole("heading", { name: "订单 #101", level: 2 })).not.toBeInTheDocument();
+  const marker = await screen.findByRole("button", { name: /订单 #101，订单页面客户（虚构），2 次上门/ });
   fireEvent.click(marker);
-  expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "订单 #101", level: 2 })).toBeInTheDocument();
   expect(apiMocks.getOrder).toHaveBeenCalledWith(1);
   expect(screen.queryByRole("heading", { name: "订单月历" })).not.toBeInTheDocument();
   expect(screen.getByLabelText("2030-10-01 当天上门")).toBeInTheDocument();
@@ -234,8 +236,8 @@ it("uses the month calendar as the primary view and opens details on demand", as
   expect(screen.queryByRole("button", { name: "保存排程" })).not.toBeInTheDocument();
 
   const orderList = screen.getByLabelText("订单列表");
-  fireEvent.click(within(orderList).getByRole("button", { name: /#1 · 订单页面客户（虚构）/ }));
-  expect(screen.queryByRole("heading", { name: "订单 #1", level: 2 })).not.toBeInTheDocument();
+  fireEvent.click(within(orderList).getByRole("button", { name: /#101 · 订单页面客户（虚构）/ }));
+  expect(screen.queryByRole("heading", { name: "订单 #101", level: 2 })).not.toBeInTheDocument();
   expect(await screen.findByRole("heading", { name: "订单月历" })).toBeInTheDocument();
   expect(screen.getByLabelText("2030-10-01 当天上门")).toBeInTheDocument();
   const collapse = screen.getByRole("button", { name: "收起订单列表" });
@@ -254,6 +256,7 @@ it("shows every active visit in the exact route-saved order", async () => {
   ): PlanTaskSummary => ({
     id,
     order_id: orderId,
+    order_number: orderId + 100,
     service_date: "2030-10-01",
     planned_time: sortOrder === 0 ? "08:30:00" : null,
     sort_order: sortOrder,
@@ -283,9 +286,9 @@ it("shows every active visit in the exact route-saved order", async () => {
   const visitList = await screen.findByLabelText("2030-10-01 当天上门");
   const visitButtons = within(visitList).getAllByRole("button", { name: /路线第/ });
   expect(visitButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
-    "路线第 1 站，路线第一位客户，订单 #2",
-    "路线第 2 站，同单第一次上门，订单 #1",
-    "路线第 3 站，同单第二次上门，订单 #1",
+    "路线第 1 站，路线第一位客户，订单 #102",
+    "路线第 2 站，同单第一次上门，订单 #101",
+    "路线第 3 站，同单第二次上门，订单 #101",
   ]);
   expect(within(visitList).queryByText("已取消客户")).not.toBeInTheDocument();
   expect(within(visitList).getByRole("link", { name: "去路线图调整顺序" })).toHaveAttribute("href", "/admin/routes?date=2030-10-01");
@@ -297,7 +300,7 @@ it("shows an order, authoritative pricing, and seven generated tasks", async () 
   expect(
     await screen.findByRole(
       "heading",
-      { name: "订单 #1", level: 2 },
+      { name: "订单 #101", level: 2 },
       { timeout: 5000 },
     ),
   ).toBeInTheDocument();
@@ -463,10 +466,10 @@ it("opens the create form from the dashboard quick-entry flag", async () => {
 
 it("edits an order and keeps cancellation as a separate protected action", async () => {
   renderPage();
-  expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "订单 #101", level: 2 })).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "编辑订单" }));
-  const dialog = screen.getByRole("dialog", { name: "编辑订单 #1" });
+  const dialog = screen.getByRole("dialog", { name: "编辑订单 #101" });
   fireEvent.change(within(dialog).getByRole("spinbutton", { name: "猫咪数量" }), {
     target: { value: "3" },
   });
@@ -511,9 +514,9 @@ it("allows a payment-history order to change only unit price with its revision",
   apiMocks.getOrder.mockResolvedValue(paidDetail);
   apiMocks.updateOrder.mockResolvedValue(paidDetail);
   renderPage();
-  expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "订单 #101", level: 2 })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "编辑订单" }));
-  const dialog = screen.getByRole("dialog", { name: "编辑订单 #1" });
+  const dialog = screen.getByRole("dialog", { name: "编辑订单 #101" });
   const price = within(dialog).getByLabelText("每次价格（元）");
   expect(price).toBeEnabled();
   expect(within(dialog).getByLabelText("猫咪数量")).toBeDisabled();

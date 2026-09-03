@@ -40,6 +40,7 @@ function task(
   return {
     id,
     order_id: id,
+    order_number: id + 100,
     service_date: "2034-10-01",
     planned_time: id === 1 ? "09:30:00" : null,
     sort_order: sortOrder,
@@ -94,6 +95,7 @@ const routeWorkspace: PlanRouteWorkspace = {
   },
   markers: tasks.map((planTask, index) => ({
     task_id: planTask.id,
+    order_number: planTask.order_number,
     sequence: index + 1,
     customer_name: planTask.customer.name,
     community: planTask.customer.community,
@@ -327,7 +329,7 @@ it("previews real route metrics and adopts the revision-protected recommendation
   expect(screen.getByText("9.8 km · 37 分钟")).toBeInTheDocument();
   expect(screen.getByText("家 → P4 第三位虚构客户 → P4 第二位虚构客户 → P4 第一位虚构客户 → 家")).toBeInTheDocument();
 
-  expect(screen.getByRole("button", { name: "订单 #3，P4 第三位虚构客户，路线第 1 站" })).toHaveTextContent("#3");
+  expect(screen.getByRole("button", { name: "订单 #103，P4 第三位虚构客户，路线第 1 站" })).toHaveTextContent("#103");
   fireEvent.click(screen.getByRole("button", { name: "采用优化顺序" }));
 
   await waitFor(() => expect(apiMocks.saveDaySchedule).toHaveBeenCalledWith(

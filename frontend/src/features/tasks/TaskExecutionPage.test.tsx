@@ -33,6 +33,7 @@ const revisionD = "d".repeat(64);
 const confirmed: TaskExecutionDetail = {
   id: 7,
   order_id: 3,
+  order_number: 103,
   service_date: "2035-10-06",
   planned_time: "09:30:00",
   status: "confirmed",
@@ -106,6 +107,7 @@ it("shows the single-task field context and starts a confirmed task", async () =
   renderPage();
 
   expect(await screen.findByText("P6 虚构客户")).toBeInTheDocument();
+  expect(screen.getByText(/订单 #103 · 任务 #7/)).toBeInTheDocument();
   expect(screen.getByText(/P6 虚构路 6 号/)).toBeInTheDocument();
   expect(screen.queryByText("000-P6-TEST")).not.toBeInTheDocument();
   expect(screen.getByText("小区门卡")).toBeInTheDocument();

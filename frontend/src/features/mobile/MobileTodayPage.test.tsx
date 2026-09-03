@@ -19,6 +19,7 @@ const today: MobileTodayRead = {
     {
       id: 7,
       order_id: 3,
+      order_number: 103,
       sequence: 1,
       sort_order: 0,
       planned_time: "09:30:00",
@@ -33,6 +34,7 @@ const today: MobileTodayRead = {
     {
       id: 8,
       order_id: 4,
+      order_number: 104,
       sequence: 2,
       sort_order: 1,
       planned_time: null,
@@ -64,6 +66,7 @@ it("shows the ordered route, safe summaries, navigation, and refresh", async () 
   renderPage();
 
   expect(await screen.findByText("P9 虚构客户甲")).toBeInTheDocument();
+  expect(screen.getByText(/订单 #103/)).toBeInTheDocument();
   expect(screen.getByText("P9 虚构客户乙")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "一键导航" })).toHaveAttribute(
     "href",

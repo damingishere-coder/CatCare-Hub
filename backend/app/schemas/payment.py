@@ -48,6 +48,7 @@ class PaymentMetrics(BaseModel):
 
 class PaymentReceivable(BaseModel):
     order_id: int
+    order_number: int = Field(gt=0)
     settlement_mode: OrderSettlementMode
     service_date: date | None
     customer_name: str
@@ -69,6 +70,7 @@ class PaymentReceivable(BaseModel):
 class PaymentRecordRead(BaseModel):
     id: int
     order_id: int
+    order_number: int = Field(gt=0)
     service_date: date | None
     customer_name: str
     start_date: date

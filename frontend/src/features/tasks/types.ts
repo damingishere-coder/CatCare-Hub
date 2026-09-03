@@ -46,6 +46,7 @@ export interface TaskExecutionPhoto {
 export interface TaskExecutionDetail {
   id: number;
   order_id: number;
+  order_number?: number;
   service_date: string;
   planned_time: string | null;
   status: TaskStatus;

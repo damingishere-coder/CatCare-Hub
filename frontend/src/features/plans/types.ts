@@ -43,6 +43,7 @@ export interface PlanTaskItem {
 export interface PlanTaskSummary {
   id: number;
   order_id: number;
+  order_number?: number;
   service_date: string;
   planned_time: string | null;
   sort_order: number;
@@ -62,6 +63,7 @@ export interface PlanDaySummary {
   customer_names: string[];
   orders?: Array<{
     order_id: number;
+    order_number?: number;
     customer_name: string;
     visit_count: number;
     order_status: OrderStatus;
@@ -147,7 +149,7 @@ export interface PlanRouteStart {
 
 export interface PlanRouteMarker {
   task_id: number;
-  order_id?: number;
+  order_number?: number;
   sequence: number;
   customer_name: string;
   community: string | null;
@@ -166,6 +168,7 @@ export type PlanRouteIssueReason =
 
 export interface PlanRouteIssue {
   task_id: number;
+  order_number?: number;
   customer_name: string;
   community: string | null;
   address: string | null;

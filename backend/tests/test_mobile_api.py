@@ -147,6 +147,9 @@ def test_mobile_today_is_ordered_privacy_minimized_and_uses_cached_navigation(
     assert [task["id"] for task in payload["tasks"]] == [first_id, second_id]
     assert [task["sequence"] for task in payload["tasks"]] == [1, 2]
     assert {task["order_id"] for task in payload["tasks"]} == {order["id"]}
+    assert {task["order_number"] for task in payload["tasks"]} == {
+        order["order_number"]
+    }
     assert payload["tasks"][0]["navigation_state"] == "ready"
     assert payload["tasks"][0]["navigation_url"].startswith(
         "https://uri.amap.com/navigation?"
@@ -219,6 +222,7 @@ def test_mobile_task_execution_reuses_revision_upload_and_completion_rules(
     original_response = client.get(f"/api/mobile/tasks/{task_id}")
     assert original_response.status_code == 200
     original = original_response.json()
+    assert original["order_number"] == order["order_number"]
     assert original["customer"]["address"] == "P6 虚构路 6 号"
     assert original["customer"]["access_info"] == "虚构门禁说明"
 

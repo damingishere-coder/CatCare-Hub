@@ -122,6 +122,7 @@ def _issue_for_task(task: Task, services: MapServices) -> PlanRouteIssue:
         reason = "not_geocoded"
     return PlanRouteIssue(
         task_id=task.id,
+        order_number=task.order.order_number,
         customer_name=task.order.contact_name,
         community=task.order.contact_community,
         address=order_display_address(task.order),
@@ -145,6 +146,7 @@ def _marker(
         navigation_url = None
     return PlanRouteMarker(
         task_id=task.id,
+        order_number=task.order.order_number,
         sequence=sequence,
         customer_name=task.order.contact_name,
         community=task.order.contact_community,

@@ -27,6 +27,7 @@ class DashboardMetrics(BaseModel):
 class DashboardTaskSummary(BaseModel):
     id: int
     order_id: int
+    order_number: int = Field(gt=0)
     planned_time: time | None
     sort_order: int
     status: TaskStatus
@@ -43,6 +44,7 @@ class DashboardReminder(BaseModel):
     message: str
     task_id: int | None = None
     order_id: int | None = None
+    order_number: int | None = Field(default=None, gt=0)
     cat_count: int | None = Field(default=None, ge=0)
     amount: Decimal | None = Field(default=None, ge=0)
     expected_revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

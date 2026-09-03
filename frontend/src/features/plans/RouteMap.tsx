@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { displayOrderNumber } from "../../lib/orderNumber";
 import {
   AmapMapProvider,
   hasAmapBrowserKey,
@@ -109,11 +110,11 @@ function CoordinateCanvas({
               top: `${projected.top}%`,
               transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
             }}
-            aria-label={`订单 #${marker.order_id ?? "?"}，${marker.customer_name}，路线第 ${marker.sequence} 站`}
-            title={`订单 #${marker.order_id ?? "?"} · ${marker.customer_name} · 路线第 ${marker.sequence} 站`}
+            aria-label={`订单 #${displayOrderNumber(marker)}，${marker.customer_name}，路线第 ${marker.sequence} 站`}
+            title={`订单 #${displayOrderNumber(marker)} · ${marker.customer_name} · 路线第 ${marker.sequence} 站`}
             onClick={() => onSelectTask(marker.task_id)}
           >
-            <span>#{marker.order_id ?? "?"}</span>
+            <span>#{displayOrderNumber(marker)}</span>
           </button>
         );
       })}

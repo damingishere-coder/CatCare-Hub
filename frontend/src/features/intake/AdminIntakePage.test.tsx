@@ -359,5 +359,5 @@ it("saves a review and archives an order only through explicit admin actions", a
   await waitFor(() => expect(apiMocks.getIntakeSubmission).toHaveBeenCalledTimes(2));
   expect(await screen.findByText(/已完成本机幂等归档/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "查看客户 #3" })).toHaveAttribute("href", "/admin/customers");
-  expect(screen.getByRole("link", { name: "查看订单 #4" })).toHaveAttribute("href", "/admin/orders");
+  expect(screen.getByRole("link", { name: "查看订单" })).toHaveAttribute("href", "/admin/orders");
 });

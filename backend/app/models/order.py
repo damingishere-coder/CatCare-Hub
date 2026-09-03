@@ -1,8 +1,24 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Index, Integer, JSON, Numeric, String, Text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    Numeric,
+    String,
+    Text,
+    event,
+    func,
+    insert,
+)
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -20,6 +36,20 @@ if TYPE_CHECKING:
     from app.models.customer import Cat, Customer
     from app.models.payment import Payment
     from app.models.task import Task
+
+
+class OrderNumberReservation(Base):
+    """Permanent ledger of every business order number that has been issued."""
+
+    __tablename__ = "order_number_reservations"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    number: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
 
 
 class Order(TimestampMixin, Base):
@@ -54,6 +84,11 @@ class Order(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    order_number: Mapped[int] = mapped_column(
+        ForeignKey("order_number_reservations.number", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
     seed_source: Mapped[str | None] = mapped_column(String(64), index=True)
     write_revision_number: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
@@ -175,6 +210,23 @@ class Order(TimestampMixin, Base):
         back_populates="order",
         passive_deletes=True,
     )
+
+
+@event.listens_for(Order, "before_insert")
+def reserve_order_number(
+    _mapper: object,
+    connection: Connection,
+    target: Order,
+) -> None:
+    """Allocate a number in the order transaction and never delete its ledger row."""
+
+    if target.order_number is not None:
+        return
+    result = connection.execute(insert(OrderNumberReservation).values())
+    issued_number = result.inserted_primary_key[0]
+    if issued_number is None:
+        raise RuntimeError("订单编号发放失败")
+    target.order_number = int(issued_number)
 
 
 class OrderCat(Base):

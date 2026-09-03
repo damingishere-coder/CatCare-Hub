@@ -63,6 +63,7 @@ class TaskExecutionPhoto(BaseModel):
 class TaskExecutionDetail(BaseModel):
     id: int
     order_id: int
+    order_number: int = Field(gt=0)
     service_date: date
     planned_time: time | None
     status: TaskStatus

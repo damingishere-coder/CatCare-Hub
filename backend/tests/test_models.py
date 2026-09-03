@@ -62,6 +62,7 @@ def test_core_entities_can_be_created_and_related(
             )
             session.add(order)
             session.flush()
+            assert order.order_number == 1
             order.cat_links.extend(
                 [
                     OrderCat(order_id=order.id, cat_id=cat_one.id),
@@ -121,6 +122,7 @@ def test_core_entities_can_be_created_and_related(
                 .where(Order.id == order.id)
             )
             assert persisted_order is not None
+            assert persisted_order.order_number == 1
             assert len(persisted_order.cat_links) == 2
             assert len(persisted_order.tasks) == 1
             assert len(persisted_order.tasks[0].items) == 2

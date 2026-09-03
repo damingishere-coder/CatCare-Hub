@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
+import { displayOrderNumber } from "../../lib/orderNumber";
 import { RouteMap } from "./RouteMap";
 import { hasAmapBrowserKey, hasAmapBrowserSecurityCode } from "./mapProvider";
 import type {
@@ -90,7 +91,9 @@ export function RouteWorkspace({
   const optimizedTaskIds = optimization?.optimized_task_ids ?? [];
   const markers = (() => {
     if (!workspace) return [];
-    const orderByTask = new Map(tasks.map((task) => [task.id, task.order_id]));
+    const orderNumberByTask = new Map(
+      tasks.map((task) => [task.id, task.order_number ?? task.order_id]),
+    );
     const markerIds = new Set(workspace.markers.map((marker) => marker.task_id));
     const taskOrder = optimizedTaskIds.length
       ? optimizedTaskIds.filter((taskId) => markerIds.has(taskId))
@@ -99,7 +102,7 @@ export function RouteWorkspace({
     return workspace.markers
       .map((marker) => ({
         ...marker,
-        order_id: orderByTask.get(marker.task_id),
+        order_number: marker.order_number ?? orderNumberByTask.get(marker.task_id),
         sequence: sequence.get(marker.task_id) ?? marker.sequence,
       }))
       .sort((left, right) => left.sequence - right.sequence);
@@ -239,7 +242,7 @@ export function RouteWorkspace({
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-900"><AlertTriangle size={14} />{workspace.unresolved_tasks.length} 个任务未通过地址验证，暂不生成不完整路线</p>
             <ul className="mt-2 space-y-1 text-xs text-amber-800">
-              {workspace.unresolved_tasks.map((issue) => <li key={issue.task_id}>任务 #{issue.task_id} · {issue.customer_name}：{issueLabels[issue.reason]}</li>)}
+              {workspace.unresolved_tasks.map((issue) => <li key={issue.task_id}>订单 #{displayOrderNumber(issue)} · 任务 #{issue.task_id} · {issue.customer_name}：{issueLabels[issue.reason]}</li>)}
             </ul>
           </div>
         ) : optimization ? (

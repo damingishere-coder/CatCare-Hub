@@ -156,6 +156,7 @@ def task_execution_detail(task: Task) -> TaskExecutionDetail:
     return TaskExecutionDetail(
         id=task.id,
         order_id=task.order_id,
+        order_number=order.order_number,
         service_date=task.service_date,
         planned_time=task.planned_time,
         status=task.status,

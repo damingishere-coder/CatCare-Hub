@@ -104,6 +104,7 @@ export interface OrderTask {
 
 export interface OrderSummary {
   id: number;
+  order_number?: number;
   write_revision: string;
   source_customer_id: number | null;
   service_contact: OrderServiceContact;

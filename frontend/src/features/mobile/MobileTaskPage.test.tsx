@@ -32,6 +32,7 @@ const revisionD = "d".repeat(64);
 const confirmed: MobileTaskExecutionDetail = {
   id: 7,
   order_id: 3,
+  order_number: 103,
   service_date: "2035-10-06",
   planned_time: "09:30:00",
   status: "confirmed",
@@ -107,6 +108,7 @@ it("shows the two access fields on detail and starts a confirmed task", async ()
   renderPage();
 
   expect(await screen.findByText("P9 虚构客户")).toBeInTheDocument();
+  expect(screen.getByText(/订单 #103/)).toBeInTheDocument();
   expect(screen.getByText(/P9 虚构路 9 号/)).toBeInTheDocument();
   expect(screen.queryByText("000-P9-TEST")).not.toBeInTheDocument();
   expect(screen.getByText("小区门卡")).toBeInTheDocument();

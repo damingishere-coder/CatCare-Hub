@@ -18,6 +18,7 @@ export interface DashboardMetrics {
 export interface DashboardTaskSummary {
   id: number;
   order_id: number;
+  order_number?: number;
   planned_time: string | null;
   sort_order: number;
   status: TaskStatus;
@@ -34,6 +35,7 @@ export interface DashboardReminder {
   message: string;
   task_id: number | null;
   order_id: number | null;
+  order_number?: number | null;
   cat_count: number | null;
   amount: string | null;
   expected_revision: string | null;

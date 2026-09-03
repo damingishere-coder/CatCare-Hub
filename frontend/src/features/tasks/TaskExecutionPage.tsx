@@ -18,6 +18,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { PageHeader } from "../../components/ui/PageHeader";
 import { customerAddress } from "../../lib/customerDisplay";
+import { displayOrderNumber } from "../../lib/orderNumber";
 import { serviceItemOptions } from "../orders/constants";
 import type { ServiceItem, TaskStatus } from "../orders/types";
 import { planTaskStatusLabels } from "../plans/constants";
@@ -277,7 +278,7 @@ export function TaskExecutionPage() {
         actions={detail ? (
           <div className="text-right">
             <span className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${statusStyle(detail.status)}`}>{planTaskStatusLabels[detail.status]}</span>
-            <p className="mt-2 text-xs text-slate-500">订单 #{detail.order_id} · 任务 #{detail.id}</p>
+            <p className="mt-2 text-xs text-slate-500">订单 #{displayOrderNumber(detail)} · 任务 #{detail.id}</p>
           </div>
         ) : null}
       />

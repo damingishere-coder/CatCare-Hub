@@ -246,12 +246,14 @@ def test_plan_days_range_returns_order_markers_and_validates_bounds(
     assert days[0]["orders"] == [
         {
             "order_id": first_order["id"],
+            "order_number": first_order["order_number"],
             "customer_name": "P4 第一位虚构客户",
             "visit_count": 2,
             "order_status": "confirmed",
         },
         {
             "order_id": second_order["id"],
+            "order_number": second_order["order_number"],
             "customer_name": "P4 第二位虚构客户",
             "visit_count": 1,
             "order_status": "confirmed",

@@ -18,6 +18,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import { localDateValue } from "../../components/ui/calendarDates";
+import { displayOrderNumber } from "../../lib/orderNumber";
 import {
   createOrder,
   clearDemoData,
@@ -277,7 +278,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
 
   async function handleDelete() {
     if (!orderDetail?.deletable) return;
-    if (!window.confirm(`确认永久删除订单 #${orderDetail.id} 吗？此操作不能撤销。`)) return;
+    if (!window.confirm(`确认永久删除订单 #${displayOrderNumber(orderDetail)} 吗？此操作不能撤销。`)) return;
     setDeleting(true);
     setPageError(null);
     try {
@@ -396,7 +397,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
                       aria-pressed={selectedOrderId === order.id}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <span className="truncate text-sm font-semibold">#{order.id} · {order.customer.name}</span>
+                        <span className="truncate text-sm font-semibold">#{displayOrderNumber(order)} · {order.customer.name}</span>
                         <StatusBadge status={order.order_status} />
                       </div>
                       <p className={`mt-1 text-xs ${selectedOrderId === order.id ? "text-orange-800" : "text-slate-500"}`}>
@@ -437,7 +438,7 @@ export function OrdersPage({ initialCreate = false }: OrdersPageProps) {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-xl font-semibold text-slate-950">订单 #{orderDetail.id}</h2>
+                    <h2 className="text-xl font-semibold text-slate-950">订单 #{displayOrderNumber(orderDetail)}</h2>
                     <StatusBadge status={orderDetail.order_status} />
                   </div>
                   <p className="mt-1 text-sm text-slate-500">{orderDetail.customer.name}{orderDetail.customer.address ? ` · ${orderDetail.customer.address}` : ""}</p>

@@ -207,7 +207,11 @@ def test_payment_summary_boundaries_records_and_privacy(
     }
     assert len(payload["receivables"]) == 1
     assert payload["receivables"][0]["order_id"] == order_payload["id"]
+    assert payload["receivables"][0]["order_number"] == order_payload["order_number"]
     assert len(payload["receivables"][0]["revision"]) == 64
+    assert {record["order_number"] for record in payload["records"]} == {
+        order_payload["order_number"]
+    }
     assert [record["amount"] for record in payload["records"][:3]] == [
         "30.00",
         "20.00",
