@@ -174,6 +174,7 @@ def _order_summary(order: Order, *, customer_resolution: str | None = None) -> O
     )
     return OrderSummary(
         id=order.id,
+        order_number=order.order_number,
         write_revision=order_write_revision(order),
         source_customer_id=order.customer_id,
         service_contact=service_contact,

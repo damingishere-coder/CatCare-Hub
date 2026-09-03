@@ -19,6 +19,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { serviceItemOptions } from "../orders/constants";
 import { customerAddress } from "../../lib/customerDisplay";
+import { displayOrderNumber } from "../../lib/orderNumber";
 import type { ServiceItem, TaskStatus } from "../orders/types";
 import { planTaskStatusLabels } from "../plans/constants";
 import {
@@ -292,7 +293,7 @@ export function MobileTaskPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-xl font-bold">{detail.customer.name}</h2>
-                  <p className="mt-1 text-xs text-slate-500">{detail.service_date} · 计划 {detail.planned_time?.slice(0, 5) || "待设置"} · 任务 #{detail.id}</p>
+                  <p className="mt-1 text-xs text-slate-500">订单 #{displayOrderNumber(detail)} · {detail.service_date} · 计划 {detail.planned_time?.slice(0, 5) || "待设置"} · 任务 #{detail.id}</p>
                 </div>
                 <PawPrint className="shrink-0 text-slate-400" size={23} />
               </div>

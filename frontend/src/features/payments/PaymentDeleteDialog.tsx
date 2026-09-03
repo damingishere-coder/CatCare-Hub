@@ -1,6 +1,7 @@
 import { LoaderCircle, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { displayOrderNumber } from "../../lib/orderNumber";
 import type { PaymentRecord } from "./types";
 
 const methodLabels = {
@@ -62,7 +63,7 @@ export function PaymentDeleteDialog({ record, onCancel, onConfirm }: PaymentDele
           </header>
           <div className="space-y-4 p-5">
             <dl className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
-              <div><dt className="text-xs text-slate-500">客户 / 订单</dt><dd className="mt-1 font-medium text-slate-900">{record.customer_name} · #{record.order_id}</dd></div>
+              <div><dt className="text-xs text-slate-500">客户 / 订单</dt><dd className="mt-1 font-medium text-slate-900">{record.customer_name} · #{displayOrderNumber(record)}</dd></div>
               <div><dt className="text-xs text-slate-500">方式 / 金额</dt><dd className="mt-1 font-medium text-slate-900">{methodLabels[record.payment_method]} · {currency(record.amount)}</dd></div>
             </dl>
             <div className="cc-alert cc-alert--warning">{completed ? "这条流水会先自动撤销，订单已收金额、待收金额和统计会立即重算；恢复显示不会重新计入金额。" : "这条流水会移入已删除；恢复只改变可见性，不改变当前付款状态。"}</div>

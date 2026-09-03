@@ -29,7 +29,7 @@ vi.mock("./mapProvider", async () => {
 
 const markers: PlanRouteMarker[] = [{
   task_id: 7,
-  order_id: 12,
+  order_number: 112,
   sequence: 1,
   customer_name: "虚构定位客户",
   community: "虚构小区",
@@ -122,9 +122,9 @@ it("uses the same compact order number and full hover label on the fallback map"
     />,
   );
 
-  const marker = screen.getByRole("button", { name: "订单 #12，虚构定位客户，路线第 1 站" });
-  expect(marker).toHaveTextContent("#12");
-  expect(marker).toHaveAttribute("title", "订单 #12 · 虚构定位客户 · 路线第 1 站");
+  const marker = screen.getByRole("button", { name: "订单 #112，虚构定位客户，路线第 1 站" });
+  expect(marker).toHaveTextContent("#112");
+  expect(marker).toHaveAttribute("title", "订单 #112 · 虚构定位客户 · 路线第 1 站");
   expect(screen.queryByText("虚构定位客户")).not.toBeInTheDocument();
   fireEvent.click(marker);
   expect(onSelectTask).toHaveBeenCalledWith(7);

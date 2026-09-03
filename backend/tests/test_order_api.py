@@ -126,6 +126,7 @@ def test_create_seven_day_order_generates_tasks_and_private_summary(
 
     assert response.status_code == 201
     order = response.json()
+    assert order["order_number"] == 1
     assert order["service_days"] == 7
     assert order["total_visits"] == 7
     assert order["task_count"] == 7
@@ -666,6 +667,54 @@ def test_unstarted_unpaid_order_can_be_permanently_deleted(
     with order_api_context.session_factory() as session:
         assert session.scalar(select(func.count(Task.id))) == 0
         assert session.scalar(select(func.count(TaskItem.id))) == 0
+
+
+def test_business_order_numbers_increment_and_never_reuse_cancelled_or_deleted(
+    order_api_context: OrderApiContext,
+) -> None:
+    client = order_api_context.client
+    first = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(
+            customer_name="编号第一单虚构客户",
+            service_dates=["2032-06-01"],
+        ),
+    ).json()
+    second = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(
+            customer_name="编号第二单虚构客户",
+            service_dates=["2032-06-02"],
+        ),
+    ).json()
+    assert [first["order_number"], second["order_number"]] == [1, 2]
+
+    cancelled = client.patch(
+        f"/api/admin/orders/{second['id']}/status",
+        json={"order_status": "cancelled"},
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["order_number"] == 2
+
+    third = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(
+            customer_name="编号第三单虚构客户",
+            service_dates=["2032-06-03"],
+        ),
+    ).json()
+    assert third["order_number"] == 3
+    assert client.delete(f"/api/admin/orders/{third['id']}").status_code == 204
+
+    fourth = client.post(
+        "/api/admin/orders",
+        json=simple_order_payload(
+            customer_name="编号第四单虚构客户",
+            service_dates=["2032-06-04"],
+        ),
+    ).json()
+    assert fourth["order_number"] == 4
+    assert [item["order_number"] for item in client.get("/api/admin/orders").json()["items"]] == [4, 2, 1]
 
 
 def test_payment_history_blocks_order_delete_and_explains_cancellation(

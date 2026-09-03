@@ -45,6 +45,7 @@ class PlanTaskItemRead(BaseModel):
 class PlanTaskSummary(BaseModel):
     id: int
     order_id: int
+    order_number: int = Field(gt=0)
     service_date: date
     planned_time: time | None
     sort_order: int
@@ -58,6 +59,7 @@ class PlanTaskSummary(BaseModel):
 
 class PlanDayOrderMarker(BaseModel):
     order_id: int
+    order_number: int = Field(gt=0)
     customer_name: str
     visit_count: int = Field(ge=1)
     order_status: OrderStatus
@@ -151,6 +153,7 @@ class PlanRouteStart(BaseModel):
 
 class PlanRouteMarker(BaseModel):
     task_id: int
+    order_number: int = Field(gt=0)
     sequence: int
     customer_name: str
     community: str | None
@@ -161,6 +164,7 @@ class PlanRouteMarker(BaseModel):
 
 class PlanRouteIssue(BaseModel):
     task_id: int
+    order_number: int = Field(gt=0)
     customer_name: str
     community: str | None
     address: str | None

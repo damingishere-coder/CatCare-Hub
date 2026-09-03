@@ -26,6 +26,7 @@ const overview: PaymentsOverview = {
   receivables: [
     {
       order_id: 12,
+      order_number: 112,
       settlement_mode: "daily",
       service_date: "2035-10-06",
       customer_name: "P8 页面客户（虚构）",
@@ -48,6 +49,7 @@ const overview: PaymentsOverview = {
     {
       id: 31,
       order_id: 12,
+      order_number: 112,
       service_date: "2035-10-06",
       customer_name: "P8 页面客户（虚构）",
       start_date: "2035-10-06",
@@ -129,6 +131,7 @@ it("shows real summaries, receivables, and auditable payment records", async () 
   expect(within(todayCard as HTMLElement).getByText("¥88.50")).toBeInTheDocument();
   expect(within(monthCard as HTMLElement).getByText("¥4,860.00")).toBeInTheDocument();
   expect(screen.getAllByText("P8 页面客户（虚构）")).toHaveLength(2);
+  expect(screen.getAllByText(/订单 #112/)).toHaveLength(2);
   expect(screen.getByText("支付宝")).toBeInTheDocument();
   expect(screen.getByText("已完成")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "登记收款" })).toBeEnabled();

@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { displayOrderNumber } from "../../lib/orderNumber";
 import type { TaskStatus } from "../orders/types";
 import { planTaskStatusLabels } from "../plans/constants";
 import { getMobileToday } from "./api";
@@ -165,7 +166,7 @@ export function MobileTodayPage() {
                             <span className="truncate">{task.address || task.community || "地址未填写"}</span>
                           </p>
                           <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                            <PawPrint size={13} />计划 {task.planned_time?.slice(0, 5) || "待设置"} · {task.cat_count} 只猫
+                            <PawPrint size={13} />订单 #{displayOrderNumber(task)} · 计划 {task.planned_time?.slice(0, 5) || "待设置"} · {task.cat_count} 只猫
                           </p>
                         </div>
                       </div>

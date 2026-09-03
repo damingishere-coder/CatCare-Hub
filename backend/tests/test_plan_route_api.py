@@ -672,6 +672,7 @@ def test_cancelled_tasks_are_excluded_and_missing_address_is_not_guessed(
     assert workspace["unresolved_tasks"] == [
         {
             "task_id": active_tasks[0]["id"],
+            "order_number": active_tasks[0]["order_number"],
             "customer_name": active_tasks[0]["customer"]["name"],
             "community": None,
             "address": None,

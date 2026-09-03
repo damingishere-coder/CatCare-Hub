@@ -342,6 +342,7 @@ class OrderDailyReceivableRead(BaseModel):
 
 class OrderSummary(BaseModel):
     id: int
+    order_number: int = Field(gt=0)
     write_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_customer_id: int | None
     service_contact: OrderServiceContact

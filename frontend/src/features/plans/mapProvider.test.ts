@@ -84,7 +84,7 @@ it("places a GCJ-02 draft pin on map click and updates it after dragging", async
     start: { label: "家", position: { latitude: 22.54, longitude: 114.05 } },
     markers: [{
       task_id: 7,
-      order_id: 12,
+      order_number: 112,
       sequence: 1,
       customer_name: "虚构定位客户",
       community: "虚构小区",
@@ -121,7 +121,7 @@ it("places a GCJ-02 draft pin on map click and updates it after dragging", async
     start: { label: "家", position: { latitude: 22.54, longitude: 114.05 } },
     markers: [{
       task_id: 7,
-      order_id: 12,
+      order_number: 112,
       sequence: 1,
       customer_name: "虚构定位客户",
       community: "虚构小区",
@@ -139,9 +139,9 @@ it("places a GCJ-02 draft pin on map click and updates it after dragging", async
   expect(mapInstances[0].fitViewCalls).toBe(1);
   expect(draftMarker?.positions).toContainEqual([114.09, 22.58]);
 
-  const previousMarker = markerInstances.find((marker) => marker.options.title === "订单 #12 · 虚构定位客户 · 路线第 1 站");
+  const previousMarker = markerInstances.find((marker) => marker.options.title === "订单 #112 · 虚构定位客户 · 路线第 1 站");
   expect((previousMarker?.options.content as HTMLDivElement).className).toContain("bg-slate-400");
-  expect((previousMarker?.options.content as HTMLDivElement).textContent).toBe("#12");
+  expect((previousMarker?.options.content as HTMLDivElement).textContent).toBe("#112");
   controller.dispose();
   expect(mapInstances[0].destroyed).toBe(true);
 });

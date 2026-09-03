@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
+import { displayOrderNumber } from "../../lib/orderNumber";
 import { serviceItemOptions } from "../orders/constants";
 import { customerAddress } from "../../lib/customerDisplay";
 import type { ServiceItem } from "../orders/types";
@@ -449,7 +450,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
     if (!taskDetail || !plan || !draftLocation || locationSaving) return;
     const scope = taskDetail.location_scope === "customer"
       ? `将同步 ${taskDetail.location_sync_order_count ?? 0} 笔同地址订单、${taskDetail.location_sync_task_count ?? 0} 个未执行任务`
-      : `未关联客户档案，仅修改订单 #${taskDetail.task.order_id} 及其未执行任务`;
+      : `未关联客户档案，仅修改订单 #${displayOrderNumber(taskDetail.task)} 及其未执行任务`;
     if (!window.confirm(`确认保存 ${taskDetail.customer.name} 的新定位？\n${scope}\n地址文字不会改变。`)) return;
     setLocationSaving(true);
     setError(null);
@@ -645,7 +646,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
               <div className="space-y-5">
                 <section>
                   <div className="flex items-start justify-between gap-3">
-                    <div><p className="text-lg font-semibold text-slate-950">{taskDetail.customer.name}</p><p className="mt-1 text-xs text-slate-500">订单 #{taskDetail.task.order_id} · 任务 #{taskDetail.task.id}</p></div>
+                    <div><p className="text-lg font-semibold text-slate-950">{taskDetail.customer.name}</p><p className="mt-1 text-xs text-slate-500">订单 #{displayOrderNumber(taskDetail.task)} · 任务 #{taskDetail.task.id}</p></div>
                     <span className={`rounded-full px-2 py-1 text-xs font-medium ${statusStyle(taskDetail.task.status)}`}>{planTaskStatusLabels[taskDetail.task.status]}</span>
                   </div>
                   <p className="mt-3 text-sm leading-6 text-slate-700">{addressLine(taskDetail)}</p>
@@ -654,7 +655,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                     <p className="mt-1">当前：{taskDetail.current_position ? `${taskDetail.current_position.longitude.toFixed(6)}, ${taskDetail.current_position.latitude.toFixed(6)}` : "尚无可信坐标"}</p>
                     {!amapReady ? <p className="mt-1 font-medium text-amber-700">高德街道底图未成功加载，只能查看，不能修改定位。</p> : null}
                     {locationMessage ? <p className="mt-2 rounded-md bg-emerald-50 px-2 py-1.5 text-emerald-800">{locationMessage}</p> : null}
-                    {locationEditing ? <div className="mt-3 space-y-2 rounded-md bg-white p-2"><p><strong>原地址：</strong>{addressLine(taskDetail)}</p><p><strong>原定位：</strong>{taskDetail.current_position ? `${taskDetail.current_position.longitude.toFixed(6)}, ${taskDetail.current_position.latitude.toFixed(6)}` : "无"}</p><p><strong>新定位：</strong>{draftLocation ? `${draftLocation.longitude.toFixed(6)}, ${draftLocation.latitude.toFixed(6)}` : "请点击地图选择"}</p><p><strong>同步范围：</strong>{taskDetail.location_scope === "customer" ? `${taskDetail.location_sync_order_count ?? 0} 笔同地址订单、${taskDetail.location_sync_task_count ?? 0} 个未执行任务` : `订单 #${taskDetail.task.order_id} 的未执行任务`}</p><div className="flex gap-2"><button type="button" className="cc-button cc-button--secondary min-h-9 flex-1 px-2 text-xs" onClick={cancelLocationEdit} disabled={locationSaving}>取消</button><button type="button" className="cc-button cc-button--primary min-h-9 flex-1 px-2 text-xs" onClick={() => void saveLocation()} disabled={!draftLocation || locationSaving}>{locationSaving ? <LoaderCircle className="animate-spin" size={13} /> : null}确认定位</button></div></div> : <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="cc-button cc-button--secondary min-h-9 px-2.5 text-xs" onClick={beginLocationEdit} disabled={!amapReady || dirty || routeBusy || taskDetail.task.has_execution_history}><LocateFixed size={14} />修改客户定位</button>{taskDetail.route_geocode_status === "manual" ? <button type="button" className="cc-button cc-button--secondary min-h-9 px-2.5 text-xs" onClick={() => void restoreAutomaticLocation()} disabled={dirty || routeBusy}><RotateCcw size={14} />恢复地址自动定位</button> : null}</div>}
+                    {locationEditing ? <div className="mt-3 space-y-2 rounded-md bg-white p-2"><p><strong>原地址：</strong>{addressLine(taskDetail)}</p><p><strong>原定位：</strong>{taskDetail.current_position ? `${taskDetail.current_position.longitude.toFixed(6)}, ${taskDetail.current_position.latitude.toFixed(6)}` : "无"}</p><p><strong>新定位：</strong>{draftLocation ? `${draftLocation.longitude.toFixed(6)}, ${draftLocation.latitude.toFixed(6)}` : "请点击地图选择"}</p><p><strong>同步范围：</strong>{taskDetail.location_scope === "customer" ? `${taskDetail.location_sync_order_count ?? 0} 笔同地址订单、${taskDetail.location_sync_task_count ?? 0} 个未执行任务` : `订单 #${displayOrderNumber(taskDetail.task)} 的未执行任务`}</p><div className="flex gap-2"><button type="button" className="cc-button cc-button--secondary min-h-9 flex-1 px-2 text-xs" onClick={cancelLocationEdit} disabled={locationSaving}>取消</button><button type="button" className="cc-button cc-button--primary min-h-9 flex-1 px-2 text-xs" onClick={() => void saveLocation()} disabled={!draftLocation || locationSaving}>{locationSaving ? <LoaderCircle className="animate-spin" size={13} /> : null}确认定位</button></div></div> : <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="cc-button cc-button--secondary min-h-9 px-2.5 text-xs" onClick={beginLocationEdit} disabled={!amapReady || dirty || routeBusy || taskDetail.task.has_execution_history}><LocateFixed size={14} />修改客户定位</button>{taskDetail.route_geocode_status === "manual" ? <button type="button" className="cc-button cc-button--secondary min-h-9 px-2.5 text-xs" onClick={() => void restoreAutomaticLocation()} disabled={dirty || routeBusy}><RotateCcw size={14} />恢复地址自动定位</button> : null}</div>}
                   </div>
                   {selectedRouteMarker?.navigation_url ? (
                     <a

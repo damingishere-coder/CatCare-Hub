@@ -12,6 +12,7 @@ export interface PaymentMetrics {
 
 export interface PaymentReceivable {
   order_id: number;
+  order_number?: number;
   settlement_mode: OrderSettlementMode;
   service_date: string | null;
   customer_name: string;
@@ -33,6 +34,7 @@ export interface PaymentReceivable {
 export interface PaymentRecord {
   id: number;
   order_id: number;
+  order_number?: number;
   service_date: string | null;
   customer_name: string;
   start_date: string;

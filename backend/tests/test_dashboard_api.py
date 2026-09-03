@@ -333,6 +333,7 @@ def test_dashboard_aggregates_schedule_reminders_and_privacy(
     assert payload["schedule"][0] == {
         "id": today_order["tasks"][0]["id"],
         "order_id": today_order["id"],
+        "order_number": today_order["order_number"],
         "planned_time": "09:30:00",
         "sort_order": 0,
         "status": "ready",

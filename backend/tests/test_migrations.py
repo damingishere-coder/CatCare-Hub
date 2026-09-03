@@ -8,6 +8,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.db.session import build_engine
+from app.models import Order
 from app.services.intake import load_public_token
 from tests.conftest import alembic_config
 
@@ -19,6 +20,7 @@ BUSINESS_TABLES = {
     "intake_audit_events",
     "customers",
     "order_cats",
+    "order_number_reservations",
     "order_service_dates",
     "orders",
     "payments",
@@ -686,6 +688,76 @@ def test_payment_soft_delete_migration_upgrades_and_downgrades_0015(tmp_path) ->
         }
         assert "payment_record_audit_events" not in downgraded.get_table_names()
         command.upgrade(config, "head")
+    finally:
+        engine.dispose()
+
+
+def test_order_business_number_migration_backfills_and_never_reuses(tmp_path) -> None:
+    database_path = tmp_path / "order-business-number.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = alembic_config(database_url)
+    command.upgrade(config, "0016_payment_soft_delete")
+    engine = build_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            for order_id, created_at in ((10, "2039-01-01"), (30, "2039-01-02")):
+                connection.execute(
+                    text(
+                        "INSERT INTO orders "
+                        "(id, contact_name, cat_snapshot, start_date, end_date, visits_per_day, "
+                        "cat_count, service_items, pricing_mode, settlement_mode, adjustment_type, "
+                        "adjustment_amount, base_price, extra_cat_fee, stairs_fee, other_fee, "
+                        "total_amount, paid_amount, payment_status, order_status, created_at, updated_at) "
+                        "VALUES (:id, :name, '[]', '2039-02-01', '2039-02-01', 1, 1, '[]', "
+                        "'per_visit', 'daily', 'none', 0, 30, 0, 0, 0, 30, 0, 'unpaid', "
+                        "'confirmed', :created_at, :created_at)"
+                    ),
+                    {
+                        "id": order_id,
+                        "name": f"迁移虚构订单 {order_id}",
+                        "created_at": created_at,
+                    },
+                )
+
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT id, order_number FROM orders ORDER BY order_number")
+            ).all() == [(10, 1), (30, 2)]
+            assert connection.execute(
+                text("SELECT number FROM order_number_reservations ORDER BY number")
+            ).scalars().all() == [1, 2]
+            assert connection.execute(text("PRAGMA integrity_check")).scalar_one() == "ok"
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+
+        with Session(engine) as session:
+            third = Order(
+                contact_name="第三笔迁移后虚构订单",
+                cat_snapshot=[],
+                start_date=datetime(2039, 2, 3).date(),
+                end_date=datetime(2039, 2, 3).date(),
+                cat_count=1,
+                service_items=[],
+                pricing_mode="per_visit",
+            )
+            session.add(third)
+            session.commit()
+            assert third.order_number == 3
+            session.delete(third)
+            session.commit()
+
+            fourth = Order(
+                contact_name="第四笔迁移后虚构订单",
+                cat_snapshot=[],
+                start_date=datetime(2039, 2, 4).date(),
+                end_date=datetime(2039, 2, 4).date(),
+                cat_count=1,
+                service_items=[],
+                pricing_mode="per_visit",
+            )
+            session.add(fourth)
+            session.commit()
+            assert fourth.order_number == 4
     finally:
         engine.dispose()
 

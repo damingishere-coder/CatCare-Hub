@@ -20,6 +20,7 @@ import {
 
 import { CalendarMonthGrid } from "../../components/ui/CalendarMonthGrid";
 import { localDateValue, parseLocalDate } from "../../components/ui/calendarDates";
+import { displayOrderNumber } from "../../lib/orderNumber";
 import { serviceItemOptions } from "./constants";
 import { parseOrderAddress } from "./addressParser";
 import {
@@ -384,7 +385,7 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
       <div ref={dialogRef} className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_28px_90px_rgba(15,23,42,0.22)] sm:max-h-[calc(100dvh-3rem)]">
         <form className="contents" onSubmit={handleSubmit}>
           <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200/80 px-5 py-4 sm:px-7 sm:py-5">
-            <div><h2 id="order-form-title" className="text-xl font-semibold tracking-tight text-[#1D1D1F]">{initial ? `编辑订单 #${initial.id}` : "新建订单"}</h2><p className="mt-1 text-sm text-slate-500">选择具体上门日期，每个日期生成一次服务任务。</p></div>
+            <div><h2 id="order-form-title" className="text-xl font-semibold tracking-tight text-[#1D1D1F]">{initial ? `编辑订单 #${displayOrderNumber(initial)}` : "新建订单"}</h2><p className="mt-1 text-sm text-slate-500">选择具体上门日期，每个日期生成一次服务任务。</p></div>
             <button type="button" className="cc-icon-button" onClick={onCancel} disabled={saving} aria-label="关闭订单表单"><X size={18} /></button>
           </header>
 

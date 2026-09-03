@@ -1,7 +1,7 @@
 from datetime import date, time
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.enums import TaskStatus
 from app.schemas.task import TaskExecutionDetail
@@ -13,6 +13,7 @@ NavigationState = Literal["ready", "missing_coordinates", "provider_unavailable"
 class MobileTodayTask(BaseModel):
     id: int
     order_id: int
+    order_number: int = Field(gt=0)
     sequence: int
     sort_order: int
     planned_time: time | None

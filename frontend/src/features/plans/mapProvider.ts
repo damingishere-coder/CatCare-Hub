@@ -1,3 +1,4 @@
+import { displayOrderNumber } from "../../lib/orderNumber";
 import type { PlanGeoPoint, PlanRouteMarker, PlanRouteStart } from "./types";
 
 export interface MapRenderModel {
@@ -155,7 +156,7 @@ function markerContent(
 }
 
 function customerMarkerContent(
-  orderId: number | undefined,
+  orderNumber: number | "?",
   tooltip: string,
   selected = false,
   offset: MarkerDisplayOffset = { x: 0, y: 0 },
@@ -167,7 +168,7 @@ function customerMarkerContent(
     "text-[11px] font-bold whitespace-nowrap text-white shadow-md",
     selected ? "bg-amber-600 ring-2 ring-amber-300" : muted ? "bg-slate-400" : "bg-slate-900",
   ].join(" ");
-  content.textContent = orderId === undefined ? "#?" : `#${orderId}`;
+  content.textContent = `#${orderNumber}`;
   content.title = tooltip;
   content.setAttribute("aria-label", tooltip);
   content.style.transform = `translate(${offset.x}px, ${offset.y}px)`;
@@ -278,13 +279,14 @@ export class AmapMapProvider implements MapProvider {
         );
       }
       for (const [index, item] of model.markers.entries()) {
-        const tooltip = `订单 #${item.order_id ?? "?"} · ${item.customer_name} · 路线第 ${item.sequence} 站`;
+        const orderNumber = displayOrderNumber(item);
+        const tooltip = `订单 #${orderNumber} · ${item.customer_name} · 路线第 ${item.sequence} 站`;
         const marker = new AMap.Marker({
           position: position(item.position),
           title: tooltip,
           anchor: "center",
           content: customerMarkerContent(
-            item.order_id,
+            orderNumber,
             tooltip,
             item.task_id === model.selectedTaskId && !model.locationEditing,
             markerDisplayOffset(model.markers, index),

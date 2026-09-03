@@ -1,6 +1,7 @@
 import { LoaderCircle, RotateCcw, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { displayOrderNumber } from "../../lib/orderNumber";
 import type { PaymentRecord } from "./types";
 
 const methodLabels = {
@@ -74,7 +75,7 @@ export function PaymentVoidDialog({ record, onCancel, onConfirm }: PaymentVoidDi
           </header>
           <div className="space-y-4 p-5">
             <dl className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
-              <div><dt className="text-xs text-slate-500">客户 / 订单</dt><dd className="mt-1 font-medium text-slate-900">{record.customer_name} · #{record.order_id}</dd></div>
+              <div><dt className="text-xs text-slate-500">客户 / 订单</dt><dd className="mt-1 font-medium text-slate-900">{record.customer_name} · #{displayOrderNumber(record)}</dd></div>
               <div><dt className="text-xs text-slate-500">服务日期</dt><dd className="mt-1 font-medium text-slate-900">{record.service_date ?? `${record.start_date} 至 ${record.end_date}`}</dd></div>
               <div><dt className="text-xs text-slate-500">方式 / 金额</dt><dd className="mt-1 font-medium text-slate-900">{methodLabels[record.payment_method]} · {currency(record.amount)}</dd></div>
               <div><dt className="text-xs text-slate-500">收款时间</dt><dd className="mt-1 font-medium text-slate-900">{displayDateTime(record.paid_at)}</dd></div>

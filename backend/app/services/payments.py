@@ -157,6 +157,7 @@ def _receivable(
 ) -> PaymentReceivable:
     return PaymentReceivable(
         order_id=order.id,
+        order_number=order.order_number,
         settlement_mode=order.settlement_mode,
         service_date=service_date,
         customer_name=order.contact_name,
@@ -204,6 +205,7 @@ def _payment_record(payment: Payment) -> PaymentRecordRead:
     return PaymentRecordRead(
         id=payment.id,
         order_id=payment.order_id,
+        order_number=order.order_number,
         service_date=payment.service_date,
         customer_name=order.contact_name,
         start_date=order.start_date,

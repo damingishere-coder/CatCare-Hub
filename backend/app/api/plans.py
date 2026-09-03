@@ -65,6 +65,7 @@ def _task_summary(task: Task) -> PlanTaskSummary:
     return PlanTaskSummary(
         id=task.id,
         order_id=task.order_id,
+        order_number=task.order.order_number,
         service_date=task.service_date,
         planned_time=task.planned_time,
         sort_order=task.sort_order,
@@ -213,6 +214,7 @@ def list_plan_days(
                     [
                         PlanDayOrderMarker(
                             order_id=order_id,
+                            order_number=entries[0].order.order_number,
                             customer_name=entries[0].order.contact_name,
                             visit_count=len(entries),
                             order_status=entries[0].order.order_status,

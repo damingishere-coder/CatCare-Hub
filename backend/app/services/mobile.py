@@ -62,6 +62,7 @@ def load_mobile_today(
             MobileTodayTask(
                 id=task.id,
                 order_id=task.order_id,
+                order_number=task.order.order_number,
                 sequence=sequence,
                 sort_order=task.sort_order,
                 planned_time=task.planned_time,

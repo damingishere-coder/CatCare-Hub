@@ -2,6 +2,7 @@ import { CircleDollarSign } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { FormDialog } from "../../components/ui/FormDialog";
+import { displayOrderNumber } from "../../lib/orderNumber";
 import type { PaymentCreateInput, PaymentMethod, PaymentReceivable } from "./types";
 
 const inputClass =
@@ -108,7 +109,7 @@ export function PaymentForm({ orders, initialReceivableKey, onCancel, onSave }: 
           <label className={labelClass}>
             待收订单
             <select className={inputClass} value={selectedKey} onChange={(event) => handleOrderChange(event.target.value)} disabled={saving}>
-              {orders.map((order) => <option key={receivableKey(order)} value={receivableKey(order)}>#{order.order_id} · {order.customer_name} · {order.service_date ?? "整单"} · 待收 ¥{order.due_amount}</option>)}
+              {orders.map((order) => <option key={receivableKey(order)} value={receivableKey(order)}>#{displayOrderNumber(order)} · {order.customer_name} · {order.service_date ?? "整单"} · 待收 ¥{order.due_amount}</option>)}
             </select>
           </label>
 

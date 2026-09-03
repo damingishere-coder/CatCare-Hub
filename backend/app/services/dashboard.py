@@ -152,6 +152,7 @@ def _task_summary(task: Task) -> DashboardTaskSummary:
     return DashboardTaskSummary(
         id=task.id,
         order_id=task.order_id,
+        order_number=task.order.order_number,
         planned_time=task.planned_time,
         sort_order=task.sort_order,
         status=task.status,
@@ -189,6 +190,7 @@ def _task_reminders(
                     customer_name=task.order.contact_name,
                     task_id=task.id,
                     order_id=task.order_id,
+                    order_number=task.order.order_number,
                     cat_count=task.order.cat_count,
                     message=f"{_task_label(task)}，钥匙状态为待取",
                 )
@@ -211,6 +213,7 @@ def _task_reminders(
                     customer_name=task.order.contact_name,
                     task_id=task.id,
                     order_id=task.order_id,
+                    order_number=task.order.order_number,
                     cat_count=task.order.cat_count,
                     message=f"{_task_label(task)}，请核对喂药要求",
                 )
@@ -224,6 +227,7 @@ def _task_reminders(
                 customer_name=task.order.contact_name,
                 task_id=task.id,
                 order_id=task.order_id,
+                order_number=task.order.order_number,
                 cat_count=task.order.cat_count,
                 expected_revision=execution_revision(task),
                 message=(
@@ -260,9 +264,10 @@ def _order_reminders(
                     kind="payment_due",
                     customer_name=order.contact_name,
                     order_id=order.id,
+                    order_number=order.order_number,
                     cat_count=order.cat_count,
                     amount=amount_due,
-                    message=f"订单 #{order.id} 待收 {amount_due:.2f} 元",
+                    message=f"订单 #{order.order_number} 待收 {amount_due:.2f} 元",
                 )
             )
 
@@ -275,8 +280,9 @@ def _order_reminders(
                     customer_name=order.contact_name,
                     task_id=final_task.id,
                     order_id=order.id,
+                    order_number=order.order_number,
                     cat_count=order.cat_count,
-                    message=f"订单 #{order.id} 今天完成最后一次服务",
+                    message=f"订单 #{order.order_number} 今天完成最后一次服务",
                 )
             )
 
@@ -287,8 +293,9 @@ def _order_reminders(
                     kind="order_starts_tomorrow",
                     customer_name=order.contact_name,
                     order_id=order.id,
+                    order_number=order.order_number,
                     cat_count=order.cat_count,
-                    message=f"订单 #{order.id} 将于明日开始",
+                    message=f"订单 #{order.order_number} 将于明日开始",
                 )
             )
     return reminders, pending_orders
