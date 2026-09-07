@@ -32,7 +32,7 @@ export function AdminLayout() {
       <aside className="border-b border-black/6 bg-white text-[var(--cc-text)] lg:sticky lg:top-0 lg:h-dvh lg:border-r lg:border-b-0">
         <div className="flex h-[72px] items-center gap-3 border-b border-black/6 px-5">
           <div
-            className="flex size-10 items-center justify-center rounded-xl bg-brand-700 text-white"
+            className="flex size-10 items-center justify-center rounded-xl bg-[var(--cc-action)] text-[var(--cc-action-text)]"
             aria-hidden="true"
           >
             <PawPrint size={19} />
