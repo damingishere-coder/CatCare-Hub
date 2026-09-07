@@ -212,3 +212,34 @@ it("locks write controls after a stale revision conflict", async () => {
   expect(screen.getByText(/刷新前所有执行按钮已锁定/)).toBeInTheDocument();
   expect(screen.getByLabelText("添粮（必做）")).toBeDisabled();
 });
+
+
+it("protects unsaved notes when refresh is cancelled and clears them only after an explicit discard", async () => {
+  apiMocks.getMobileTask.mockResolvedValue({ ...confirmed, status: "in_progress" });
+  renderPage();
+  await screen.findByText("P9 虚构客户");
+  fireEvent.change(screen.getByLabelText("本次备注"), { target: { value: "尚未保存的现场记录" } });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  fireEvent.click(screen.getByRole("button", { name: "刷新任务" }));
+  expect(confirm).toHaveBeenCalled();
+  expect(apiMocks.getMobileTask).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText("本次备注")).toHaveValue("尚未保存的现场记录");
+  confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByRole("button", { name: "刷新任务" }));
+  await waitFor(() => expect(apiMocks.getMobileTask).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.getByLabelText("本次备注")).toHaveValue(""));
+  confirm.mockRestore();
+});
+
+it("lists remaining service items and does not complete while a photo is awaiting upload", async () => {
+  apiMocks.getMobileTask.mockResolvedValue({ ...confirmed, status: "in_progress", items: confirmed.items.map((item) => ({ ...item, completed: true })) });
+  renderPage();
+  await screen.findByText("P9 虚构客户");
+  const complete = screen.getByRole("button", { name: "完成本次服务" });
+  expect(complete.closest("footer")).not.toBeNull();
+  expect(complete).toBeEnabled();
+  fireEvent.change(screen.getByLabelText("拍摄或选择现场照片"), { target: { files: [new File(["test"], "test.png", { type: "image/png" })] } });
+  expect(complete).toBeDisabled();
+  expect(screen.getByText("请先上传已选照片")).toBeInTheDocument();
+  expect(apiMocks.completeMobileTask).not.toHaveBeenCalled();
+});

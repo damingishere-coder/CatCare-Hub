@@ -11,12 +11,12 @@ import {
   Play,
   RefreshCw,
   Save,
-  ShieldAlert,
   Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { useUnsavedChanges } from "../../components/ui/useUnsavedChanges";
 import { serviceItemOptions } from "../orders/constants";
 import { customerAddress } from "../../lib/customerDisplay";
 import type { ServiceItem, TaskStatus } from "../orders/types";
@@ -86,6 +86,9 @@ export function MobileTaskPage() {
   const [catStatus, setCatStatus] = useState("");
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
+  const textDirty = detail ? optionalText(notes) !== detail.notes || optionalText(catStatus) !== detail.cat_status : false;
+  const confirmDiscard = useUnsavedChanges(textDirty || selectedPhoto !== null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   const applyDetail = useCallback((next: MobileTaskExecutionDetail, syncText = false) => {
     setDetail(next);
@@ -96,6 +99,7 @@ export function MobileTaskPage() {
   }, []);
 
   const loadTask = useCallback(async () => {
+    if (!confirmDiscard()) return;
     if (!validTaskId) {
       setError("任务编号无效，请从今日任务重新进入。");
       setLoading(false);
@@ -105,13 +109,16 @@ export function MobileTaskPage() {
     setError(null);
     try {
       applyDetail(await getMobileTask(taskId), true);
+      setSelectedPhoto(null);
+      if (photoInput.current) photoInput.current.value = "";
+      setSavedMessage(null);
       setStale(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "任务加载失败，请重试。");
     } finally {
       setLoading(false);
     }
-  }, [applyDetail, taskId, validTaskId]);
+  }, [applyDetail, taskId, validTaskId, confirmDiscard]);
 
   useEffect(() => {
     let active = true;
@@ -186,6 +193,7 @@ export function MobileTaskPage() {
         notes: optionalText(notes),
         cat_status: optionalText(catStatus),
       }), true);
+      setSavedMessage("现场记录已保存");
     } catch (cause) {
       handleMutationError(cause);
     } finally {
@@ -232,15 +240,12 @@ export function MobileTaskPage() {
   const terminal = detail
     ? ["completed", "exception", "cancelled"].includes(detail.status)
     : false;
-  const textDirty = detail
-    ? optionalText(notes) !== detail.notes || optionalText(catStatus) !== detail.cat_status
-    : false;
   const missingRequired = detail?.items.filter((item) => item.required && !item.completed) ?? [];
   const controlsDisabled = Boolean(busy) || stale;
 
   return (
-    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-[#F5F5F7] text-[#1D1D1F]">
-      <div className="mx-auto max-w-xl px-4 py-5 sm:px-5 sm:py-7">
+    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-[var(--cc-app)] text-[var(--cc-text)]">
+      <div className="mx-auto max-w-xl px-4 pt-5 pb-52 sm:px-5 sm:pt-7">
         <header>
           <div className="flex items-center justify-between gap-3">
             <Link className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-slate-700" to="/mobile">
@@ -251,14 +256,14 @@ export function MobileTaskPage() {
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm disabled:opacity-50"
               aria-label="刷新任务"
               onClick={() => void loadTask()}
-              disabled={loading}
+              disabled={loading || Boolean(busy)}
             >
               <RefreshCw className={loading ? "animate-spin" : ""} size={18} />
             </button></div>
           </div>
           <div className="mt-3 flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold tracking-[0.14em] text-orange-600 uppercase">现场执行</p>
+              <p className="text-xs font-semibold tracking-[0.14em] text-brand-600 uppercase">现场执行</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight">单次喂猫任务</h1>
             </div>
             {detail ? (
@@ -269,11 +274,8 @@ export function MobileTaskPage() {
           </div>
         </header>
 
-        <div className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-3 text-xs leading-5 text-slate-600 shadow-sm">
-          <ShieldAlert className="mt-0.5 shrink-0" size={16} />
-          本页含地址、门禁和钥匙信息；当前无密码保护，仅允许在运行 CatCare-Hub 的这台电脑上使用。
-        </div>
-
+        <p className="mt-3 text-xs text-slate-500">私有服务记录 · 请在受信任设备上使用</p>
+        {detail ? <div className="mt-4 rounded-xl bg-brand-100 px-4 py-3"><p className="font-semibold">服务进度 · {detail.items.filter((item) => item.completed).length}/{detail.items.length} 项已完成</p><p className="mt-1 text-xs text-brand-800">{terminal ? "本次任务已结束，可查看服务记录。" : detail.status === "in_progress" ? "按清单照顾猫咪，再上传照片和保存记录。" : "核对地址和照护要求，准备好后开始服务。"}</p></div> : null}
         {error ? (
           <div className="cc-alert cc-alert--danger mt-4" role="alert">
             <span className="flex items-start gap-2"><AlertTriangle className="mt-0.5 shrink-0" size={16} />{error}</span>
@@ -308,7 +310,7 @@ export function MobileTaskPage() {
 
               <div className="mt-4">
                 {detail.navigation_url ? (
-                  <a className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-[#FF9500] text-sm font-semibold text-[#1D1D1F] shadow-sm" href={detail.navigation_url} target="_blank" rel="noreferrer">
+                  <a className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-brand-700 text-sm font-semibold text-white shadow-sm" href={detail.navigation_url} target="_blank" rel="noreferrer">
                     <Navigation size={16} />一键导航
                   </a>
                 ) : (
@@ -343,11 +345,7 @@ export function MobileTaskPage() {
                   <h2 className="font-bold">执行状态</h2>
                   <p className="mt-1 text-xs text-slate-500">先开始任务，再记录现场情况。</p>
                 </div>
-                {startable ? (
-                  <button type="button" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-[#FF9500] px-3 text-sm font-semibold text-[#1D1D1F] shadow-sm disabled:opacity-40" onClick={() => void handleStart()} disabled={controlsDisabled}>
-                    {busy === "start" ? <LoaderCircle className="animate-spin" size={16} /> : <Play size={16} />}开始任务
-                  </button>
-                ) : null}
+
               </div>
               {detail.status === "pending" ? <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">任务尚未确认，请先在电脑后台确认。</p> : null}
               {terminal ? <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">任务已结束，现场记录现为只读。</p> : null}
@@ -366,7 +364,7 @@ export function MobileTaskPage() {
                     <label key={item.id} className={`flex min-h-12 items-center gap-3 rounded-lg border px-3 ${item.completed ? "border-emerald-200 bg-emerald-50" : "border-slate-200"}`}>
                       <input
                         type="checkbox"
-                        className="size-5 accent-orange-500"
+                        className="size-5 accent-brand-500"
                         checked={item.completed}
                         onChange={(event) => void handleChecklist(item.id, event.target.checked)}
                         disabled={!editing || photoItem || controlsDisabled}
@@ -402,7 +400,7 @@ export function MobileTaskPage() {
                   onChange={(event) => setSelectedPhoto(event.target.files?.[0] ?? null)}
                   className="block w-full text-sm text-slate-600 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold"
                 />
-                <button type="button" className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-[#FF9500] text-sm font-semibold text-[#1D1D1F] shadow-sm disabled:opacity-40" onClick={() => void handleUpload()} disabled={!editing || !selectedPhoto || controlsDisabled}>
+                <button type="button" className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-brand-700 text-sm font-semibold text-white shadow-sm disabled:opacity-40" onClick={() => void handleUpload()} disabled={!editing || !selectedPhoto || controlsDisabled}>
                   {busy === "photo" ? <LoaderCircle className="animate-spin" size={16} /> : <Upload size={16} />}上传图片
                 </button>
                 <p className="mt-2 text-xs text-slate-500">JPEG / PNG / WebP，单张不超过 10 MiB</p>
@@ -410,32 +408,26 @@ export function MobileTaskPage() {
             </section>
 
             <section className="cc-surface p-4">
-              <h2 className="font-bold">现场记录</h2>
+              <h2 className="font-bold">现场记录</h2><p className="cc-save-state mt-2" role="status">{textDirty ? "有未保存的现场记录" : savedMessage ?? "记录保存后才会同步到工作台"}</p>
               <label className="mt-3 block text-sm font-semibold text-slate-700">猫咪状态
-                <textarea className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal disabled:bg-slate-100" maxLength={4000} value={catStatus} onChange={(event) => setCatStatus(event.target.value)} disabled={!editing || controlsDisabled} placeholder="如：精神良好、正常进食饮水" />
+                <textarea className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal disabled:bg-slate-100" maxLength={4000} value={catStatus} onChange={(event) => { setCatStatus(event.target.value); setSavedMessage(null); }} disabled={!editing || controlsDisabled} placeholder="如：精神良好、正常进食饮水" />
               </label>
               <label className="mt-3 block text-sm font-semibold text-slate-700">本次备注
-                <textarea className="mt-2 min-h-28 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal disabled:bg-slate-100" maxLength={4000} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={!editing || controlsDisabled} placeholder="记录喂养、清洁和客户沟通情况" />
+                <textarea className="mt-2 min-h-28 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal disabled:bg-slate-100" maxLength={4000} value={notes} onChange={(event) => { setNotes(event.target.value); setSavedMessage(null); }} disabled={!editing || controlsDisabled} placeholder="记录喂养、清洁和客户沟通情况" />
               </label>
               <button type="button" className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold disabled:opacity-40" onClick={() => void handleSaveText()} disabled={!editing || !textDirty || controlsDisabled}>
                 {busy === "notes" ? <LoaderCircle className="animate-spin" size={16} /> : <Save size={16} />}保存现场记录
               </button>
             </section>
 
-            {editing ? (
-              <section className="rounded-2xl bg-orange-700 p-4 text-white shadow-sm">
-                <h2 className="font-bold">完成本次服务</h2>
-                <p className="mt-1 text-sm leading-6 text-orange-50">{textDirty ? "现场记录尚未保存" : missingRequired.length ? `仍有 ${missingRequired.length} 项必做事项未完成` : "必做事项已完成，请最后核对现场记录"}</p>
-                <button type="button" className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-bold text-orange-700 disabled:opacity-40" onClick={() => void handleComplete()} disabled={missingRequired.length > 0 || textDirty || controlsDisabled}>
-                  {busy === "complete" ? <LoaderCircle className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}完成本次服务
-                </button>
-              </section>
-            ) : null}
-
             {stale ? <p className="text-sm leading-6 text-amber-700">当前页面已过期，刷新前所有执行按钮已锁定。</p> : null}
           </div>
         )}
       </div>
+      {detail && !terminal ? <footer className="cc-mobile-actions"><div>
+        <p className="mb-2 text-sm text-slate-600">{stale ? "记录有更新，请先刷新核对" : startable ? "准备好后，开始本次照护" : !editing ? "任务尚未确认，请先在后台确认" : textDirty ? "请先保存现场记录" : selectedPhoto ? "请先上传已选照片" : missingRequired.length ? `待完成：${missingRequired.map((item) => serviceLabels[item.item_type]).join("、")}` : "必做事项已完成，请最后核对现场记录"}</p>
+        {startable ? <button type="button" className="cc-button cc-button--primary w-full" onClick={() => void handleStart()} disabled={controlsDisabled}>{busy === "start" ? <LoaderCircle className="animate-spin" size={17} /> : <Play size={17} />}开始任务</button> : editing ? <button type="button" className="cc-button cc-button--primary w-full" onClick={() => void handleComplete()} disabled={missingRequired.length > 0 || textDirty || selectedPhoto !== null || controlsDisabled}>{busy === "complete" ? <LoaderCircle className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}完成本次服务</button> : null}
+      </div></footer> : null}
     </main>
   );
 }

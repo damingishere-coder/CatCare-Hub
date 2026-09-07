@@ -83,11 +83,11 @@ export function MobileTodayPage() {
   }, []);
 
   return (
-    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-[#F5F5F7] text-[#1D1D1F]">
+    <main className="mobile-safe-area min-h-dvh overflow-x-hidden bg-[var(--cc-app)] text-[var(--cc-text)]">
       <div className="mx-auto max-w-xl px-4 py-6 sm:px-5 sm:py-8">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold tracking-[0.14em] text-orange-600 uppercase">移动执行端</p>
+            <p className="text-xs font-semibold tracking-[0.14em] text-brand-600 uppercase">移动执行端</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">今天的喂猫任务</h1>
             <p className="mt-2 text-sm text-slate-600">
               {today ? `${displayBusinessDate(today.business_date)} · 上海业务时间` : "按上海业务时间读取"}
@@ -124,8 +124,8 @@ export function MobileTodayPage() {
         ) : today ? (
           <>
             <section className="mt-6 grid grid-cols-3 gap-2" aria-label="今日任务概览">
-              <div className="rounded-2xl bg-[#FF9500] p-3 text-[#1D1D1F] shadow-sm">
-                <p className="text-xs text-orange-950/70">全部</p>
+              <div className="rounded-2xl bg-brand-700 p-3 text-white shadow-sm">
+                <p className="text-xs text-white/90">全部</p>
                 <p className="mt-1 text-2xl font-bold">{today.task_count}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -150,7 +150,7 @@ export function MobileTodayPage() {
                   {today.tasks.map((task) => (
                     <li key={task.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                       <div className="flex items-start gap-3">
-                        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#FF9500] text-sm font-bold text-[#1D1D1F]">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-700 text-sm font-bold text-white">
                           {task.sequence}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -186,7 +186,7 @@ export function MobileTodayPage() {
                           </span>
                         )}
                         <Link
-                          className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-[#FF9500] px-3 text-sm font-semibold text-[#1D1D1F] shadow-sm hover:bg-orange-500"
+                          className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-brand-700 px-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-500"
                           to={`/mobile/tasks/${task.id}`}
                         >
                           查看任务<ChevronRight size={16} />

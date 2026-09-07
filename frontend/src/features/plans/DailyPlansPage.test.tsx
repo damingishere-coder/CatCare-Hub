@@ -203,13 +203,14 @@ beforeEach(() => {
 
 it("shows date tasks, route workspace, and a privacy-minimized selected detail", async () => {
   renderPage();
+  fireEvent.click(screen.getByRole("button", { name: /展开详情/ }));
 
   expect((await screen.findAllByText("P4 第一位虚构客户")).length).toBeGreaterThan(0);
   expect(screen.getByRole("heading", { name: "路线地图" })).toBeInTheDocument();
   expect(screen.getByText("高德后端：已配置")).toBeInTheDocument();
   expect(screen.getByText("街道底图：未配置")).toBeInTheDocument();
   expect(screen.getByText("闭环：家 → 客户 → 家")).toBeInTheDocument();
-  expect(screen.getByText(/先用当天全部已验证地址做闭环全局优化/)).toBeInTheDocument();
+  expect(screen.getByText(/按已验证地址规划家/)).toBeInTheDocument();
   expect(screen.getByText(/另 1 位/)).toBeInTheDocument();
   expect(await screen.findByText("未配置街道底图，按真实坐标展示")).toBeInTheDocument();
   expect(await screen.findByRole("link", { name: "打开高德导航" })).toHaveAttribute(
@@ -280,6 +281,7 @@ it("moves tasks, edits time, and saves one revision-protected day schedule", asy
 
 it("updates only planning status with the current day revision", async () => {
   renderPage();
+  fireEvent.click(screen.getByRole("button", { name: /展开详情/ }));
   await screen.findByText(/虚构路 100 号/);
 
   fireEvent.change(screen.getByRole("combobox", { name: "任务状态" }), {
@@ -307,6 +309,7 @@ it("locks schedule and status controls when execution history exists", async () 
     task: lockedTask,
   });
   renderPage();
+  fireEvent.click(screen.getByRole("button", { name: /展开详情/ }));
 
   expect(await screen.findByText("当天已有执行记录，时间与顺序已锁定。")).toBeInTheDocument();
   expect(screen.getByLabelText("任务 #1 计划时间")).toBeDisabled();

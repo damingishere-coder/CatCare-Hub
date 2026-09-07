@@ -149,6 +149,8 @@ it("requires a reason and confirms a soft void before refreshing", async () => {
     });
   renderPage();
   expect(await screen.findByRole("heading", { name: "收款记录" })).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("tab", { name: "收款流水" }));
+  fireEvent.click(screen.getByText("更多操作"));
   fireEvent.click(screen.getByRole("button", { name: "撤销" }));
   const dialog = screen.getByRole("dialog", { name: "撤销误登记收款" });
   expect(within(dialog).getByText(/不会向微信、支付宝、银行卡或现金渠道发起退款/)).toBeInTheDocument();
@@ -181,6 +183,8 @@ it("requires a delete reason, moves the record to deleted, and restores only its
   renderPage();
 
   expect(await screen.findByRole("heading", { name: "收款记录" })).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("tab", { name: "收款流水" }));
+  fireEvent.click(screen.getByText("更多操作"));
   fireEvent.click(screen.getByRole("button", { name: "删除" }));
   const dialog = screen.getByRole("dialog", { name: "删除收款流水" });
   expect(within(dialog).getByText(/恢复显示不会重新计入金额/)).toBeInTheDocument();
@@ -259,4 +263,18 @@ it("recovers from an API error and shows clean empty states", async () => {
   expect(screen.getByText("还没有当前收款流水。")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "查看或调整订单金额" })).toHaveAttribute("href", "/admin/orders");
   expect(screen.getByRole("button", { name: "登记收款" })).toBeDisabled();
+});
+
+
+it("switches the payment workspace with the keyboard and keeps destructive actions inside more", async () => {
+  renderPage();
+  const recordsTab = await screen.findByRole("tab", { name: "收款流水" });
+  const receivablesTab = screen.getByRole("tab", { name: /待收款（/ });
+  expect(receivablesTab).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+  fireEvent.keyDown(receivablesTab, { key: "ArrowRight" });
+  expect(recordsTab).toHaveAttribute("aria-selected", "true");
+  expect(recordsTab).toHaveFocus();
+  expect(screen.getByRole("heading", { name: "收款流水" })).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "待收项目" })).not.toBeInTheDocument();
 });

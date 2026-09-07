@@ -9,7 +9,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -18,6 +17,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
+import { ModalSurface } from "../../components/ui/ModalSurface";
+import { useUnsavedChanges } from "../../components/ui/useUnsavedChanges";
 import { CalendarMonthGrid } from "../../components/ui/CalendarMonthGrid";
 import { localDateValue, parseLocalDate } from "../../components/ui/calendarDates";
 import { serviceItemOptions } from "./constants";
@@ -40,7 +41,7 @@ import type {
   ServiceItem,
 } from "./types";
 
-const inputClass = "mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100";
+const inputClass = "mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100";
 const labelClass = "block text-sm font-medium text-slate-700";
 const defaultServices: ServiceItem[] = ["feed", "water", "litter", "photo"];
 function optionalValue(value: string): string | null {
@@ -87,7 +88,6 @@ interface OrderFormProps {
 }
 
 export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
   const initialDates = initial?.service_schedule.map((entry) => entry.service_date) ?? [];
   const firstDate = initialDates[0] ?? localDateValue();
@@ -129,30 +129,11 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    firstInputRef.current?.focus();
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !saving) onCancel();
-      if (event.key !== "Tab" || !dialogRef.current) return;
-      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")];
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      previouslyFocused?.focus();
-    };
-  }, [onCancel, saving]);
+  const draftSnapshot = JSON.stringify({ serviceContact, sourceCustomerId, catSnapshot, catCount, selectedDates, serviceItems, unitPrice, settlementMode, adjustmentType, adjustmentAmount, adjustmentReason, adjustmentDate, notes });
+  const [originalSnapshot] = useState(draftSnapshot);
+  const draftDirty = draftSnapshot !== originalSnapshot;
+  const confirmDiscard = useUnsavedChanges(draftDirty && !saving);
+  const close = () => { if (!saving && confirmDiscard()) onCancel(); };
 
   const selectedSet = useMemo(() => new Set(selectedDates), [selectedDates]);
   const adjustmentValue = adjustmentType === "none" ? 0 : Number(adjustmentAmount) || 0;
@@ -380,12 +361,11 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
   const historicalMultipleVisits = initial?.service_schedule.some((entry) => entry.visit_count > 1);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-3 backdrop-blur-md sm:p-6" role="dialog" aria-modal="true" aria-labelledby="order-form-title">
-      <div ref={dialogRef} className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_28px_90px_rgba(15,23,42,0.22)] sm:max-h-[calc(100dvh-3rem)]">
+    <ModalSurface labelledBy="order-form-title" onClose={close} busy={saving} className="max-w-6xl">
         <form className="contents" onSubmit={handleSubmit}>
           <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200/80 px-5 py-4 sm:px-7 sm:py-5">
-            <div><h2 id="order-form-title" className="text-xl font-semibold tracking-tight text-[#1D1D1F]">{initial ? `编辑订单 #${initial.id}` : "新建订单"}</h2><p className="mt-1 text-sm text-slate-500">选择具体上门日期，每个日期生成一次服务任务。</p></div>
-            <button type="button" className="cc-icon-button" onClick={onCancel} disabled={saving} aria-label="关闭订单表单"><X size={18} /></button>
+            <div><h2 id="order-form-title" className="text-xl font-semibold tracking-tight text-[var(--cc-text)]">{initial ? `编辑订单 #${initial.id}` : "新建订单"}</h2><p className="mt-1 text-sm text-slate-500">选择具体上门日期，每个日期生成一次服务任务。</p></div>
+            <button type="button" className="cc-icon-button" onClick={close} disabled={saving} aria-label="关闭订单表单"><X size={18} /></button>
           </header>
 
           <div className="cc-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
@@ -398,7 +378,7 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
                     <div><h3 id="order-customer-fields" className="text-sm font-semibold text-slate-950">订单联系人与上门信息</h3><p className="mt-1 text-xs text-slate-500">这些内容会固定保存在订单中，不受客户档案后续修改影响。</p></div>
                     <button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={() => setProfilePickerOpen((open) => !open)}><BookUser size={15} />从客户档案带入</button>
                   </div>
-                  {profilePickerOpen ? <div className="mt-3 rounded-2xl border border-orange-200 bg-orange-50/60 p-3"><label className={labelClass}>选择档案（可选）<select className={inputClass} defaultValue="" onChange={(event) => { if (event.target.value) selectCustomer(Number(event.target.value)); }}><option value="" disabled>请选择客户档案</option>{options.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.address ? ` · ${customer.address}` : ""}</option>)}</select></label><p className="mt-2 text-xs text-orange-800">带入后仍可修改本订单内容；不会反向修改客户档案。</p></div> : null}
+                  {profilePickerOpen ? <div className="mt-3 rounded-2xl border border-brand-200 bg-brand-50/60 p-3"><label className={labelClass}>选择档案（可选）<select className={inputClass} defaultValue="" onChange={(event) => { if (event.target.value) selectCustomer(Number(event.target.value)); }}><option value="" disabled>请选择客户档案</option>{options.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.address ? ` · ${customer.address}` : ""}</option>)}</select></label><p className="mt-2 text-xs text-brand-800">带入后仍可修改本订单内容；不会反向修改客户档案。</p></div> : null}
                   <label className={`${labelClass} mt-4`}>粘贴地址智能填写
                     <textarea
                       className={`${inputClass} min-h-20 resize-y`}
@@ -411,7 +391,7 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
                   <p className="mt-2 text-xs leading-5 text-slate-500">粘贴会补齐缺失的深圳市龙岗区并替换下面五个地址字段；明确写了其他地区时保留原文。只在本页本地解析，不会调用第三方地址识别服务。</p>
                   {addressParseMessage ? <p className="cc-alert mt-2 border border-blue-200 bg-blue-50 text-blue-800">{addressParseMessage}</p> : null}
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    <label className={labelClass}>联系人名称 <span className="text-red-600">*</span><input ref={firstInputRef} className={inputClass} value={serviceContact.name} placeholder="直接输入名称，不需要下拉确认" onChange={(event) => updateContact("name", event.target.value)} required /></label>
+                    <label className={labelClass}>联系人名称 <span className="text-red-600">*</span><input data-autofocus ref={firstInputRef} className={inputClass} value={serviceContact.name} placeholder="直接输入名称，不需要下拉确认" onChange={(event) => updateContact("name", event.target.value)} required /></label>
                     <label className={labelClass}>联系电话<input className={inputClass} value={serviceContact.phone ?? ""} onChange={(event) => updateContact("phone", optionalValue(event.target.value))} /></label>
                     <label className={labelClass}>微信名<input className={inputClass} value={serviceContact.wechat_name ?? ""} onChange={(event) => updateContact("wechat_name", optionalValue(event.target.value))} /></label>
                     <label className={labelClass}>小区<input className={inputClass} value={serviceContact.community ?? ""} onChange={(event) => updateContact("community", optionalValue(event.target.value))} /></label>
@@ -434,7 +414,7 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
                 </section>
 
                 <section aria-labelledby="order-schedule-fields">
-                  <div className="flex items-center justify-between gap-3"><div><h3 id="order-schedule-fields" className="text-sm font-semibold text-slate-950">服务日期</h3><p className="mt-1 text-xs text-slate-500">点击日期添加，再次点击取消；可以选择不连续日期。</p></div><span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">已选 {selectedDates.length} 天</span></div>
+                  <div className="flex items-center justify-between gap-3"><div><h3 id="order-schedule-fields" className="text-sm font-semibold text-slate-950">服务日期</h3><p className="mt-1 text-xs text-slate-500">点击日期添加，再次点击取消；可以选择不连续日期。</p></div><span className="shrink-0 whitespace-nowrap rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">已选 {selectedDates.length} 天</span></div>
                   <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
                     <div className="flex items-center justify-between"><button type="button" className="cc-icon-button" aria-label="上个月" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))}><ChevronLeft size={17} /></button><p className="text-sm font-semibold">{visibleMonth.getFullYear()} 年 {visibleMonth.getMonth() + 1} 月</p><button type="button" className="cc-icon-button" aria-label="下个月" onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))}><ChevronRight size={17} /></button></div>
                     <CalendarMonthGrid
@@ -442,27 +422,27 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
                       weekStartsOn={1}
                       fixedWeeks
                       className="mt-3 grid grid-cols-7 gap-1 text-center"
-                      renderDay={(date) => <button type="button" aria-pressed={selectedSet.has(localDateValue(date))} className={`aspect-square min-h-10 w-full rounded-xl text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${selectedSet.has(localDateValue(date)) ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "text-slate-700 hover:bg-orange-50 hover:text-orange-700"}`} onClick={() => toggleDate(date)} disabled={historyLocked}>{date.getDate()}</button>}
+                      renderDay={(date) => <button type="button" aria-pressed={selectedSet.has(localDateValue(date))} className={`aspect-square min-h-10 w-full rounded-xl text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${selectedSet.has(localDateValue(date)) ? "bg-brand-700 text-white shadow-sm" : "text-slate-700 hover:bg-brand-50 hover:text-brand-700"}`} onClick={() => toggleDate(date)} disabled={historyLocked}>{date.getDate()}</button>}
                     />
                   </div>
                 </section>
 
                 <fieldset aria-labelledby="order-service-fields">
                   <legend id="order-service-fields" className="text-sm font-semibold text-slate-950">服务内容</legend>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">{serviceItemOptions.map((item) => <label key={item.value} className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm transition ${serviceItems.includes(item.value) ? "border-orange-200 bg-orange-50 text-orange-900" : "border-slate-200 text-slate-700"}`}><input type="checkbox" checked={serviceItems.includes(item.value)} onChange={() => toggleService(item.value)} />{item.label}</label>)}</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">{serviceItemOptions.map((item) => <label key={item.value} className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm transition ${serviceItems.includes(item.value) ? "border-brand-200 bg-brand-50 text-brand-900" : "border-slate-200 text-slate-700"}`}><input type="checkbox" checked={serviceItems.includes(item.value)} onChange={() => toggleService(item.value)} />{item.label}</label>)}</div>
                   <label className={`${labelClass} mt-4`}>服务备注<textarea className={`${inputClass} min-h-24 resize-y`} rows={3} maxLength={4000} value={notes} placeholder="例如喂食用量、猫咪习惯或需要特别留意的事项" onChange={(event) => setNotes(event.target.value)} /></label>
                 </fieldset>
 
               </div>
 
-              <aside className="h-fit rounded-2xl border border-orange-100 bg-orange-50/60 p-4 lg:sticky lg:top-0" aria-label="金额预览">
+              <aside className="h-fit rounded-2xl border border-brand-100 bg-brand-50/60 p-4 lg:sticky lg:top-0" aria-label="金额预览">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-950"><Calculator size={16} />自动计算</h3>
                 <label className={`${labelClass} mt-4`}>每次价格（元）
-                  <span className="mt-1.5 flex overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:border-orange-500 focus-within:ring-4 focus-within:ring-orange-100">
+                  <span className="mt-1.5 flex overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-100">
                     <input className="min-h-16 min-w-0 flex-1 bg-transparent px-3.5 py-2.5 text-sm text-slate-950 outline-none" type="text" inputMode="decimal" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} onKeyDown={handleUnitPriceKeyDown} required />
                     <span className="flex w-11 shrink-0 flex-col border-l border-slate-200">
-                      <button type="button" className="flex h-8 items-center justify-center text-slate-600 hover:bg-orange-50 hover:text-orange-700" aria-label="每次价格增加 5 元" onClick={() => stepUnitPrice(5)}><ChevronUp size={18} /></button>
-                      <button type="button" className="flex h-8 items-center justify-center border-t border-slate-200 text-slate-600 hover:bg-orange-50 hover:text-orange-700" aria-label="每次价格减少 5 元" onClick={() => stepUnitPrice(-5)}><ChevronDown size={18} /></button>
+                      <button type="button" className="flex h-8 items-center justify-center text-slate-600 hover:bg-brand-50 hover:text-brand-700" aria-label="每次价格增加 5 元" onClick={() => stepUnitPrice(5)}><ChevronUp size={18} /></button>
+                      <button type="button" className="flex h-8 items-center justify-center border-t border-slate-200 text-slate-600 hover:bg-brand-50 hover:text-brand-700" aria-label="每次价格减少 5 元" onClick={() => stepUnitPrice(-5)}><ChevronDown size={18} /></button>
                     </span>
                   </span>
                 </label>
@@ -471,15 +451,14 @@ export function OrderForm({ options, initial, onCancel, onSave }: OrderFormProps
                 {adjustmentType !== "none" ? <div className="mt-3 space-y-3"><label className={labelClass}>服务日期<select className={inputClass} value={adjustmentDate} onChange={(event) => setAdjustmentDate(event.target.value)} disabled={historyLocked}>{selectedDates.map((date) => <option key={date} value={date}>{date}</option>)}</select></label><label className={labelClass}>变动金额（元）<input className={inputClass} type="number" min="0.01" step="0.01" value={adjustmentAmount} onChange={(event) => setAdjustmentAmount(event.target.value)} disabled={historyLocked} /></label><label className={labelClass}>原因<input className={inputClass} value={adjustmentReason} onChange={(event) => setAdjustmentReason(event.target.value)} maxLength={1000} disabled={historyLocked} /></label></div> : null}
                 <dl className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><dt className="text-slate-500">服务日期</dt><dd>{selectedDates.length} 天</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">基础应收</dt><dd>¥{money(baseTotal)}</dd></div>{adjustmentType !== "none" ? <div className="flex justify-between gap-4"><dt className="text-slate-500">{adjustmentType === "surcharge" ? "加收" : "减免"}</dt><dd>{adjustmentType === "surcharge" ? "+" : "-"}¥{money(adjustmentValue)}</dd></div> : null}</dl>
                 {dailyAmounts.length > 0 ? <div className="mt-4 space-y-1.5 rounded-xl bg-white/70 p-3" aria-label="每日金额"><p className="text-xs font-semibold text-slate-700">每日金额</p>{dailyAmounts.map((item) => <div key={item.serviceDate} className="flex justify-between gap-3 text-xs text-slate-600"><span>{item.serviceDate}{item.visitCount > 1 ? ` · ${item.visitCount} 次` : ""}</span><span>¥{money(item.finalAmount)}</span></div>)}</div> : null}
-                <div className="mt-4 border-t border-orange-200 pt-4"><p className="text-xs text-slate-500">最终应收</p><p className="mt-1 text-3xl font-semibold tracking-tight text-[#1D1D1F]">¥{money(total)}</p><p className="mt-2 text-xs leading-5 text-slate-500">每次基础 ¥{money(Number(unitPrice) || 0)}；指定日期的加收或减免只计入当天。</p></div>
+                <div className="mt-4 border-t border-brand-200 pt-4"><p className="text-xs text-slate-500">最终应收</p><p className="mt-1 text-3xl font-semibold tracking-tight text-[var(--cc-text)]">¥{money(total)}</p><p className="mt-2 text-xs leading-5 text-slate-500">每次基础 ¥{money(Number(unitPrice) || 0)}；指定日期的加收或减免只计入当天。</p></div>
                 {historyLocked ? <p className="cc-alert cc-alert--warning mt-4">订单已有收款历史；可以调整每次价格，服务日期、结算方式、金额变动和猫咪数量保持锁定。</p> : null}
               </aside>
             </div>
           </div>
 
-          <footer className="flex shrink-0 justify-end gap-3 border-t border-slate-200/80 bg-white/90 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-7"><button type="button" className="cc-button cc-button--secondary" onClick={onCancel} disabled={saving}>取消</button><button type="submit" className="cc-button cc-button--primary" disabled={saving}>{saving ? <LoaderCircle className="animate-spin" size={16} /> : null}{saving ? "保存中…" : initial ? "保存订单" : "创建订单"}</button></footer>
+          <footer className="cc-order-footer flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-slate-200/80 bg-white/90 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-7"><div className="mr-auto"><p className="text-sm font-semibold">{selectedDates.length} 天 · 合计 ¥{money(total)}</p><p className="cc-save-state">{draftDirty ? "有未保存的修改" : "填写后保存订单"}</p></div><button type="button" className="cc-button cc-button--secondary" onClick={close} disabled={saving}>取消</button><button type="submit" className="cc-button cc-button--primary" disabled={saving}>{saving ? <LoaderCircle className="animate-spin" size={16} /> : null}{saving ? "保存中…" : initial ? "保存订单" : "创建订单"}</button></footer>
         </form>
-      </div>
-    </div>
+    </ModalSurface>
   );
 }

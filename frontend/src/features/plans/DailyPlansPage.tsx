@@ -105,7 +105,7 @@ function SortableTaskItem({ taskId, index, disabled, selected, children }: {
 }) {
   const { ref, handleRef, isDragging } = useSortable({ id: taskId, index, disabled });
   return (
-    <li ref={ref} className={`relative rounded-xl border p-3 transition-all ${selected ? "border-orange-200 bg-orange-50/70 shadow-sm" : "border-transparent bg-slate-50/70 hover:border-slate-200 hover:bg-white"} ${isDragging ? "z-10 opacity-70 shadow-lg" : ""}`}>
+    <li ref={ref} className={`relative rounded-xl border p-3 transition-all ${selected ? "border-brand-200 bg-brand-50/70 shadow-sm" : "border-transparent bg-slate-50/70 hover:border-slate-200 hover:bg-white"} ${isDragging ? "z-10 opacity-70 shadow-lg" : ""}`}>
       <button ref={handleRef} type="button" className="absolute top-2 right-2 cursor-grab rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700 active:cursor-grabbing disabled:cursor-not-allowed" aria-label={`拖动任务 #${taskId} 排序`} disabled={disabled}><GripVertical size={16} /></button>
       {children}
     </li>
@@ -124,6 +124,8 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
     ? requestedTaskValue
     : undefined;
   const initialRequest = useRef({ date: requestedDate, taskId: requestedTaskId });
+  const [mobileView, setMobileView] = useState<"list" | "map">("list");
+  const [detailOpen, setDetailOpen] = useState(Boolean(searchParams.get("task_id")));
   const [days, setDays] = useState<PlanDaySummary[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
   const [plan, setPlan] = useState<DayPlan | null>(null);
@@ -265,6 +267,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
 
   function selectTask(taskId: number) {
     if (locationEditing) return;
+    setDetailOpen(true);
     if (taskId === selectedTaskId) return;
     setDetailLoading(true);
     setSelectedTaskId(taskId);
@@ -510,7 +513,8 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
         />
       ) : null}
 
-      <div className="cc-surface grid min-h-[720px] overflow-hidden xl:grid-cols-[minmax(280px,0.82fr)_minmax(360px,1.35fr)_minmax(300px,0.9fr)] 2xl:grid-cols-[320px_minmax(420px,1fr)_360px]">
+      <div className="cc-tabs cc-route-switch" aria-label="路线视图"><button type="button" aria-pressed={mobileView === "list"} onClick={() => setMobileView("list")}>任务列表</button><button type="button" aria-pressed={mobileView === "map"} onClick={() => setMobileView("map")}>路线地图</button></div>
+      <div className="cc-surface cc-route-layout" data-view={mobileView}>
         <aside className="border-b border-[#e4e8ef] bg-white xl:border-r xl:border-b-0" aria-label="按天计划">
           <div className="border-b border-[#e4e8ef] p-4">
             <label className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
@@ -528,17 +532,17 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                 <button
                   key={day.service_date}
                   type="button"
-                  className={`flex min-h-14 w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm ${selectedDate === day.service_date ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
+                  className={`flex min-h-14 w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm ${selectedDate === day.service_date ? "bg-brand-700 text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
                   onClick={() => selectDate(day.service_date)}
                   disabled={dirty || routeBusy}
                 >
                   <span className="min-w-0">
                     <span className="block font-medium">{displayDate(day.service_date)}</span>
-                    <span className={`mt-0.5 block truncate text-xs ${selectedDate === day.service_date ? "text-orange-950/75" : "text-slate-500"}`} title={day.customer_names.join("、")}>
+                    <span className={`mt-0.5 block truncate text-xs ${selectedDate === day.service_date ? "text-white/90" : "text-slate-500"}`} title={day.customer_names.join("、")}>
                       {dayCustomerLabel(day.customer_names)}
                     </span>
                   </span>
-                  <span className={`shrink-0 pt-0.5 text-xs ${selectedDate === day.service_date ? "text-orange-950/70" : "text-slate-500"}`}>
+                  <span className={`shrink-0 pt-0.5 text-xs ${selectedDate === day.service_date ? "text-white/90" : "text-slate-500"}`}>
                     {day.order_count} 单 / {day.cat_count} 只猫
                   </span>
                 </button>
@@ -572,7 +576,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
                     <div className="flex items-start gap-2">
                       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => selectTask(task.id)}>
                         <div className="flex items-center gap-2">
-                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#FF9500] text-xs font-semibold text-[#1D1D1F]">{index + 1}</span>
+                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-700 text-xs font-semibold text-white">{index + 1}</span>
                           <span className="truncate text-sm font-semibold text-slate-900">{task.customer.name}</span>
                         </div>
                         <p className="mt-1.5 truncate text-xs text-slate-500">{task.customer.address || "地址待查看"} · {task.cat_count} 只猫</p>
@@ -612,7 +616,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
           </div>
         </aside>
 
-        <RouteWorkspace
+        <div className="cc-route-map"><RouteWorkspace
           workspace={routeWorkspace}
           tasks={draftTasks}
           selectedTaskId={selectedTaskId}
@@ -631,7 +635,10 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
           onAmapReadyChange={setAmapReady}
         />
 
-        <aside className="bg-white" aria-label="任务详情">
+        </div>
+        <section className="col-span-full border-t border-slate-200 bg-white" aria-label="任务详情">
+          <button type="button" className="flex min-h-12 w-full items-center justify-between px-4 py-3 text-left font-semibold" aria-expanded={detailOpen || locationEditing} aria-controls="route-task-details" onClick={() => setDetailOpen((value) => !value)} disabled={locationEditing}>任务 / 客户信息<span className="text-sm text-brand-700">{detailOpen || locationEditing ? "收起详情" : "展开详情"}</span></button>
+          <div id="route-task-details" hidden={!detailOpen && !locationEditing}>
           <div className="border-b border-[#e4e8ef] px-4 py-3">
             <p className="text-sm font-semibold text-slate-900">任务 / 客户信息</p>
             <p className="mt-0.5 text-xs text-slate-500">仅在选中单个任务后读取现场所需摘要</p>
@@ -734,7 +741,7 @@ export function DailyPlansPage({ onDirtyChange }: DailyPlansPageProps) {
               </div>
             )}
           </div>
-        </aside>
+        </div></section>
       </div>
     </>
   );

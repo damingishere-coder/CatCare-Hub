@@ -18,6 +18,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { PageHeader } from "../../components/ui/PageHeader";
 import { customerAddress } from "../../lib/customerDisplay";
+import { useUnsavedChanges } from "../../components/ui/useUnsavedChanges";
 import { serviceItemOptions } from "../orders/constants";
 import type { ServiceItem, TaskStatus } from "../orders/types";
 import { planTaskStatusLabels } from "../plans/constants";
@@ -100,7 +101,10 @@ export function TaskExecutionPage() {
     }
   }, []);
 
+  const draftDirty = detail ? optionalText(notes) !== detail.notes || optionalText(catStatus) !== detail.cat_status || optionalText(exceptionNotes) !== detail.exception_notes : false;
+  const confirmDiscard = useUnsavedChanges(draftDirty || selectedPhoto !== null);
   const loadTask = useCallback(async () => {
+    if (!confirmDiscard()) return;
     if (!validTaskId) {
       setError("任务编号无效，请从路线图重新进入。");
       setLoading(false);
@@ -111,13 +115,15 @@ export function TaskExecutionPage() {
     try {
       const response = await getTaskExecution(taskId);
       applyDetail(response, true);
+      setSelectedPhoto(null);
+      if (photoInput.current) photoInput.current.value = "";
       setStale(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "任务执行记录加载失败，请重试。");
     } finally {
       setLoading(false);
     }
-  }, [applyDetail, taskId, validTaskId]);
+  }, [applyDetail, taskId, validTaskId, confirmDiscard]);
 
   useEffect(() => {
     let active = true;
@@ -266,7 +272,7 @@ export function TaskExecutionPage() {
 
   return (
     <section className="cc-page" aria-labelledby="task-execution-title">
-      <Link className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-orange-700" to="/admin/routes">
+      <Link className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-brand-700" to="/admin/routes">
         <ArrowLeft size={15} />返回路线图
       </Link>
       <PageHeader
@@ -368,7 +374,7 @@ export function TaskExecutionPage() {
                     <label key={item.id} className={`flex items-center gap-3 rounded-lg border px-3 py-3 ${item.completed ? "border-emerald-200 bg-emerald-50" : "border-slate-200"} ${editing && !photoItem ? "cursor-pointer" : ""}`}>
                       <input
                         type="checkbox"
-                        className="size-4 accent-orange-500"
+                        className="size-4 accent-brand-500"
                         checked={item.completed}
                         onChange={(event) => void handleChecklist(item.id, event.target.checked)}
                         disabled={!editing || photoItem || controlsDisabled}
@@ -433,11 +439,11 @@ export function TaskExecutionPage() {
             </section>
 
             {editing ? (
-              <section className="rounded-2xl border border-orange-700 bg-orange-700 p-5 text-white shadow-sm">
+              <section className="rounded-2xl border border-brand-700 bg-brand-700 p-5 text-white shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <h2 className="text-lg font-semibold">完成本次服务</h2>
-                    <p className="mt-1 text-sm text-orange-50">{textDirty ? "执行记录尚未保存" : missingRequired.length ? `仍有 ${missingRequired.length} 项必做事项未完成` : "必做事项已全部完成，请最后核对记录"}</p>
+                    <p className="mt-1 text-sm text-brand-50">{textDirty ? "执行记录尚未保存" : missingRequired.length ? `仍有 ${missingRequired.length} 项必做事项未完成` : "必做事项已全部完成，请最后核对记录"}</p>
                   </div>
                   <button type="button" className="inline-flex items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-slate-900 disabled:opacity-40" onClick={() => void handleComplete()} disabled={missingRequired.length > 0 || textDirty || controlsDisabled}>
                     {busy === "complete" ? <LoaderCircle className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}完成本次服务

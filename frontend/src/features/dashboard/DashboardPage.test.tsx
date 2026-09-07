@@ -10,8 +10,8 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./api", () => apiMocks);
-vi.mock("../intake/AdminIntakePage", () => ({
-  IntakeWorkspace: () => <section aria-label="客户资料决策区">客户资料决策区</section>,
+vi.mock("../intake/IntakeSummary", () => ({
+  IntakeSummary: () => <section aria-label="客户资料决策区">客户资料决策区</section>,
 }));
 
 const dashboard: DashboardResponse = {

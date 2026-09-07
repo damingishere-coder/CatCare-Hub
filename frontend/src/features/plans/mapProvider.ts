@@ -164,7 +164,7 @@ function customerMarkerContent(
   const content = document.createElement("div");
   content.className = [
     "flex size-9 items-center justify-center rounded-full border-2 border-white",
-    "text-[11px] font-bold whitespace-nowrap text-white shadow-md",
+    "text-xs font-bold whitespace-nowrap text-white shadow-md",
     selected ? "bg-amber-600 ring-2 ring-amber-300" : muted ? "bg-slate-400" : "bg-slate-900",
   ].join(" ");
   content.textContent = orderId === undefined ? "#?" : `#${orderId}`;
@@ -181,16 +181,16 @@ function draftMarkerContent(): HTMLDivElement {
   content.setAttribute("aria-label", "新客户定位准星");
 
   const ring = document.createElement("span");
-  ring.className = "absolute size-8 rounded-full border-2 border-orange-600 bg-white/35 shadow-[0_0_0_2px_rgba(255,255,255,0.9)]";
+  ring.className = "absolute size-8 rounded-full border-2 border-brand-600 bg-white/35 shadow-[0_0_0_2px_rgba(255,255,255,0.9)]";
   const horizontal = document.createElement("span");
-  horizontal.className = "absolute h-0.5 w-11 bg-orange-700 shadow-[0_0_0_1px_rgba(255,255,255,0.9)]";
+  horizontal.className = "absolute h-0.5 w-11 bg-brand-700 shadow-[0_0_0_1px_rgba(255,255,255,0.9)]";
   const vertical = document.createElement("span");
-  vertical.className = "absolute h-11 w-0.5 bg-orange-700 shadow-[0_0_0_1px_rgba(255,255,255,0.9)]";
+  vertical.className = "absolute h-11 w-0.5 bg-brand-700 shadow-[0_0_0_1px_rgba(255,255,255,0.9)]";
   const center = document.createElement("span");
   center.className = "absolute size-2 rounded-full border-2 border-white bg-red-600 shadow-md";
   center.dataset.mapDraftCenter = "true";
   const label = document.createElement("span");
-  label.className = "absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded-full bg-orange-600 px-2 py-1 text-[11px] font-bold whitespace-nowrap text-white shadow-md";
+  label.className = "absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded-full bg-brand-600 px-2 py-1 text-xs font-bold whitespace-nowrap text-white shadow-md";
   label.textContent = "新客户定位";
 
   content.append(ring, horizontal, vertical, center, label);
