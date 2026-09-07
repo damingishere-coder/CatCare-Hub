@@ -44,21 +44,21 @@ export function MultiDateCalendar({
     <div className="min-w-0 max-w-full">
       <button
         type="button"
-        className="flex min-h-14 w-full min-w-0 items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50/60 px-4 py-3 text-left transition hover:border-orange-400 disabled:opacity-60"
+        className="flex min-h-14 w-full min-w-0 items-center gap-3 rounded-2xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-left transition hover:border-brand-400 disabled:opacity-60"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
         disabled={disabled}
       >
-        <CalendarDays className="shrink-0 text-orange-700" size={20} />
+        <CalendarDays className="shrink-0 text-brand-700" size={20} />
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-bold text-slate-900">{title}</span>
           <span className="mt-1 block truncate text-xs text-slate-500">{dateSummary(values)}</span>
         </span>
-        {values.length ? <span className="shrink-0 rounded-full bg-orange-600 px-2.5 py-1 text-xs font-bold text-white">{values.length} 天</span> : null}
+        {values.length ? <span className="shrink-0 rounded-full bg-brand-600 px-2.5 py-1 text-xs font-bold text-white">{values.length} 天</span> : null}
       </button>
 
       {open ? (
-        <section className="mt-3 max-w-full overflow-hidden rounded-2xl border border-orange-100 bg-white p-3 shadow-sm" aria-label="预计上门日期日历">
+        <section className="mt-3 max-w-full overflow-hidden rounded-2xl border border-brand-100 bg-white p-3 shadow-sm" aria-label="预计上门日期日历">
           <div className="flex items-center justify-between gap-2">
             <button type="button" className="cc-icon-button" aria-label="上个月" onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}><ChevronLeft size={18} /></button>
             <p className="text-sm font-bold text-slate-900">{visibleMonth.getFullYear()} 年 {visibleMonth.getMonth() + 1} 月</p>
@@ -71,7 +71,7 @@ export function MultiDateCalendar({
               <button
                 key={localDateValue(date)}
                 type="button"
-                className={`aspect-square min-h-10 w-full min-w-0 rounded-xl text-sm font-semibold transition ${selected.has(localDateValue(date)) ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "text-slate-700 hover:bg-orange-50"}`}
+                className={`aspect-square min-h-10 w-full min-w-0 rounded-xl text-sm font-semibold transition ${selected.has(localDateValue(date)) ? "bg-brand-700 text-white shadow-sm" : "text-slate-700 hover:bg-brand-50"}`}
                 aria-pressed={selected.has(localDateValue(date))}
                 onClick={() => toggle(date)}
               >
@@ -79,7 +79,7 @@ export function MultiDateCalendar({
               </button>
             )}
           />
-          <div className="mt-3 flex items-center justify-between border-t border-orange-100 pt-3">
+          <div className="mt-3 flex items-center justify-between border-t border-brand-100 pt-3">
             <button type="button" className="cc-button cc-button--secondary min-h-10 px-3" onClick={() => onChange([])} disabled={!values.length}><RotateCcw size={14} />清空</button>
             <button type="button" className="cc-button cc-button--primary min-h-10 px-4" onClick={() => setOpen(false)}>完成</button>
           </div>

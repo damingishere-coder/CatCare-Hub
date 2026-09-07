@@ -103,7 +103,7 @@ function CoordinateCanvas({
           <button
             key={marker.task_id}
             type="button"
-            className={`cc-route-order-marker absolute flex size-9 -translate-1/2 items-center justify-center rounded-full border-2 border-white text-[11px] font-bold whitespace-nowrap text-white shadow-md ${selectedTaskId === marker.task_id ? "bg-orange-700 ring-2 ring-orange-300" : "bg-slate-900"}`}
+            className={`cc-route-order-marker absolute flex size-9 -translate-1/2 items-center justify-center rounded-full border-2 border-white text-xs font-bold whitespace-nowrap text-white shadow-md ${selectedTaskId === marker.task_id ? "bg-brand-700 ring-2 ring-brand-300" : "bg-slate-900"}`}
             style={{
               left: `${projected.left}%`,
               top: `${projected.top}%`,
@@ -208,7 +208,7 @@ export function RouteMap(props: RouteMapProps) {
         />
       )}
       {!canUseAmap ? (
-        <p className="absolute right-2 bottom-2 rounded bg-white/90 px-2 py-1 text-[11px] text-slate-600 shadow-sm">
+        <p className="absolute right-2 bottom-2 rounded bg-white/90 px-2 py-1 text-xs text-slate-600 shadow-sm">
           {amapFailed ? "街道底图加载失败，已切换坐标画布" : "未配置街道底图，按真实坐标展示"}
         </p>
       ) : null}

@@ -361,3 +361,16 @@ it("saves a review and archives an order only through explicit admin actions", a
   expect(screen.getByRole("link", { name: "查看客户 #3" })).toHaveAttribute("href", "/admin/customers");
   expect(screen.getByRole("link", { name: "查看订单 #4" })).toHaveAttribute("href", "/admin/orders");
 });
+
+
+it("explains missing order fields even after the review has been saved", async () => {
+  const incomplete = { ...payload, customer: { ...payload.customer, address: "" }, cats: [], service: { ...payload.service, service_items: [] } };
+  apiMocks.getIntakeSubmission.mockResolvedValue({ ...detail, status: "reviewed", review_payload: incomplete, review_unit_price: "30.00" });
+  renderPage();
+  expect(await screen.findByText("生成订单还需补齐：详细地址、猫咪名称、服务事项。")).toBeInTheDocument();
+  const generate = screen.getByRole("button", { name: "归档并生成订单" });
+  expect(generate).toBeDisabled();
+  fireEvent.click(generate);
+  expect(apiMocks.decideIntakeSubmission).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "仅归档客户" })).toBeEnabled();
+});

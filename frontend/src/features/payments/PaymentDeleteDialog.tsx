@@ -54,7 +54,7 @@ export function PaymentDeleteDialog({ record, onCancel, onConfirm }: PaymentDele
   const completed = record.payment_status === "completed";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="payment-delete-title">
-      <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-white/80 bg-white shadow-2xl">
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/80 bg-white shadow-2xl">
         <form onSubmit={handleSubmit}>
           <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
             <div><h2 id="payment-delete-title" className="text-lg font-semibold text-slate-950">删除收款流水</h2><p className="mt-1 text-xs text-slate-500">流水不会物理消失，可在“已删除”中恢复显示。</p></div>
@@ -67,7 +67,7 @@ export function PaymentDeleteDialog({ record, onCancel, onConfirm }: PaymentDele
             </dl>
             <div className="cc-alert cc-alert--warning">{completed ? "这条流水会先自动撤销，订单已收金额、待收金额和统计会立即重算；恢复显示不会重新计入金额。" : "这条流水会移入已删除；恢复只改变可见性，不改变当前付款状态。"}</div>
             <label className="block text-sm font-medium text-slate-700">删除原因 <span className="text-red-600">*</span>
-              <textarea ref={reasonRef} className="mt-1.5 min-h-28 w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="例如：重复录入，保留审计后从当前列表移除" />
+              <textarea ref={reasonRef} className="mt-1.5 min-h-28 w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-950 outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="例如：重复录入，保留审计后从当前列表移除" />
             </label>
             <p className="text-right text-xs text-slate-400">{reason.length}/500</p>
             {error ? <p className="cc-alert cc-alert--danger" role="alert">{error}</p> : null}

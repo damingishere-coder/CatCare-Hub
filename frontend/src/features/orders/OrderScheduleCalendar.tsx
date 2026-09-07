@@ -105,11 +105,11 @@ export function OrderScheduleCalendar({
           const value = localDateValue(date);
           const day = dayMap.get(value);
           return (
-            <div className={`min-h-24 min-w-0 border-r border-b border-slate-100 p-1.5 text-left align-top transition hover:bg-orange-50 ${selectedDate === value ? "bg-orange-50 ring-2 ring-inset ring-orange-400" : "bg-white"}`} onClick={() => onSelectDate(value)}>
+            <div className={`min-h-24 min-w-0 border-r border-b border-slate-100 p-1.5 text-left align-top transition hover:bg-brand-50 ${selectedDate === value ? "bg-brand-50 ring-2 ring-inset ring-brand-400" : "bg-white"}`} onClick={() => onSelectDate(value)}>
               <button type="button" className={`inline-flex size-6 items-center justify-center rounded-full text-xs font-semibold ${value === localDateValue(new Date()) ? "bg-slate-900 text-white" : "text-slate-600"}`} onClick={() => onSelectDate(value)} aria-label={`选择 ${value}`}>{date.getDate()}</button>
               <span className="mt-1 flex flex-wrap gap-1">
-                {(day?.orders ?? []).slice(0, 3).map((order) => <button key={order.order_id} type="button" className={`cc-calendar-order-marker inline-flex rounded px-1.5 py-0.5 text-[11px] font-semibold ${order.order_status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-orange-100 text-orange-900"}`} title={`订单 #${order.order_id} · ${order.customer_name}${order.visit_count > 1 ? ` · ${order.visit_count} 次上门` : ""}`} aria-label={`订单 #${order.order_id}，${order.customer_name}${order.visit_count > 1 ? `，${order.visit_count} 次上门` : ""}`} onClick={(event) => { event.stopPropagation(); onSelectOrder(order.order_id); }}>#{order.order_id}</button>)}
-                {(day?.orders?.length ?? 0) > 3 ? <span className="block px-1 text-[11px] text-slate-500">还有 {day!.orders!.length - 3} 笔</span> : null}
+                {(day?.orders ?? []).slice(0, 3).map((order) => <button key={order.order_id} type="button" className={`cc-calendar-order-marker inline-flex rounded px-1.5 py-0.5 text-xs font-semibold ${order.order_status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-brand-100 text-brand-900"}`} title={`订单 #${order.order_id} · ${order.customer_name}${order.visit_count > 1 ? ` · ${order.visit_count} 次上门` : ""}`} aria-label={`订单 #${order.order_id}，${order.customer_name}${order.visit_count > 1 ? `，${order.visit_count} 次上门` : ""}`} onClick={(event) => { event.stopPropagation(); onSelectOrder(order.order_id); }}>#{order.order_id}</button>)}
+                {(day?.orders?.length ?? 0) > 3 ? <span className="block px-1 text-xs text-slate-500">还有 {day!.orders!.length - 3} 笔</span> : null}
               </span>
             </div>
           );
@@ -176,10 +176,10 @@ export function OrderDayVisits({ selectedDate, onSelectOrder, refreshKey }: Orde
         <ol className="grid gap-2 p-3 2xl:grid-cols-2">
           {tasks.map((task, index) => (
             <li key={task.id}>
-              <button type="button" className="flex w-full items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-left transition hover:border-orange-200 hover:bg-orange-50" onClick={() => onSelectOrder(task.order_id)} aria-label={`路线第 ${index + 1} 站，${task.customer.name}，订单 #${task.order_id}`}>
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#FF9500] text-sm font-semibold text-slate-950">{index + 1}</span>
+              <button type="button" className="flex w-full items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-left transition hover:border-brand-200 hover:bg-brand-50" onClick={() => onSelectOrder(task.order_id)} aria-label={`路线第 ${index + 1} 站，${task.customer.name}，订单 #${task.order_id}`}>
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-700 text-sm font-semibold text-white">{index + 1}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-2"><span className="truncate text-sm font-semibold text-slate-950">{task.customer.name}</span><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${taskStatusStyle(task.status)}`}>{planTaskStatusLabels[task.status]}</span></span>
+                  <span className="flex flex-wrap items-center gap-2"><span className="truncate text-sm font-semibold text-slate-950">{task.customer.name}</span><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${taskStatusStyle(task.status)}`}>{planTaskStatusLabels[task.status]}</span></span>
                   <span className="mt-1 block truncate text-xs text-slate-500">订单 #{task.order_id} · {task.customer.address || "地址待补充"}</span>
                   <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600"><span className="inline-flex items-center gap-1"><Clock3 size={13} />{task.planned_time?.slice(0, 5) || "时间待设置"}</span><span>{task.cats.length ? task.cats.map((cat) => cat.name).join("、") : `${task.cat_count} 只猫`}</span></span>
                 </span>

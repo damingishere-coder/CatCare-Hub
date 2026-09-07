@@ -64,7 +64,7 @@ function CatCard({ cat, changingStatus, onEdit, onToggleStatus }: CatCardProps) 
     <article className={`rounded-lg border p-4 ${cat.is_active ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50 opacity-75"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-700">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
             <Cat size={20} aria-hidden="true" />
           </div>
           <div className="min-w-0">
@@ -401,16 +401,16 @@ export function CustomersPage({ initialCreate = false }: CustomersPageProps) {
                   <li key={customer.id}>
                     <button
                       type="button"
-                      className={`w-full rounded-xl px-3 py-3 text-left transition-colors ${selectedCustomerId === customer.id ? "bg-[#FF9500] text-[#1D1D1F] shadow-sm" : "hover:bg-slate-100"}`}
+                      className={`w-full rounded-xl px-3 py-3 text-left transition-colors ${selectedCustomerId === customer.id ? "bg-brand-700 text-white shadow-sm" : "hover:bg-slate-100"}`}
                       onClick={() => setSelectedCustomerId(customer.id)}
                       aria-pressed={selectedCustomerId === customer.id}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <span className="truncate text-sm font-semibold">{customer.name}</span>
                         {customer.is_repeat_customer ? (
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${selectedCustomerId === customer.id ? "bg-white/15 text-white" : "bg-amber-50 text-amber-700"}`}>老客户</span>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${selectedCustomerId === customer.id ? "bg-white/15 text-white" : "bg-amber-50 text-amber-700"}`}>老客户</span>
                         ) : null}
-                        {customer.archived_at ? <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600">已归档</span> : null}
+                        {customer.archived_at ? <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">已归档</span> : null}
                       </div>
                       <p className={`mt-2 text-xs ${selectedCustomerId === customer.id ? "text-slate-300" : "text-slate-500"}`}>
                         在档猫咪 {customer.active_cat_count} 只

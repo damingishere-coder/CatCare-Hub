@@ -138,21 +138,14 @@ export function RouteWorkspace({
           <div className="flex flex-wrap items-center gap-2">
             <MapPinned size={18} />
             <h2 id="route-map-title" className="text-sm font-semibold text-slate-950">路线地图</h2>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.provider.configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>高德后端：{workspace ? (workspace.provider.configured ? "已配置" : "未配置") : "状态未知"}</span>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${browserMapConfigured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>街道底图：{browserMapConfigured ? "已配置" : "未配置"}</span>
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">闭环：家 → 客户 → 家</span>
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">任务：{activeTaskCount} 个</span>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${workspace?.unresolved_tasks.length ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>地址：{workspace ? (workspace.unresolved_tasks.length ? `${workspace.unresolved_tasks.length} 个待处理` : "已验证") : "状态未知"}</span>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${roadRoute?.status === "ready" ? "bg-emerald-50 text-emerald-700" : roadRoute?.status === "degraded" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>真实道路：{roadRoute?.status === "ready" ? "已生成" : roadRoute?.status === "degraded" ? "暂不可用" : "待规划"}</span>
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">闭环：家 → 客户 → 家</span>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">任务：{activeTaskCount} 个</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${workspace?.unresolved_tasks.length ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>地址：{workspace ? (workspace.unresolved_tasks.length ? `${workspace.unresolved_tasks.length} 个待处理` : "已验证") : "状态未知"}</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${roadRoute?.status === "ready" ? "bg-emerald-50 text-emerald-700" : roadRoute?.status === "degraded" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>真实道路：{roadRoute?.status === "ready" ? "已生成" : roadRoute?.status === "degraded" ? "暂不可用" : "待规划"}</span>
             {dirty ? <span className="ml-auto text-xs font-medium text-amber-700">顺序待保存</span> : null}
           </div>
-          <p className="mt-2 text-xs leading-5 text-slate-500">
-            先用当天全部已验证地址做闭环全局优化，再只向高德请求最终顺序的电动车道路路线。姓名、电话、微信、门禁、钥匙和备注不会发送给地图服务。
-          </p>
-          {!workspace?.provider.configured && workspace?.provider.message ? (
-            <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">{workspace.provider.message}</p>
-          ) : null}
-          {!browserMapConfigured ? <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">街道底图缺少 JS API Key 或安全密钥；补充 Vite 环境变量后必须重启前端。</p> : null}
+          {(!browserMapConfigured || !workspace?.provider.configured) ? <p className="mt-2 text-sm text-amber-800">地图服务尚未就绪，仍可查看任务与调整人工排程。<a href="/admin/settings" className="ml-2 underline">查看设置</a></p> : null}
+          <details className="mt-2 text-xs text-slate-500"><summary className="min-h-11 cursor-pointer py-3">查看地图状态与说明</summary><div className="mb-3 flex flex-wrap gap-2"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${workspace?.provider.configured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>高德后端：{workspace ? (workspace.provider.configured ? "已配置" : "未配置") : "状态未知"}</span><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${browserMapConfigured ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>街道底图：{browserMapConfigured ? "已配置" : "未配置"}</span></div><p className="pb-3 leading-6">按已验证地址规划家 → 客户 → 家的闭环路线。姓名、电话、微信、门禁、钥匙和备注不会发送给地图服务。{workspace?.provider.message}</p></details>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className="cc-button cc-button--primary" onClick={onPreview} disabled={!canPreview}>
               {previewing ? <LoaderCircle className="animate-spin" size={15} /> : <RefreshCw size={15} />}
@@ -161,7 +154,7 @@ export function RouteWorkspace({
             {optimization ? (
               <button
                 type="button"
-                className="cc-button cc-button--secondary border-orange-200 text-orange-700"
+                className="cc-button cc-button--secondary border-brand-200 text-brand-700"
                 onClick={onAdopt}
                 disabled={!workspace?.can_adopt_recommendation || dirty || adopting || previewing}
               >
@@ -171,7 +164,7 @@ export function RouteWorkspace({
             ) : null}
           </div>
           {dirty ? <p className="mt-2 text-xs text-amber-700">请先保存或撤销人工排程，再规划路线。</p> : null}
-          {locationEditing ? <p className="mt-2 text-xs font-medium text-orange-700">正在修改客户定位：请点击地图放置新锚点，或拖动橙色锚点微调；此时不能规划路线。</p> : null}
+          {locationEditing ? <p className="mt-2 text-xs font-medium text-brand-700">正在修改客户定位：请点击地图放置新锚点，或拖动橙色锚点微调；此时不能规划路线。</p> : null}
           {optimization && !workspace?.can_adopt_recommendation ? (
             <p className="mt-2 text-xs text-slate-500">
               {workspace?.schedule_locked ? "已有执行历史，路线只能查看，不能改变顺序。" : "当前排程已经采用这个优化顺序。"}
@@ -205,16 +198,16 @@ export function RouteWorkspace({
         {optimization ? (
           <div className="cc-surface grid gap-3 p-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">闭环顺序</p>
+              <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">闭环顺序</p>
               <p className="mt-1 text-sm font-semibold text-slate-950">{closedRouteLabel}</p>
             </div>
             <div>
-              <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">本地优化</p>
+              <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">本地优化</p>
               <p className="mt-1 text-sm font-semibold text-slate-950">{methodLabel(optimization.method)}</p>
               <p className="mt-1 text-xs text-slate-500">计划时间只约束客户先后，未定时任务可插入合适位置。</p>
             </div>
             <div>
-              <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">空间估算</p>
+              <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">空间估算</p>
               <p className="mt-1 text-sm font-semibold text-slate-950">
                 {distanceLabel(optimization.baseline_estimated_distance_meters)} → {distanceLabel(optimization.optimized_estimated_distance_meters)}
               </p>
@@ -222,7 +215,7 @@ export function RouteWorkspace({
             </div>
             {roadRoute?.status === "ready" && roadRoute.path ? (
               <div className="sm:col-span-2 rounded-lg bg-emerald-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold tracking-wide text-emerald-700 uppercase">高德实际电动车路线</p>
+                <p className="text-xs font-semibold tracking-wide text-emerald-700 uppercase">高德实际电动车路线</p>
                 <p className="mt-1 text-sm font-semibold text-emerald-950">{distanceLabel(roadRoute.path.distance_meters)} · {durationLabel(roadRoute.path.duration_seconds)}</p>
               </div>
             ) : null}

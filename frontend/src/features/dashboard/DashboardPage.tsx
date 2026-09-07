@@ -20,7 +20,7 @@ import { Link } from "react-router-dom";
 import { ConnectionErrorAlert } from "../../components/ui/ConnectionErrorAlert";
 import { PageHeader } from "../../components/ui/PageHeader";
 import type { TaskStatus } from "../orders/types";
-import { IntakeWorkspace } from "../intake/AdminIntakePage";
+import { IntakeSummary } from "../intake/IntakeSummary";
 import { getDashboard, markTaskPhotosSent } from "./api";
 import type {
   DashboardReminder,
@@ -45,7 +45,7 @@ const reminderMeta: Record<
   key_pickup: { label: "钥匙待取", icon: KeyRound, style: "border-amber-200 bg-amber-50 text-amber-800" },
   medicine: { label: "喂药提醒", icon: Pill, style: "border-red-200 bg-red-50 text-red-800" },
   photos_pending: { label: "待发送照片", icon: Camera, style: "border-blue-200 bg-blue-50 text-blue-800" },
-  payment_due: { label: "待收款", icon: WalletCards, style: "border-orange-200 bg-orange-50 text-orange-800" },
+  payment_due: { label: "待收款", icon: WalletCards, style: "border-amber-200 bg-amber-50 text-amber-800" },
   last_service: { label: "今日最后一次服务", icon: CalendarCheck2, style: "border-violet-200 bg-violet-50 text-violet-800" },
   order_starts_tomorrow: { label: "明日开始订单", icon: Rocket, style: "border-cyan-200 bg-cyan-50 text-cyan-800" },
 };
@@ -145,9 +145,9 @@ export function DashboardPage() {
         title="工作台"
         headingId="dashboard-title"
         description={dashboard ? businessDateLabel(dashboard.business_date) : "快速掌握今天的任务、提醒和收款概况。"}
-        actions={<button type="button" className="cc-button cc-button--secondary" onClick={() => void loadDashboard()} disabled={loading}>
+        actions={<><Link className="cc-button cc-button--primary" to="/admin/orders?action=create"><Plus size={16} />新增订单</Link><button type="button" className="cc-button cc-button--secondary" onClick={() => void loadDashboard()} disabled={loading}>
           {loading ? <LoaderCircle className="animate-spin" size={16} /> : <RefreshCw size={16} />}刷新
-        </button>}
+        </button></>}
       />
 
       {error ? (
@@ -160,7 +160,7 @@ export function DashboardPage() {
         </div>
       ) : dashboard ? (
         <>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
             {[
               { label: "当月订单", value: `${dashboard.metrics.month_order_count}`, unit: "单", icon: ClipboardCheck },
               { label: "待执行", value: `${dashboard.metrics.pending_task_count}`, unit: "项", icon: CalendarCheck2 },
@@ -168,22 +168,11 @@ export function DashboardPage() {
               { label: "本月收入", value: currency(dashboard.metrics.month_income), unit: "", icon: CircleDollarSign },
             ].map(({ label, value, unit, icon: Icon }) => (
               <article key={label} className="cc-metric p-4 sm:p-5">
-                <div className="flex items-center justify-between text-slate-500"><p className="text-sm font-medium">{label}</p><span className="flex size-9 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><Icon size={17} /></span></div>
-                <p className="mt-5 text-2xl font-bold tracking-[-0.035em] text-slate-950">{value}{unit ? <span className="ml-1 text-sm font-medium text-slate-500">{unit}</span> : null}</p>
+                <div className="flex items-center justify-between text-slate-500"><p className="text-sm font-medium">{label}</p><span className="flex size-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Icon size={17} /></span></div>
+                <p className="mt-2 text-2xl font-bold tracking-[-0.035em] text-slate-950">{value}{unit ? <span className="ml-1 text-sm font-medium text-slate-500">{unit}</span> : null}</p>
               </article>
             ))}
           </div>
-
-          <section className="cc-surface mt-5 p-4 sm:p-5" aria-labelledby="quick-actions-title">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><h2 id="quick-actions-title" className="text-sm font-semibold text-slate-950">快捷入口</h2><p className="mt-1 text-xs text-slate-500">常用录入操作直接开始</p></div>
-              <div className="flex flex-wrap gap-2">
-                <Link className="cc-button cc-button--primary" to="/admin/orders?action=create"><Plus size={15} />新增订单</Link>
-                <Link className="cc-button cc-button--secondary" to="/admin/customers?action=create"><UserPlus size={15} />新增客户</Link>
-                <Link className="cc-button cc-button--secondary" to="/admin/intake#links"><Rocket size={15} />客户填写入口</Link>
-              </div>
-            </div>
-          </section>
 
           <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
             <section className="cc-surface overflow-hidden" aria-labelledby="today-schedule-title">
@@ -194,7 +183,7 @@ export function DashboardPage() {
               {dashboard.schedule.length ? (
                 <div className="divide-y divide-slate-100">
                   {dashboard.schedule.map((task, index) => (
-                    <Link key={task.id} to={`/admin/tasks/${task.id}`} className="grid gap-2 px-5 py-4 transition-colors hover:bg-orange-50/50 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
+                    <Link key={task.id} to={`/admin/tasks/${task.id}`} className="grid gap-2 px-5 py-4 transition-colors hover:bg-brand-50/50 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
                       <div><p className="text-sm font-semibold text-slate-950">{task.planned_time?.slice(0, 5) || "待定"}</p><p className="mt-1 text-xs text-slate-400">第 {index + 1} 站</p></div>
                       <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{task.customer_name}</p><p className="mt-1 truncate text-xs text-slate-500">{task.address || "地址未填写"} · {task.cat_count} 只猫</p></div>
                       <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-medium ${statusStyle(task.status)}`}>{taskStatusLabels[task.status]}</span>
@@ -233,11 +222,12 @@ export function DashboardPage() {
             </section>
           </div>
 
-          <p className="mt-4 text-xs leading-5 text-slate-500">工作台仅展示客户名称、地址和数量摘要；门禁、钥匙编号及照片请进入单任务详情查看。当前后台仍只限本机或可信私网使用。</p>
+
         </>
       ) : null}
 
-      <IntakeWorkspace embedded />
+      <IntakeSummary />
+      <div className="mt-4 flex flex-wrap gap-2"><Link className="cc-button cc-button--secondary" to="/admin/customers?action=create"><UserPlus size={15} />新增客户</Link><Link className="cc-button cc-button--secondary" to="/admin/intake#links">客户填写入口</Link></div>
     </section>
   );
 }

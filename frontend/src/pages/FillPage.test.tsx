@@ -198,3 +198,18 @@ it("shows a closed or expired link without rendering sensitive draft fields", as
   expect(await screen.findByRole("alert")).toHaveTextContent("填写链接已过期");
   expect(screen.queryByRole("textbox", { name: /客户姓名/ })).not.toBeInTheDocument();
 });
+
+
+it("focuses and describes invalid contact fields while preserving the customer's draft", async () => {
+  apiMocks.getPublicIntake.mockResolvedValue(emptyResponse);
+  render(<FillPage token={token} />);
+  const name = await screen.findByLabelText(/客户姓名/);
+  fireEvent.click(screen.getByRole("button", { name: "提交资料" }));
+  expect(name).toHaveAttribute("aria-invalid", "true");
+  expect(name).toHaveFocus();
+  fireEvent.change(name, { target: { value: "待核对客户" } });
+  fireEvent.click(screen.getByRole("button", { name: "提交资料" }));
+  expect(screen.getByLabelText("手机号", { selector: "input" })).toHaveFocus();
+  expect(name).toHaveValue("待核对客户");
+  expect(apiMocks.submitPublicIntake).not.toHaveBeenCalled();
+});

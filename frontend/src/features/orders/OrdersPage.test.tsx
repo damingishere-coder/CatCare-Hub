@@ -228,13 +228,12 @@ it("uses the month calendar as the primary view and opens details on demand", as
   fireEvent.click(marker);
   expect(await screen.findByRole("heading", { name: "订单 #1", level: 2 })).toBeInTheDocument();
   expect(apiMocks.getOrder).toHaveBeenCalledWith(1);
-  expect(screen.queryByRole("heading", { name: "订单月历" })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "订单月历", hidden: true })).toBeInTheDocument();
   expect(screen.getByLabelText("2030-10-01 当天上门")).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "路线地图" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "保存排程" })).not.toBeInTheDocument();
 
-  const orderList = screen.getByLabelText("订单列表");
-  fireEvent.click(within(orderList).getByRole("button", { name: /#1 · 订单页面客户（虚构）/ }));
+  fireEvent.click(screen.getByRole("button", { name: "关闭订单详情" }));
   expect(screen.queryByRole("heading", { name: "订单 #1", level: 2 })).not.toBeInTheDocument();
   expect(await screen.findByRole("heading", { name: "订单月历" })).toBeInTheDocument();
   expect(screen.getByLabelText("2030-10-01 当天上门")).toBeInTheDocument();
@@ -365,7 +364,8 @@ it("creates a daily order with standard access selects and a dated surcharge", a
   expect(payload).not.toHaveProperty("customer_id");
   expect(payload).not.toHaveProperty("source_customer_id");
   expect(payload).not.toHaveProperty("total_amount");
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "新建订单" })).not.toBeInTheDocument());
+  expect(screen.getByRole("dialog", { name: "订单详情区域" })).toBeInTheDocument();
 });
 
 it("parses a pasted residential address locally and uses five editable fields", async () => {
@@ -529,4 +529,21 @@ it("allows a payment-history order to change only unit price with its revision",
     },
     "a".repeat(64),
   ));
+});
+
+
+it("keeps unsaved order input when closing is cancelled and includes selects in keyboard focus", async () => {
+  renderPage(true);
+  const dialog = await screen.findByRole("dialog", { name: "新建订单" });
+  const name = within(dialog).getByLabelText(/联系人名称/);
+  fireEvent.change(name, { target: { value: "未保存客户" } });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  fireEvent.click(within(dialog).getByRole("button", { name: "关闭订单表单" }));
+  expect(confirm).toHaveBeenCalled();
+  expect(name).toHaveValue("未保存客户");
+  expect(screen.getByRole("dialog", { name: "新建订单" })).toBeInTheDocument();
+  confirm.mockReturnValue(true);
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "新建订单" })).not.toBeInTheDocument();
+  confirm.mockRestore();
 });
