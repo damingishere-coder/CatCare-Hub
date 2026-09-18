@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 
 import pytest
 from fastapi import HTTPException
@@ -105,6 +107,48 @@ def test_remote_client_requires_https_except_for_loopback(
     monkeypatch.setenv("CATCARE_INTAKE_RELAY_URL", "http://127.0.0.1:18081/")
     loopback = intake_remote.RemoteIntakeClient()
     assert loopback.base_url == "http://127.0.0.1:18081"
+
+
+def test_remote_client_connects_directly_with_broken_system_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RelayHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.headers.get("Authorization") != "Bearer relay-test-secret":
+                self.send_error(401)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"items": [], "total": 0}')
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), RelayHandler) as server:
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            # A stale service-manager environment must not send Relay traffic
+            # to a desktop proxy, even when NO_PROXY is absent or incorrect.
+            for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+                monkeypatch.setenv(name, "http://127.0.0.1:1")
+                monkeypatch.setenv(name.lower(), "http://127.0.0.1:1")
+            monkeypatch.setenv("NO_PROXY", "")
+            monkeypatch.setenv("no_proxy", "")
+            monkeypatch.setenv(
+                "CATCARE_INTAKE_RELAY_URL",
+                f"http://127.0.0.1:{server.server_port}",
+            )
+            monkeypatch.setenv("CATCARE_INTAKE_RELAY_KEY", "relay-test-secret")
+            monkeypatch.setenv("CATCARE_PUBLIC_FILL_ORIGIN", "https://fill.example.test")
+
+            result = intake_remote.RemoteIntakeClient().list_tokens()
+            assert result.items == []
+            assert result.total == 0
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
 
 
 def test_remote_complete_failure_retry_returns_local_receipt_without_duplicates(
