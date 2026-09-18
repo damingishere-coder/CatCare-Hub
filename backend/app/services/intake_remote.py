@@ -92,6 +92,9 @@ class RemoteIntakeClient:
                 headers={"Authorization": f"Bearer {self.key}"},
                 json=payload,
                 timeout=RELAY_TIMEOUT_SECONDS,
+                # Relay uses a direct tailnet/loopback route, independent of
+                # proxy settings inherited from the desktop service manager.
+                trust_env=False,
             )
         except httpx.HTTPError as exc:
             raise HTTPException(
