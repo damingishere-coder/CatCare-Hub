@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter } from "react-router-dom";
 
 import { editableDraft } from "./constants";
-import type { IntakeSubmissionDetail, IntakeSubmissionSummary, IntakeTokenRead } from "./types";
+import type { IntakeDraftPayload, IntakeSubmissionDetail, IntakeSubmissionSummary, IntakeTokenRead } from "./types";
 import { AdminIntakePage } from "./AdminIntakePage";
 
 const apiMocks = vi.hoisted(() => ({
@@ -364,13 +364,55 @@ it("saves a review and archives an order only through explicit admin actions", a
 
 
 it("explains missing order fields even after the review has been saved", async () => {
-  const incomplete = { ...payload, customer: { ...payload.customer, address: "" }, cats: [], service: { ...payload.service, service_items: [] } };
+  const incomplete = { ...payload, customer: { ...payload.customer, address: "" }, cats: [] };
   apiMocks.getIntakeSubmission.mockResolvedValue({ ...detail, status: "reviewed", review_payload: incomplete, review_unit_price: "30.00" });
   renderPage();
-  expect(await screen.findByText("生成订单还需补齐：详细地址、猫咪名称、服务事项。")).toBeInTheDocument();
+  expect(await screen.findByText("生成订单还需补齐：详细地址、猫咪名称。")).toBeInTheDocument();
   const generate = screen.getByRole("button", { name: "归档并生成订单" });
   expect(generate).toBeDisabled();
   fireEvent.click(generate);
   expect(apiMocks.decideIntakeSubmission).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "仅归档客户" })).toBeEnabled();
+});
+
+it.each([false, true])("defaults empty service items and saves optional additions (saved review: %s)", async (hasReview) => {
+  const emptyItems = { ...payload, service: { ...payload.service, service_items: [] } };
+  apiMocks.getIntakeSubmission.mockResolvedValue({
+    ...detail,
+    status: hasReview ? "reviewed" : "submitted",
+    payload: emptyItems,
+    review_payload: hasReview ? emptyItems : null,
+  });
+  apiMocks.saveIntakeReviewDraft.mockImplementation(async (
+    _id: number, review: IntakeDraftPayload, price: string | null,
+  ) => ({ ...detail, status: "reviewed", review_payload: review, review_unit_price: price, revision: "b".repeat(64) }));
+  renderPage();
+
+  expect(await screen.findByRole("checkbox", { name: "添粮 / 喂食" })).toBeChecked();
+  for (const name of ["换水", "清理猫砂", "拍照反馈"]) {
+    expect(screen.getByRole("checkbox", { name })).toBeChecked();
+  }
+  for (const name of ["喂罐头", "喂药", "陪玩", "其他事项"]) {
+    expect(screen.getByRole("checkbox", { name })).not.toBeChecked();
+  }
+  expect(screen.getByRole("button", { name: "归档并生成订单" })).toBeDisabled();
+  fireEvent.change(screen.getByRole("spinbutton", { name: "每次价格（元）" }), { target: { value: "40" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: "喂药" }));
+  fireEvent.click(screen.getByRole("button", { name: "保存审核稿" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "归档并生成订单" })).toBeEnabled());
+  expect(apiMocks.saveIntakeReviewDraft).toHaveBeenCalledWith(9, expect.objectContaining({
+    service: expect.objectContaining({ service_items: ["feed", "water", "litter", "photo", "medicine"] }),
+  }), "40.00", revision);
+  expect(emptyItems.service.service_items).toEqual([]);
+  expect(apiMocks.decideIntakeSubmission).not.toHaveBeenCalled();
+});
+
+it("preserves saved custom service items instead of restoring removed defaults", async () => {
+  apiMocks.getIntakeSubmission.mockResolvedValue({ ...detail, status: "reviewed", review_payload: payload, review_unit_price: "30.00" });
+  renderPage();
+  expect(await screen.findByRole("checkbox", { name: "添粮 / 喂食" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "拍照反馈" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "换水" })).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "清理猫砂" })).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "归档并生成订单" })).toBeEnabled();
 });

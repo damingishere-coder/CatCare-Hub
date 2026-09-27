@@ -33,7 +33,7 @@ import {
   updateIntakeToken,
   updateIntakeSubmissionListState,
 } from "./api";
-import { emptyCat, serviceItemOptions } from "./constants";
+import { defaultServiceItems, emptyCat, serviceItemOptions } from "./constants";
 import type {
   FormSubmissionStatus,
   FormTokenStatus,
@@ -215,8 +215,14 @@ function mergeNote(current: string | null, source: string): string {
 }
 
 function editableReviewPayload(detail: IntakeSubmissionDetail): IntakeDraftPayload {
-  if (detail.review_payload) return detail.review_payload;
-  return { ...detail.payload, notes: null };
+  const payload = detail.review_payload ?? { ...detail.payload, notes: null };
+  if (payload.service.service_items.length || !["submitted", "reviewed"].includes(detail.status)) {
+    return payload;
+  }
+  return {
+    ...payload,
+    service: { ...payload.service, service_items: [...defaultServiceItems] },
+  };
 }
 
 function ReviewEditor({ payload, sourceNote, unitPrice, disabled, onPayloadChange, onUnitPriceChange }: {
