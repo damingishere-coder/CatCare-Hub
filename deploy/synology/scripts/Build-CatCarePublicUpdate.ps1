@@ -37,12 +37,14 @@ if ($publicCssFiles.Count -ne 1) {
 }
 $publicCss = [System.IO.File]::ReadAllText($publicCssFiles[0].FullName)
 $requiredUtilities = @(
-    '.rounded-\[2rem\]',
-    '.bg-\[\#FFF9F1\]',
+    '.rounded-2xl',
+    '.bg-brand-50',
     '.max-w-xl',
     '.min-h-12',
-    '.border-slate-300',
-    '.fixed'
+    '.border-brand-100',
+    '.fixed',
+    '.cc-button--primary',
+    '.cc-alert--danger'
 )
 foreach ($utility in $requiredUtilities) {
     if (-not $publicCss.Contains($utility)) {
