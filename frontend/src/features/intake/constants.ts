@@ -7,6 +7,8 @@ import type {
   TaskItemType,
 } from "./types";
 
+export const defaultServiceItems: readonly TaskItemType[] = ["feed", "water", "litter", "photo"];
+
 export const serviceItemOptions: Array<{ value: TaskItemType; label: string }> = [
   { value: "feed", label: "添粮 / 喂食" },
   { value: "water", label: "换水" },
@@ -62,7 +64,7 @@ export function editableDraft(draft: IntakeDraftPayload | null): IntakeDraftPayl
         start_date: null,
         end_date: null,
         visits_per_day: null,
-        service_items: ["feed", "water", "litter", "photo"],
+        service_items: [...defaultServiceItems],
       },
       notes: null,
     };
@@ -80,7 +82,7 @@ export function editableDraft(draft: IntakeDraftPayload | null): IntakeDraftPayl
         : draft.service.visits_per_day ?? 1,
       service_items: draft.service.service_items.length
         ? draft.service.service_items
-        : ["feed", "water", "litter", "photo"],
+        : [...defaultServiceItems],
     },
   };
 }
