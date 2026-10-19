@@ -145,7 +145,7 @@ it("removes any record from the list with a direct x and can restore it", async 
     true,
     revision,
   ));
-  expect(within(screen.getByLabelText("提交记录列表")).getByText("还没有客户提交。")).toBeInTheDocument();
+  expect(await within(screen.getByLabelText("提交记录列表")).findByText("还没有客户提交。")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "已移除记录" }));
   expect(within(screen.getByLabelText("提交记录列表")).getByText("P10 后台虚构客户")).toBeInTheDocument();
@@ -156,7 +156,7 @@ it("removes any record from the list with a direct x and can restore it", async 
     false,
     revision,
   ));
-  expect(within(screen.getByLabelText("提交记录列表")).getByText("还没有已移除记录。")).toBeInTheDocument();
+  expect(await within(screen.getByLabelText("提交记录列表")).findByText("还没有已移除记录。")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "当前记录" }));
   expect(within(screen.getByLabelText("提交记录列表")).getByText("P10 后台虚构客户")).toBeInTheDocument();
